@@ -1,0 +1,43 @@
+# Bible database — built locally from freely licensed sources via the
+# download-*.ts scripts. Not committed: it is reproducible (see the provenance
+# table), and STEPBible asks that their data files not be redistributed. Also
+# covers the atomic temp copies (.bible.db.<pid>.tmp, .crossrefs.<pid>.zip).
+/data/
+
+# Dependencies (bun install) + Bun cache
+/node_modules/
+.bun/
+
+# Private working files (never commit) — CLAUDE.md is the agent guide;
+# *_POST.md covers LINKEDIN_POST.md / REDDIT_POST.md.
+CLAUDE.md
+TODO.md
+NOTES.md
+*_POST.md
+*.local
+
+# Environment
+.env*
+
+# Logs / transient files
+*.log
+*.tmp
+*.bak
+*.tsbuildinfo
+.cache
+
+# Editors / IDEs
+.vscode/
+.idea/
+.cursor/
+
+# Operating system
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Nextcloud sync conflict files (this repo lives in the synced shared/ tree)
+*._conflict_*
+*.md._conflict_*

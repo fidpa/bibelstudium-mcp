@@ -1,0 +1,1869 @@
+#!/usr/bin/env bun
+/**
+ * Bibelstudium MCP Server — word-precise Bible study over a local SQLite DB.
+ *
+ * Six tools (exact German verses, original-language morphology, concordance,
+ * cross-references, full-text search, edition comparison) plus three guided
+ * prompts. German output fields, English tool names.
+ *
+ * Translations: four freely licensed German translations (see translations.ts),
+ * default Luther 1912. Data is built locally via the download-*.ts scripts.
+ */
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { Database } from "bun:sqlite";
+import { dirname, resolve } from "path";
+import {
+  DEFAULT_TRANSLATION,
+  TRANSLATIONS,
+  resolveTranslation,
+  type TranslationCode,
+} from "./translations.ts";
+
+// Database path relative to this file
+const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+
+// Open database read-only
+let db: Database;
+try {
+  db = new Database(DB_PATH, { readonly: true });
+  // No WAL pragma — database is read-only; WAL sidecar files could be tampered with.
+  // The download script checkpoints WAL before closing so the DB is self-contained.
+  console.error(`Bible DB loaded: ${DB_PATH}`);
+} catch (error) {
+  console.error(`Failed to open Bible database at ${DB_PATH}: ${error}`);
+  console.error("Run 'bun run download.ts' first to download the data.");
+  process.exit(1);
+}
+
+// A DB file can exist but be incomplete (e.g. only original_words after a
+// partial rebuild). Check before preparing statements so the failure mode is a
+// clear message instead of a raw "no such table" stack trace.
+{
+  const tables = new Set(
+    (db
+      .query("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>).map((r) => r.name)
+  );
+  const missing = ["books", "aliases", "verses"].filter((t) => !tables.has(t));
+  if (missing.length > 0) {
+    console.error(
+      `Bible database is incomplete (missing tables: ${missing.join(", ")}). ` +
+        "Run 'bun run download.ts' to rebuild it."
+    );
+    process.exit(1);
+  }
+  // A verses table from an older single-translation layout lacks the
+  // `translation` column; download.ts migrates it on the next run.
+  const verseCols = (db.query("PRAGMA table_info(verses)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!verseCols.includes("translation")) {
+    console.error(
+      "The verses table has no 'translation' column (old database layout). " +
+        "Run 'bun run download.ts' to rebuild it."
+    );
+    process.exit(1);
+  }
+}
+
+// Prepare statements
+const stmtAlias = db.prepare<{ book_id: number }, [string]>(
+  "SELECT book_id FROM aliases WHERE alias = ? COLLATE NOCASE"
+);
+
+const stmtVerses = db.prepare<{ verse: number; text: string }, [string, number, number]>(
+  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? ORDER BY verse"
+);
+
+const stmtVerse = db.prepare<{ verse: number; text: string }, [string, number, number, number]>(
+  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse = ?"
+);
+
+const stmtVerseRange = db.prepare<
+  { verse: number; text: string },
+  [string, number, number, number, number]
+>(
+  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
+);
+
+// Which translations are actually populated (for validation + error messages).
+const availableTranslations: Set<string> = new Set(
+  (db.query("SELECT DISTINCT translation FROM verses").all() as Array<{
+    translation: string;
+  }>).map((r) => r.translation)
+);
+
+const stmtBookName = db.prepare<{ name: string }, [number]>(
+  "SELECT name FROM books WHERE book_id = ?"
+);
+
+const stmtBookByName = db.prepare<{ book_id: number }, [string]>(
+  "SELECT book_id FROM books WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY book_id LIMIT 1"
+);
+
+// --- Original-language (morphology) support --------------------------------
+// The `original_words` table is optional; it exists only after
+// download-morph.ts has run. Guard so the server still starts without it.
+const hasOriginal =
+  db
+    .query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='original_words'"
+    )
+    .get() !== null;
+
+const stmtOriginal = hasOriginal
+  ? db.prepare<
+      {
+        word_index: number;
+        surface: string;
+        lemma: string;
+        strong: string;
+        pos: string;
+        parse: string;
+        lang: string;
+      },
+      [string, number, number, number]
+    >(
+      "SELECT word_index, surface, lemma, strong, pos, parse, lang FROM original_words " +
+        "WHERE edition = ? AND book_id = ? AND chapter = ? AND verse = ? ORDER BY word_index"
+    )
+  : null;
+
+// Which editions are actually populated (for validation + error messages).
+const availableEditions: Set<string> = new Set(
+  hasOriginal
+    ? (db.query("SELECT DISTINCT edition FROM original_words").all() as Array<{
+        edition: string;
+      }>).map((r) => r.edition)
+    : []
+);
+
+// Concordance lookups scan one edition's rows (no dedicated index; the DB is
+// opened read-only, and a full edition scan is a few ms in local SQLite).
+const stmtConcordStrong = hasOriginal
+  ? db.prepare<
+      { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
+      [string, string]
+    >(
+      "SELECT book_id, chapter, verse, surface, lemma, strong FROM original_words " +
+        "WHERE edition = ? AND strong = ? ORDER BY book_id, chapter, verse, word_index"
+    )
+  : null;
+
+const stmtConcordLemma = hasOriginal
+  ? db.prepare<
+      { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
+      [string, string]
+    >(
+      "SELECT book_id, chapter, verse, surface, lemma, strong FROM original_words " +
+        "WHERE edition = ? AND lemma = ? ORDER BY book_id, chapter, verse, word_index"
+    )
+  : null;
+
+// --- Strong's definitions (optional table, download-lexicon.ts) ------------
+const hasStrongDefs =
+  db
+    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='strong_defs'")
+    .get() !== null;
+
+// gloss/meaning are the newer STEPBible columns (meaning is Greek-only, see
+// schema.ts). A DB built before that migration lacks them — the DB is opened
+// read-only here, so select '' placeholders instead until download-lexicon.ts
+// reruns.
+const hasStepCols = hasStrongDefs
+  ? (db.query("PRAGMA table_info(strong_defs)").all() as Array<{ name: string }>).some(
+      (c) => c.name === "gloss"
+    )
+  : false;
+const stmtStrongDef = hasStrongDefs
+  ? db.prepare<
+      { lemma: string; translit: string; definition: string; kjv: string; gloss: string; meaning: string },
+      [string]
+    >(
+      hasStepCols
+        ? "SELECT lemma, translit, definition, kjv, gloss, meaning FROM strong_defs WHERE strong = ?"
+        : "SELECT lemma, translit, definition, kjv, '' AS gloss, '' AS meaning FROM strong_defs WHERE strong = ?"
+    )
+  : null;
+
+// --- TAGNT edition attestation (optional table, download-tagnt.ts) ---------
+const hasTagnt =
+  db
+    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='tagnt_words'")
+    .get() !== null;
+
+const stmtTagnt = hasTagnt
+  ? db.prepare<
+      {
+        surface: string;
+        word_type: string;
+        editions: string;
+        meaning_variant: string;
+        spelling_variant: string;
+      },
+      [number, number, number]
+    >(
+      "SELECT surface, word_type, editions, meaning_variant, spelling_variant FROM tagnt_words " +
+        "WHERE book_id = ? AND chapter = ? AND verse = ? ORDER BY word_index"
+    )
+  : null;
+
+// --- Full-text search over the German verses (optional FTS5 table) ---------
+// `translation` is UNINDEXED in the FTS table; filtering is a plain equality
+// post-filter on top of the MATCH.
+const hasFts =
+  db
+    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verses_fts'")
+    .get() !== null;
+
+const stmtSearchCount = hasFts
+  ? db.prepare<{ n: number }, [string, string]>(
+      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ?"
+    )
+  : null;
+const stmtSearchCountBook = hasFts
+  ? db.prepare<{ n: number }, [string, string, number]>(
+      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ?"
+    )
+  : null;
+const stmtSearch = hasFts
+  ? db.prepare<
+      { book_id: number; chapter: number; verse: number; text: string },
+      [string, string, number]
+    >(
+      "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '«', '»') as text " +
+        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? ORDER BY book_id, chapter, verse LIMIT ?"
+    )
+  : null;
+const stmtSearchBook = hasFts
+  ? db.prepare<
+      { book_id: number; chapter: number; verse: number; text: string },
+      [string, string, number, number]
+    >(
+      "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '«', '»') as text " +
+        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? ORDER BY chapter, verse LIMIT ?"
+    )
+  : null;
+
+// Lemma strings with combining marks (Hebrew niqqud, Greek accents) can differ
+// in code-point order between the stored data and a caller's input while being
+// canonically equivalent. Resolve such misses via a lazy per-edition map of
+// NFC-normalized → stored lemma (built once per edition, ~10k entries).
+const lemmaIndexCache = new Map<string, Map<string, string>>();
+function findStoredLemma(edition: string, lemma: string): string | null {
+  let idx = lemmaIndexCache.get(edition);
+  if (idx === undefined) {
+    idx = new Map();
+    const rows = db
+      .query("SELECT DISTINCT lemma FROM original_words WHERE edition = ?")
+      .all(edition) as Array<{ lemma: string }>;
+    for (const r of rows) idx.set(r.lemma.normalize("NFC"), r.lemma);
+    lemmaIndexCache.set(edition, idx);
+  }
+  return idx.get(lemma.normalize("NFC")) ?? null;
+}
+
+// --- Cross-references (OpenBible.info / TSK, optional table) ---------------
+const hasXrefs =
+  db
+    .query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='cross_references'"
+    )
+    .get() !== null;
+
+const stmtXrefs = hasXrefs
+  ? db.prepare<
+      {
+        to_book: number;
+        to_chapter: number;
+        to_verse: number;
+        to_chapter_end: number;
+        to_verse_end: number;
+        votes: number;
+      },
+      [number, number, number, number]
+    >(
+      "SELECT to_book, to_chapter, to_verse, to_chapter_end, to_verse_end, votes " +
+        "FROM cross_references WHERE from_book = ? AND from_chapter = ? AND from_verse = ? " +
+        "ORDER BY votes DESC LIMIT ?"
+    )
+  : null;
+
+const EDITION_META: Record<
+  string,
+  { label: string; hinweis: string; sprache: string; decoder: "robinson" | "morphgnt" | "hebrew" }
+> = {
+  byzantine: {
+    label: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)",
+    sprache: "Griechisch (Koine)",
+    decoder: "robinson",
+    hinweis:
+      "Mehrheitstext (Textus-Receptus-Familie, aber breiter bezeugt); enthält z. B. " +
+      "kein Comma Johanneum (1Joh 5,7). Von der Mehrheitstext-Position (u. a. R. Liebi) " +
+      "als zuverlässiger Grundtext vertreten.",
+  },
+  sblgnt: {
+    label: "SBL Greek New Testament (kritische Edition)",
+    sprache: "Griechisch (Koine)",
+    decoder: "morphgnt",
+    hinweis:
+      "Kritische (eklektische) Edition, Nestle-Aland-nah — nicht Mehrheitstext. " +
+      "Bei Lesarten-Fragen den Texttyp beachten; die Morphologie ist davon unberührt.",
+  },
+  tr: {
+    label: "Textus Receptus (Robinson, Scrivener/Stephens-Tradition)",
+    sprache: "Griechisch (Koine)",
+    decoder: "robinson",
+    hinweis:
+      "Textus Receptus — die einzige der drei Editionen mit dem Comma Johanneum " +
+      "(1Joh 5,7 Langform) und weiteren TR-Sonderlesarten. Zum direkten Lesarten-" +
+      "vergleich; die Mehrheitstext-Position sieht den TR als enge Reformationsform " +
+      "des Mehrheitstextes, nicht als Grundtext.",
+  },
+  wlc: {
+    label: "Westminster Leningrad Codex (masoretisch, OSHB-Morphologie)",
+    sprache: "Hebräisch/Aramäisch",
+    decoder: "hebrew",
+    hinweis:
+      "Masoretischer Text (Ben Ascher, Leningrad-Codex). Geschriebener Text = Ketiv " +
+      "(die Qere-Lesart der Randmasora ist nicht enthalten). Für das AT die von der " +
+      "masoretischen Position (u. a. R. Liebi) getragene Textbasis.",
+  },
+};
+
+const EDITION_ALIASES: Record<string, string> = {
+  byzantine: "byzantine", byz: "byzantine", mehrheitstext: "byzantine",
+  mehrheit: "byzantine", majority: "byzantine", mt: "byzantine",
+  sblgnt: "sblgnt", sbl: "sblgnt", kritisch: "sblgnt", "nestle-aland": "sblgnt", na: "sblgnt",
+  tr: "tr", textusreceptus: "tr", "textus-receptus": "tr", receptus: "tr", scrivener: "tr",
+  wlc: "wlc", masoretisch: "wlc", hebräisch: "wlc", hebraeisch: "wlc", hebrew: "wlc", masoretic: "wlc",
+};
+
+// Which editions apply to which testament (book_id 1–39 = OT, 40–66 = NT).
+const OT_EDITIONS = new Set(["wlc"]);
+const NT_EDITIONS = new Set(["byzantine", "sblgnt", "tr"]);
+
+// MorphGNT parse-code decoding (8 chars: person, tense, voice, mood, case,
+// number, gender, degree; "-" = not applicable).
+const POS_LABELS: Record<string, string> = {
+  "N-": "Substantiv", "A-": "Adjektiv", "V-": "Verb", "RA": "Artikel",
+  "RP": "Pronomen", "RD": "Demonstrativpronomen", "RI": "Interrog./Indef.-Pronomen",
+  "RR": "Relativpronomen", "C-": "Konjunktion", "D-": "Adverb",
+  "P-": "Präposition", "I-": "Interjektion", "X-": "Partikel",
+};
+const PERSON: Record<string, string> = { "1": "1. Person", "2": "2. Person", "3": "3. Person" };
+const TENSE: Record<string, string> = { P: "Präsens", I: "Imperfekt", F: "Futur", A: "Aorist", X: "Perfekt", Y: "Plusquamperfekt" };
+const VOICE: Record<string, string> = { A: "Aktiv", M: "Medium", P: "Passiv" };
+const MOOD: Record<string, string> = { I: "Indikativ", D: "Imperativ", S: "Konjunktiv", O: "Optativ", N: "Infinitiv", P: "Partizip" };
+const GCASE: Record<string, string> = { N: "Nominativ", G: "Genitiv", D: "Dativ", A: "Akkusativ", V: "Vokativ" };
+const GNUMBER: Record<string, string> = { S: "Singular", P: "Plural" };
+const GENDER: Record<string, string> = { M: "maskulin", F: "feminin", N: "neutrum" };
+const DEGREE: Record<string, string> = { C: "Komparativ", S: "Superlativ" };
+
+function decodeParse(parse: string): string {
+  const p = parse.padEnd(8, "-");
+  const parts: string[] = [];
+  const push = (map: Record<string, string>, ch: string | undefined) => {
+    if (ch && ch !== "-" && map[ch]) parts.push(map[ch]!);
+  };
+  push(PERSON, p[0]);
+  push(TENSE, p[1]);
+  push(VOICE, p[2]);
+  push(MOOD, p[3]);
+  push(GCASE, p[4]);
+  push(GNUMBER, p[5]);
+  push(GENDER, p[6]);
+  push(DEGREE, p[7]);
+  return parts.join(" ");
+}
+
+function posLabel(pos: string): string {
+  return POS_LABELS[pos] ?? pos;
+}
+
+// Robinson morph codes (Byzantine text), e.g. "N-APN", "V-PAM-2P", "T-GSM".
+// Format: POS[-tense/voice/mood]-[person][case][number][gender], hyphen-separated.
+const ROB_POS: Record<string, string> = {
+  N: "Substantiv", A: "Adjektiv", T: "Artikel", V: "Verb",
+  P: "Personalpronomen", R: "Relativpronomen", C: "Reziprok-/Demonstrativpron.",
+  D: "Demonstrativpronomen", K: "Korrelativpronomen", I: "Interrogativpronomen",
+  X: "Indefinitpronomen", Q: "Korrelativ-/Interrog.-Pron.", F: "Reflexivpronomen",
+  S: "Possessivpronomen", ADV: "Adverb", CONJ: "Konjunktion", COND: "Konditional",
+  PRT: "Partikel", PREP: "Präposition", INJ: "Interjektion", ARAM: "aramäisch",
+  HEB: "hebräisch", "N-PRI": "Eigenname (indekl.)", "A-NUI": "Zahlwort (indekl.)",
+};
+const ROB_TENSE: Record<string, string> = { P: "Präsens", I: "Imperfekt", F: "Futur", A: "Aorist", R: "Perfekt", L: "Plusquamperfekt", X: "Perfekt", "2A": "Aorist", "2F": "Futur", "2R": "Perfekt", "2P": "Präsens" };
+const ROB_VOICE: Record<string, string> = { A: "Aktiv", M: "Medium", P: "Passiv", E: "Medium/Passiv", D: "Deponens (Med.)", O: "Deponens (Pass.)", N: "Deponens (Med./Pass.)", Q: "unpersönlich", X: "kein" };
+// Robinson mood letters differ from MorphGNT: imperative is "M" (iMperative), not "D".
+const ROB_MOOD: Record<string, string> = { I: "Indikativ", M: "Imperativ", S: "Konjunktiv", O: "Optativ", N: "Infinitiv", P: "Partizip" };
+
+/** Decode one Robinson morph code (Byzantine edition) into readable German. */
+function decodeRobinson(code: string): string {
+  const raw = code.trim();
+  if (!raw) return "—";
+  const parts = raw.split("-");
+  const head = parts[0]!;
+  const out: string[] = [];
+
+  // Verb: V-<tense+voice+mood>-<person+number> or V-<tvm>-<case+number+gender> (participle)
+  if (head === "V") {
+    out.push("Verb");
+    const tvm = parts[1] ?? "";
+    // tense may be 1 or 2 chars ("2A"), then voice (1), then mood (1)
+    let i = 0;
+    let tense = tvm[i] ?? "";
+    if (tense === "2" && tvm[i + 1]) { tense = "2" + tvm[i + 1]; i += 2; } else { i += 1; }
+    const voice = tvm[i] ?? ""; i += 1;
+    const mood = tvm[i] ?? "";
+    if (ROB_TENSE[tense]) out.push(ROB_TENSE[tense]!);
+    if (ROB_VOICE[voice]) out.push(ROB_VOICE[voice]!);
+    if (ROB_MOOD[mood]) out.push(ROB_MOOD[mood]!);
+    const tail = parts[2] ?? "";
+    if (mood === "P") {
+      // participle: case, number, gender
+      if (GCASE[tail[0] ?? ""]) out.push(GCASE[tail[0]!]!);
+      if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
+      if (GENDER[tail[2] ?? ""]) out.push(GENDER[tail[2]!]!);
+    } else if (tail) {
+      // finite: person + number
+      if (PERSON[tail[0] ?? ""]) out.push(PERSON[tail[0]!]!);
+      if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
+    }
+    return out.join(" ");
+  }
+
+  // Non-verb: POS then optional case+number+gender block (e.g. N-APN, T-GSM, A-NPM).
+  // Only declinable word classes carry a case/number/gender suffix; for particles,
+  // conjunctions etc. a trailing "-N"/"-I" is a function marker (negative/interrog.),
+  // not a declension, so it must not be read as a case.
+  out.push(ROB_POS[head] ?? head);
+  const DECLINABLE = new Set(["N", "A", "T", "P", "R", "C", "D", "K", "I", "X", "Q", "F", "S"]);
+  const decl = parts[1] ?? "";
+  if (DECLINABLE.has(head) && decl && decl !== "PRI" && decl !== "NUI") {
+    // Personal pronoun with leading person digit, e.g. P-1DS, P-2AP
+    let d = decl;
+    if (/^[123]/.test(d)) { if (PERSON[d[0]!]) out.push(PERSON[d[0]!]!); d = d.slice(1); }
+    if (GCASE[d[0] ?? ""]) out.push(GCASE[d[0]!]!);
+    if (GNUMBER[d[1] ?? ""]) out.push(GNUMBER[d[1]!]!);
+    if (GENDER[d[2] ?? ""]) out.push(GENDER[d[2]!]!);
+  }
+  return out.join(" ") || "—";
+}
+
+function resolveEdition(input: unknown): string | null {
+  if (input === undefined || input === null || input === "") return EDITION_ALIASES["byzantine"]!;
+  if (typeof input !== "string") return null;
+  return EDITION_ALIASES[input.trim().toLowerCase()] ?? null;
+}
+
+// --- Hebrew/Aramaic morphology (OSHB codes) --------------------------------
+const HEB_STEM: Record<string, string> = {
+  q: "Qal", N: "Nifal", p: "Piel", P: "Pual", h: "Hifil", H: "Hofal",
+  t: "Hitpael", o: "Polel", O: "Polal", r: "Hitpolel", m: "Poel", M: "Poal",
+  k: "Palel", K: "Pulal", Q: "Qal passiv", l: "Pilpel", L: "Polpal",
+  f: "Hitpalpel", D: "Nitpael", j: "Pealal", i: "Pilel", u: "Hotpaal",
+  c: "Tifil", v: "Hištafel", w: "Nitpalel", y: "Nitpoel", z: "Hitpoel",
+};
+const ARC_STEM: Record<string, string> = {
+  q: "Peal", Q: "Peil", u: "Hitpeel", p: "Pael", P: "Itpaal", M: "Hitpaal",
+  a: "Afel", h: "Hafel", s: "Šafel", e: "Šafel", H: "Hofal", i: "Itpeel",
+  t: "Hištafel", v: "Ištafel", w: "Hitafel", o: "Polel", z: "Itpoel",
+  r: "Hitpolel", f: "Hitpalpel", b: "Hefal", c: "Tifel", m: "Poel",
+  l: "Palpel", L: "Itpalpel", O: "Itpolel", G: "Ittafal",
+};
+const HEB_CONJ: Record<string, string> = {
+  p: "Perfekt", q: "seq. Perfekt", i: "Imperfekt", w: "seq. Imperfekt",
+  h: "Kohortativ", j: "Jussiv", v: "Imperativ", r: "Partizip aktiv",
+  s: "Partizip passiv", a: "Infinitiv absolut", c: "Infinitiv konstrukt",
+};
+const HEB_PERSON: Record<string, string> = { "1": "1. Person", "2": "2. Person", "3": "3. Person" };
+const HEB_GENDER: Record<string, string> = { b: "m./f.", c: "gemeins.", f: "feminin", m: "maskulin" };
+const HEB_NUMBER: Record<string, string> = { s: "Singular", d: "Dual", p: "Plural" };
+const HEB_STATE: Record<string, string> = { a: "absolut", c: "konstrukt", d: "determiniert" };
+const HEB_ADJ_TYPE: Record<string, string> = { a: "Adjektiv", c: "Kardinalzahl", g: "Adjektiv (Gentilicum)", o: "Ordinalzahl" };
+const HEB_PRON_TYPE: Record<string, string> = { d: "Demonstrativ", f: "Indefinit", i: "Interrogativ", p: "Personal", r: "Relativ" };
+const HEB_PART_TYPE: Record<string, string> = { a: "Affirmation", d: "Artikel", e: "Exhortativ", i: "Interrogativ", j: "Interjektion", m: "Demonstrativ", n: "Negation", o: "Objektmarker", r: "Relativ" };
+const HEB_SUFF_TYPE: Record<string, string> = { d: "Richtungs-He", h: "paragog. He", n: "paragog. Nun", p: "Pronominalsuffix" };
+
+/** Decode a run of feature chars in a fixed field order (skips 'x' placeholders). */
+function hebFeatures(str: string, order: Array<Record<string, string>>): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < order.length && i < str.length; i++) {
+    const ch = str[i]!;
+    if (ch === "x") continue;
+    const label = order[i]![ch];
+    if (label) out.push(label);
+  }
+  return out;
+}
+
+/** Decode one morpheme of an OSHB code (language already stripped). */
+function decodeHebMorpheme(code: string, aramaic: boolean): string {
+  if (!code) return "";
+  const pos = code[0]!;
+  const rest = code.slice(1);
+  switch (pos) {
+    case "C": return "Konjunktion";
+    case "D": return "Adverb";
+    case "R": return "Präposition" + (rest[0] === "d" ? " (mit Artikel)" : "");
+    case "T": return "Partikel" + (HEB_PART_TYPE[rest[0] ?? ""] ? ` (${HEB_PART_TYPE[rest[0]!]})` : "");
+    case "N": {
+      const type = rest[0] ?? "";
+      const head = type === "p" ? "Eigenname" : type === "g" ? "Substantiv (Gentilicum)" : "Substantiv";
+      if (type === "p") return head; // proper names carry no further parsing
+      return [head, ...hebFeatures(rest.slice(1), [HEB_GENDER, HEB_NUMBER, HEB_STATE])].join(" ");
+    }
+    case "A": {
+      const head = HEB_ADJ_TYPE[rest[0] ?? ""] ?? "Adjektiv";
+      return [head, ...hebFeatures(rest.slice(1), [HEB_GENDER, HEB_NUMBER, HEB_STATE])].join(" ");
+    }
+    case "P": {
+      const head = `Pronomen${HEB_PRON_TYPE[rest[0] ?? ""] ? ` (${HEB_PRON_TYPE[rest[0]!]})` : ""}`;
+      return [head, ...hebFeatures(rest.slice(1), [HEB_PERSON, HEB_GENDER, HEB_NUMBER])].join(" ");
+    }
+    case "S": {
+      const head = HEB_SUFF_TYPE[rest[0] ?? ""] ?? "Suffix";
+      return [head, ...hebFeatures(rest.slice(1), [HEB_PERSON, HEB_GENDER, HEB_NUMBER])].join(" ");
+    }
+    case "V": {
+      const stem = (aramaic ? ARC_STEM : HEB_STEM)[rest[0] ?? ""] ?? rest[0] ?? "";
+      const conjCh = rest[1] ?? "";
+      const conj = HEB_CONJ[conjCh] ?? "";
+      const feats = rest.slice(2);
+      let tail: string[];
+      if (conjCh === "r" || conjCh === "s") {
+        tail = hebFeatures(feats, [HEB_GENDER, HEB_NUMBER, HEB_STATE]); // participle
+      } else if (conjCh === "a" || conjCh === "c") {
+        tail = []; // infinitive
+      } else {
+        tail = hebFeatures(feats, [HEB_PERSON, HEB_GENDER, HEB_NUMBER]); // finite
+      }
+      return ["Verb", stem, conj, ...tail].filter(Boolean).join(" ");
+    }
+    default: return pos;
+  }
+}
+
+/** Decode a full OSHB morph string ("HR/Ncfsa" → "Präposition + Substantiv feminin Singular absolut"). */
+function decodeHebrew(morph: string): string {
+  if (!morph) return "—";
+  const aramaic = morph[0] === "A";
+  const body = morph.replace(/^[HA]/, "");
+  const pieces = body.split("/").map((m) => decodeHebMorpheme(m, aramaic)).filter(Boolean);
+  return pieces.join(" + ") || "—";
+}
+
+function errorResult(msg: string) {
+  return { content: [{ type: "text" as const, text: msg }], isError: true };
+}
+
+/**
+ * Strip remaining HTML tags from verse text (e.g. <i> for psalm superscriptions).
+ */
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]+>/g, "");
+}
+
+/**
+ * Escape LIKE wildcard characters in user input.
+ */
+function escapeLike(str: string): string {
+  return str.replace(/[%_\\]/g, "\\$&");
+}
+
+/**
+ * Accept an integer given as a number or digit string. MCP clients (LLMs)
+ * regularly send "3" where the schema says number; be lenient rather than fail.
+ */
+function toInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return parseInt(value.trim(), 10);
+  }
+  return null;
+}
+
+/**
+ * Turn free-form user input into a safe FTS5 MATCH expression.
+ * Quoted segments become phrases; bare words are ANDed; a trailing `*` on a
+ * word makes it a prefix query. Returns null if no searchable token remains.
+ */
+function buildFtsQuery(input: string): string | null {
+  const terms: string[] = [];
+  const parts = input.split('"');
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i]!;
+    if (i % 2 === 1) {
+      // inside quotes → one phrase
+      const words = seg.match(/[\p{L}\p{N}]+/gu) ?? [];
+      if (words.length > 0) terms.push(`"${words.join(" ")}"`);
+    } else {
+      for (const m of seg.matchAll(/([\p{L}\p{N}]+)(\*)?/gu)) {
+        terms.push(m[2] ? `"${m[1]}" *` : `"${m[1]}"`);
+      }
+    }
+  }
+  return terms.length > 0 ? terms.join(" ") : null;
+}
+
+/**
+ * Normalize a Greek surface form for edition comparison: strip diacritics,
+ * lowercase, fold final sigma. byzantine/tr are stored unaccented, sblgnt is
+ * accented — without this every word pair would differ.
+ */
+function normForCompare(w: string): string {
+  return w
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/ς/g, "σ");
+}
+
+/**
+ * LCS word diff between two editions of a verse. Compares normalized forms,
+ * reports original surfaces. Each segment holds the differing run of words on
+ * either side ("" = missing on that side).
+ */
+function diffSegments(aWords: string[], bWords: string[]): Array<{ a: string; b: string }> {
+  const an = aWords.map(normForCompare);
+  const bn = bWords.map(normForCompare);
+  const m = an.length;
+  const n = bn.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i]![j] = an[i] === bn[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+    }
+  }
+  const segs: Array<{ a: string[]; b: string[] }> = [];
+  let cur: { a: string[]; b: string[] } | null = null;
+  const flush = (): void => {
+    if (cur) { segs.push(cur); cur = null; }
+  };
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (an[i] === bn[j]) {
+      flush();
+      i++; j++;
+    } else {
+      cur ??= { a: [], b: [] };
+      if (dp[i + 1]![j]! >= dp[i]![j + 1]!) { cur.a.push(aWords[i]!); i++; }
+      else { cur.b.push(bWords[j]!); j++; }
+    }
+  }
+  if (i < m || j < n) {
+    cur ??= { a: [], b: [] };
+    while (i < m) cur.a.push(aWords[i++]!);
+    while (j < n) cur.b.push(bWords[j++]!);
+  }
+  flush();
+  return segs.map((s) => ({ a: s.a.join(" "), b: s.b.join(" ") }));
+}
+
+/**
+ * Resolve a book name or abbreviation to a book ID.
+ */
+function resolveBook(book: string): number | null {
+  const normalized = book.trim().toLowerCase();
+
+  // Try exact alias match first
+  const aliasResult = stmtAlias.get(normalized);
+  if (aliasResult) return aliasResult.book_id;
+
+  // Try fuzzy match on full book names (LIKE '%search%')
+  const nameResult = stmtBookByName.get(`%${escapeLike(normalized)}%`);
+  if (nameResult) return nameResult.book_id;
+
+  return null;
+}
+
+/**
+ * Get the display name for a book.
+ */
+function getBookDisplayName(bookId: number): string {
+  const result = stmtBookName.get(bookId);
+  return result?.name ?? `Buch ${bookId}`;
+}
+
+/**
+ * Parse a verse reference string like "4", "16-17", "1,3,5", "1-3,7".
+ * Returns an array of individual verse numbers.
+ */
+function parseVerses(versesStr: string): number[] {
+  const MAX_VERSE = 200; // Longest chapter (Psalm 119) has 176 verses
+  const MAX_PARTS = 30; // Limit comma-separated segments to prevent excessive DB queries
+  const verses: number[] = [];
+  const parts = versesStr.split(",").map((p) => p.trim()).slice(0, MAX_PARTS);
+
+  for (const part of parts) {
+    if (part.includes("-")) {
+      const [startStr, endStr] = part.split("-");
+      const start = parseInt(startStr ?? "", 10);
+      const end = parseInt(endStr ?? "", 10);
+      if (!isNaN(start) && !isNaN(end) && start >= 1 && end >= 1 && start <= end && end <= MAX_VERSE) {
+        for (let v = start; v <= end; v++) {
+          verses.push(v);
+        }
+      }
+    } else {
+      const v = parseInt(part, 10);
+      if (!isNaN(v) && v >= 1 && v <= MAX_VERSE) {
+        verses.push(v);
+      }
+    }
+  }
+
+  // Dedupe and sort ascending so the returned text matches the canonical
+  // order of the formatted reference ("5,3,3" → verses 3 and 5, once each).
+  return [...new Set(verses)].sort((a, b) => a - b);
+}
+
+/**
+ * Look up verses of one translation from the database.
+ */
+function lookupVerses(
+  translation: TranslationCode,
+  bookId: number,
+  chapter: number,
+  versesStr: string
+): ReadonlyArray<{ verse: number; text: string }> {
+  // If no specific verses requested, return entire chapter
+  if (!versesStr || versesStr.trim() === "") {
+    return stmtVerses.all(translation, bookId, chapter);
+  }
+
+  // Check if it's a simple range (e.g., "3-7") — use range query for efficiency
+  const rangeMatch = versesStr.trim().match(/^(\d+)-(\d+)$/);
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[1]!, 10);
+    const end = parseInt(rangeMatch[2]!, 10);
+    return stmtVerseRange.all(translation, bookId, chapter, start, end);
+  }
+
+  // Parse complex verse references and query individually
+  const verseNums = parseVerses(versesStr);
+  const results: Array<{ verse: number; text: string }> = [];
+  for (const v of verseNums) {
+    const row = stmtVerse.get(translation, bookId, chapter, v);
+    if (row) {
+      results.push(row);
+    }
+  }
+  return results;
+}
+
+/**
+ * Resolve a `translation` tool argument to a loaded translation code, or an
+ * error message for the caller to return.
+ */
+function requireTranslation(input: unknown): { code: TranslationCode } | { error: string } {
+  const code = resolveTranslation(input);
+  if (code === null) {
+    return {
+      error:
+        `Error: Unknown translation "${String(input)}". Allowed: ` +
+        Object.entries(TRANSLATIONS)
+          .map(([c, m]) => `"${c}" (${m.name})`)
+          .join(", ") +
+        ".",
+    };
+  }
+  if (!availableTranslations.has(code)) {
+    return {
+      error:
+        `Übersetzung "${code}" (${TRANSLATIONS[code].name}) ist nicht geladen. ` +
+        `Bitte 'bun run download.ts ${code}' ausführen. Geladen: ` +
+        `${[...availableTranslations].join(", ") || "keine"}.`,
+    };
+  }
+  return { code };
+}
+
+// Create MCP server
+const server = new Server(
+  {
+    name: "bibelstudium-mcp",
+    version: "0.1.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+      prompts: {},
+    },
+  }
+);
+
+// List available tools
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [
+    {
+      name: "bible_lookup",
+      description:
+        "Look up Bible verses by reference. Returns exact text from a freely licensed German " +
+        "translation (default: Luther 1912). Use this for ALL Bible quotes — never quote " +
+        "from memory.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          book: {
+            type: "string",
+            description:
+              'Book name in German (e.g. "Jesaja", "1. Mose", "Römer", "Ps", "Mt")',
+          },
+          chapter: {
+            type: "number",
+            description: "Chapter number",
+          },
+          verses: {
+            type: "string",
+            description:
+              'Verse(s): single "4", range "16-17", list "1,3,5", or combined "1-3,7". Omit for full chapter.',
+          },
+          translation: {
+            type: "string",
+            description:
+              'Translation: "LUT" (Luther 1912, default), "SCH" (Schlachter 1951), ' +
+              '"ELB" (Elberfelder 1871), "MB" (Menge). Aliases like "luther", "schlachter" accepted.',
+            default: "LUT",
+          },
+        },
+        required: ["book", "chapter"],
+      },
+    },
+    {
+      name: "bible_original",
+      description:
+        "Return one Bible verse word-by-word in the ORIGINAL language with lemma, Strong's " +
+        "number and full morphology. Use this to verify what the original text says — e.g. " +
+        "whether a noun is singular or plural — instead of inferring it from a translation. " +
+        "Covers the whole Bible: the OT (book 1–39) is served from the Hebrew/Aramaic " +
+        "Westminster Leningrad Codex; the NT (40–66) from a Greek text type chosen via " +
+        '`texttyp` — "byzantine" (Majority Text, default), "sblgnt" (critical), or "tr" ' +
+        "(Textus Receptus, the only one with the Comma Johanneum). Edition and text type are " +
+        "labelled in the output.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          book: {
+            type: "string",
+            description: 'Book name in German (e.g. "1. Mose", "Jesaja", "Römer", "Galater")',
+          },
+          chapter: { type: "number", description: "Chapter number" },
+          verse: { type: "number", description: "Single verse number" },
+          texttyp: {
+            type: "string",
+            description:
+              'NT text edition: "byzantine" (Majority Text, default), "sblgnt" (critical SBL), ' +
+              'or "tr" (Textus Receptus). Ignored for the OT (always Hebrew WLC). Compare ' +
+              "byzantine vs. tr to see TR-only readings such as the Comma Johanneum (1Joh 5,7).",
+            default: "byzantine",
+          },
+        },
+        required: ["book", "chapter", "verse"],
+      },
+    },
+    {
+      name: "bible_crossrefs",
+      description:
+        "Find cross-references (related/parallel passages) for one Bible verse, ranked by " +
+        "relevance votes, each with its German text (default: Luther 1912). Use this to find " +
+        "where a theme, quote or promise recurs elsewhere in Scripture. Data: Treasury of " +
+        "Scripture Knowledge (expanded), OpenBible.info, CC-BY.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          book: {
+            type: "string",
+            description: 'Book name in German (e.g. "Jesaja", "1. Mose", "Römer")',
+          },
+          chapter: { type: "number", description: "Chapter number" },
+          verse: { type: "number", description: "Single verse number" },
+          limit: {
+            type: "number",
+            description: "Maximum number of references to return (default 10, max 30)",
+            default: 10,
+          },
+          translation: {
+            type: "string",
+            description:
+              'Translation for the quoted target texts: "LUT" (default), "SCH", "ELB", "MB".',
+            default: "LUT",
+          },
+        },
+        required: ["book", "chapter", "verse"],
+      },
+    },
+    {
+      name: "bible_concordance",
+      description:
+        "Concordance / word study: find ALL occurrences of an original-language word across " +
+        'the Bible. Search by Strong\'s number (preferred; "G26" = Greek/NT, "H7225" = ' +
+        "Hebrew/OT) or by exact lemma as returned by bible_original (e.g. \"ἀγάπη\", " +
+        '"רֵאשִׁית"). Returns total count, per-book distribution, an occurrence list with ' +
+        "the inflected surface forms, and English lexicon data (gloss, Strong's definition; " +
+        "for Greek also the full Abbott-Smith entry). NT edition selectable via texttyp " +
+        "(default byzantine).",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          strong: {
+            type: "string",
+            description: 'Strong\'s number with testament prefix, e.g. "G26" or "H7225"',
+          },
+          lemma: {
+            type: "string",
+            description:
+              "Exact Greek or Hebrew lemma (alternative to strong; script determines testament)",
+          },
+          texttyp: {
+            type: "string",
+            description:
+              'NT text edition: "byzantine" (default), "sblgnt", or "tr". Ignored for Hebrew.',
+            default: "byzantine",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum occurrences to list (default 50, max 200); counts are always exact",
+            default: 50,
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "bible_search",
+      description:
+        "Full-text search over the German Bible text (default: Luther 1912). Finds verses " +
+        "containing ALL given words (exact word forms; umlauts/accents are folded, so 'fuhrt' " +
+        'matches "führt"). Quote phrases ("Gnade um Gnade"); a trailing * makes a prefix ' +
+        "search (lieb* finds liebe/lieben/liebet …). Use this to locate a passage when the " +
+        "wording is known but the reference is not. Optionally restrict to one book.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          query: {
+            type: "string",
+            description: 'Words or "phrases" to search for, e.g. \'Hirte mangeln\' or \'"Gnade um Gnade"\'',
+          },
+          book: {
+            type: "string",
+            description: 'Optional: restrict to one book (German name, e.g. "Psalmen", "Röm")',
+          },
+          limit: {
+            type: "number",
+            description: "Maximum verses to return (default 10, max 50); the total count is always exact",
+            default: 10,
+          },
+          translation: {
+            type: "string",
+            description: 'Translation to search: "LUT" (default), "SCH", "ELB", "MB".',
+            default: "LUT",
+          },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "bible_compare",
+      description:
+        "Compare one NT verse word-by-word across the Greek editions (byzantine Majority Text, " +
+        "tr Textus Receptus, sblgnt critical text) and list the textual differences. " +
+        "Accentuation/case are ignored (byzantine/tr are stored unaccented), so reported " +
+        "differences are real variants or spelling variants (e.g. movable Ny). Additionally " +
+        "reports per-word attestation across eight editions (NA27/28, Tyndale House, SBL, " +
+        "Westcott-Hort, Tregelles, TR, Byzantine; STEPBible TAGNT). Use for questions about " +
+        "textual variants (e.g. the Comma Johanneum, 1Jn 5:7). OT verses have only one " +
+        "edition (WLC) and cannot be compared.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          book: {
+            type: "string",
+            description: 'NT book name in German (e.g. "Römer", "1Joh")',
+          },
+          chapter: { type: "number", description: "Chapter number" },
+          verse: { type: "number", description: "Single verse number" },
+        },
+        required: ["book", "chapter", "verse"],
+      },
+    },
+  ],
+}));
+
+// --- Guided prompts ---------------------------------------------------------
+// Workflow prompts that orchestrate the six tools. Names/descriptions are
+// English (like the tool names); the prompt bodies are German user-facing
+// content, matching the German output fields.
+
+const PROMPTS = [
+  {
+    name: "word-study",
+    description:
+      "Guided original-language word study: from a German word, lemma or Strong's number " +
+      "to meaning spectrum, distribution and key passages.",
+    arguments: [
+      {
+        name: "word",
+        description: "German word, Greek/Hebrew lemma, or Strong's number (e.g. G26)",
+        required: true,
+      },
+      {
+        name: "reference",
+        description: 'Optional Bible reference as starting point (e.g. "Johannes 3,16")',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: "variant-check",
+    description:
+      "Guided text-critical check of one NT verse: edition diff, eight-edition attestation, " +
+      "sober assessment.",
+    arguments: [
+      {
+        name: "reference",
+        description: 'NT verse reference (e.g. "1. Johannes 5,7")',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: "translation-compare",
+    description:
+      "Compare one passage across all loaded German translations and check notable " +
+      "renderings against the original text.",
+    arguments: [
+      {
+        name: "reference",
+        description: 'Bible reference (e.g. "Psalm 23,1" or "Römer 8,1")',
+        required: true,
+      },
+    ],
+  },
+] as const;
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: PROMPTS.map((p) => ({ ...p, arguments: [...p.arguments] })),
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const name = request.params.name;
+  const args = (request.params.arguments ?? {}) as Record<string, string>;
+
+  let text: string;
+  if (name === "word-study") {
+    const word = args.word ?? "";
+    const ref = args.reference ?? "";
+    text =
+      `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools — zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
+      `1. Bestimme das Urtext-Wort: ${ref ? `Rufe bible_original für ${ref} ab und identifiziere dort das Wort (Grundform + Strong-Nummer).` : `Ist „${word}" bereits eine Strong-Nummer oder ein griechisches/hebräisches Lemma, nutze es direkt. Ist es ein deutsches Wort, finde über bible_search eine typische Belegstelle und rufe für sie bible_original ab.`}\n` +
+      `2. Rufe bible_concordance mit der Strong-Nummer ab: Gesamtzahl, Buchverteilung, Beugungsformen, Lexikon-Daten (Gloss, Definition, bei Griechisch Abbott-Smith).\n` +
+      `3. Wähle 2–3 theologisch gewichtige Vorkommen und rufe für sie bible_lookup (Wortlaut) und bible_crossrefs (Parallelstellen) ab.\n` +
+      `4. Fasse das Bedeutungsspektrum zusammen: Grundbedeutung, Bedeutungsnuancen nach Kontext, auffällige Verteilung. Belege jede Aussage mit einer konkret abgerufenen Stelle; kennzeichne offene Fragen als offen.`;
+  } else if (name === "variant-check") {
+    const ref = args.reference ?? "";
+    text =
+      `Prüfe die Textüberlieferung von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools — keine Behauptungen ohne Tool-Beleg.\n\n` +
+      `1. Rufe bible_compare für ${ref} ab: Wort-Diff über Mehrheitstext, Textus Receptus und SBLGNT sowie die Bezeugung pro Wort über acht Editionen (Feld „bezeugung").\n` +
+      `2. Bei relevanten Unterschieden: Rufe bible_original für ${ref} mit jedem betroffenen texttyp ab (byzantine, tr, sblgnt), um die Lesarten im Wortlaut zu sehen.\n` +
+      `3. Rufe bible_lookup für ${ref} ab und prüfe, welcher Lesart der deutsche Text folgt.\n` +
+      `4. Ordne nüchtern ein: Welche Editionen bezeugen welche Lesart (N/K/O-Typ beachten: Kleinbuchstaben = ohne Übersetzungsrelevanz)? Ändert die Variante die Aussage des Verses? Keine Wertung über „besser/schlechter" ohne Datengrundlage — benenne nur, was die Editionen tatsächlich lesen.`;
+  } else if (name === "translation-compare") {
+    const ref = args.reference ?? "";
+    text =
+      `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
+      `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab (translation: "LUT", "SCH", "ELB", "MB").\n` +
+      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).\n` +
+      `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab und kläre, welche Wiedergabe dem Grundtext am nächsten kommt (bei NT-Versen ggf. bible_compare — Übersetzungen können verschiedenen Editionen folgen).\n` +
+      `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
+  } else {
+    throw new Error(`Unknown prompt: ${name}`);
+  }
+
+  const meta = PROMPTS.find((p) => p.name === name)!;
+  return {
+    description: meta.description,
+    messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+  };
+});
+
+// Handle tool calls
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const toolName = request.params.name;
+  // `arguments` is optional per the MCP schema, and clients do omit it when the
+  // model calls a tool without parameters. Without this fallback every handler
+  // would throw a raw TypeError into the JSON-RPC layer instead of returning
+  // the "field is required" tool error the caller can act on.
+  const rawArgs = request.params.arguments ?? {};
+  if (toolName === "bible_original") {
+    return handleOriginal(
+      rawArgs as {
+        book?: unknown;
+        chapter?: unknown;
+        verse?: unknown;
+        texttyp?: unknown;
+      }
+    );
+  }
+  if (toolName === "bible_crossrefs") {
+    return handleCrossrefs(
+      rawArgs as {
+        book?: unknown;
+        chapter?: unknown;
+        verse?: unknown;
+        limit?: unknown;
+        translation?: unknown;
+      }
+    );
+  }
+  if (toolName === "bible_concordance") {
+    return handleConcordance(
+      rawArgs as {
+        strong?: unknown;
+        lemma?: unknown;
+        texttyp?: unknown;
+        limit?: unknown;
+      }
+    );
+  }
+  if (toolName === "bible_search") {
+    return handleSearch(
+      rawArgs as {
+        query?: unknown;
+        book?: unknown;
+        limit?: unknown;
+        translation?: unknown;
+      }
+    );
+  }
+  if (toolName === "bible_compare") {
+    return handleCompare(
+      rawArgs as {
+        book?: unknown;
+        chapter?: unknown;
+        verse?: unknown;
+      }
+    );
+  }
+  if (toolName !== "bible_lookup") {
+    throw new Error(`Unknown tool: ${toolName}`);
+  }
+
+  const args = rawArgs as {
+    book?: unknown;
+    chapter?: unknown;
+    verses?: unknown;
+    translation?: unknown;
+  };
+
+  const { book, translation } = args;
+
+  // Validate required inputs
+  const MAX_BOOK_LENGTH = 50; // Longest German book name is ~20 chars
+  if (!book || typeof book !== "string" || book.length > MAX_BOOK_LENGTH) {
+    return {
+      content: [{ type: "text" as const, text: "Error: 'book' is required and must be under 50 characters (e.g. 'Jesaja', '1. Mose')" }],
+      isError: true,
+    };
+  }
+
+  const MAX_CHAPTER = 150; // Psalms has the most chapters (150)
+  const chapter = toInt(args.chapter);
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    return {
+      content: [{ type: "text" as const, text: `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}` }],
+      isError: true,
+    };
+  }
+
+  // Accept verses as string or single number (lenient towards MCP clients).
+  const MAX_VERSES_LENGTH = 200;
+  const verses =
+    args.verses === undefined || args.verses === null
+      ? ""
+      : typeof args.verses === "string"
+        ? args.verses
+        : typeof args.verses === "number" && Number.isInteger(args.verses)
+          ? String(args.verses)
+          : null;
+  if (verses === null || verses.length > MAX_VERSES_LENGTH) {
+    return {
+      content: [{ type: "text" as const, text: `Error: 'verses' must be a string like "4", "16-17" or "1-3,7" (max ${MAX_VERSES_LENGTH} characters)` }],
+      isError: true,
+    };
+  }
+
+  // Resolve book name to ID
+  const bookId = resolveBook(book);
+  if (bookId === null) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Error: Book "${book}" not found. Try the full German name (e.g. "Jesaja", "1. Mose", "Römer") or an abbreviation (e.g. "Jes", "1Mo", "Röm").`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Resolve translation (strict: unknown/unloaded codes are errors)
+  const resolved = requireTranslation(translation);
+  if ("error" in resolved) {
+    return errorResult(resolved.error);
+  }
+
+  // Look up verses
+  const results = lookupVerses(resolved.code, bookId, chapter, verses);
+  if (results.length === 0) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `No verses found for ${book} ${chapter}${verses ? "," + verses : ""}. Check chapter and verse numbers.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Build response
+  const bookName = getBookDisplayName(bookId);
+  const translationName = TRANSLATIONS[resolved.code].name;
+
+  // Format verse reference
+  const verseNums = results.map((r) => r.verse);
+  const verseRef = formatVerseReference(verseNums);
+  const reference = `${bookName} ${chapter},${verseRef}`;
+
+  // Format text (strip any remaining HTML tags from the database)
+  const text = results
+    .map((r) => {
+      const clean = stripHtml(r.text);
+      return results.length > 1 ? `${r.verse} ${clean}` : clean;
+    })
+    .join(" ");
+
+  const response = {
+    reference,
+    translation: translationName,
+    text,
+  };
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(response, null, 2),
+      },
+    ],
+  };
+});
+
+/**
+ * Handle the `bible_original` tool: return one NT verse word-by-word with
+ * lemma and decoded morphology from the SBLGNT / MorphGNT data.
+ */
+function handleOriginal(args: {
+  book?: unknown;
+  chapter?: unknown;
+  verse?: unknown;
+  texttyp?: unknown;
+}) {
+  if (!stmtOriginal || availableEditions.size === 0) {
+    return errorResult(
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' " +
+        "(und optional 'bun run download-morph.ts') ausführen."
+    );
+  }
+
+  const { book } = args;
+
+  if (!book || typeof book !== "string" || book.length > 50) {
+    return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  }
+  const chapter = toInt(args.chapter);
+  if (chapter === null || chapter < 1 || chapter > 150) {
+    return errorResult("Error: 'chapter' must be a positive integer.");
+  }
+  const verse = toInt(args.verse);
+  if (verse === null || verse < 1 || verse > 200) {
+    return errorResult("Error: 'verse' must be a positive integer.");
+  }
+
+  const bookId = resolveBook(book);
+  if (bookId === null) {
+    return errorResult(
+      `Error: Book "${book}" not found. Try the German name (e.g. "1. Mose", "Jesaja", "Römer") or an abbreviation.`
+    );
+  }
+
+  // Route by testament: OT (1–39) → Hebrew WLC; NT (40–66) → Greek text type.
+  const isOT = bookId < 40;
+  let edition: string;
+  let hinweisZusatz = "";
+  if (isOT) {
+    edition = "wlc";
+    const wanted = resolveEdition(args.texttyp);
+    if (args.texttyp && wanted !== "wlc") {
+      hinweisZusatz =
+        ` (Der Texttyp "${args.texttyp}" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.)`;
+    }
+  } else {
+    const wanted = resolveEdition(args.texttyp);
+    if (wanted === null || !NT_EDITIONS.has(wanted)) {
+      return errorResult(
+        `Error: Unbekannter oder fürs NT ungültiger texttyp "${args.texttyp}". ` +
+          `Erlaubt fürs NT: "byzantine" (Mehrheitstext, Standard), "sblgnt" (kritisch), "tr" (Textus Receptus).`
+      );
+    }
+    edition = wanted;
+  }
+
+  if (!availableEditions.has(edition)) {
+    return errorResult(
+      `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}. ` +
+        (edition === "wlc"
+          ? "Für das AT bitte 'bun run download-heb.ts' ausführen."
+          : "")
+    );
+  }
+
+  const rows = stmtOriginal.all(edition, bookId, chapter, verse);
+  if (rows.length === 0) {
+    return errorResult(
+      `Keine Urtext-Daten für ${book} ${chapter},${verse} (Texttyp ${edition}).`
+    );
+  }
+
+  const meta0 = EDITION_META[edition]!;
+  const decode =
+    meta0.decoder === "hebrew" ? decodeHebrew :
+    meta0.decoder === "morphgnt" ? decodeParse :
+    decodeRobinson;
+  const woerter = rows.map((r) => {
+    // SBLGNT stores POS separately (r.pos); the other decoders fold it into the
+    // morphology string, so prepend it here for a consistent output shape.
+    const morph =
+      meta0.decoder === "morphgnt"
+        ? [posLabel(r.pos), decodeParse(r.parse)].filter(Boolean).join(" ")
+        : decode(r.parse);
+    const w: Record<string, string> = {
+      wort: r.surface,
+      grundform: r.lemma || "—",
+      morphologie: morph || "—",
+      code: r.parse,
+    };
+    if (r.strong) w.strong = (r.lang === "grc" ? "G" : "H") + r.strong;
+    return w;
+  });
+
+  const response = {
+    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    texttyp: edition,
+    edition: meta0.label,
+    sprache: meta0.sprache,
+    hinweis: meta0.hinweis + hinweisZusatz,
+    woerter,
+  };
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+  };
+}
+
+/**
+ * Handle the `bible_crossrefs` tool: return cross-references for one verse,
+ * ranked by OpenBible.info votes, each with its German target text.
+ */
+function handleCrossrefs(args: {
+  book?: unknown;
+  chapter?: unknown;
+  verse?: unknown;
+  limit?: unknown;
+  translation?: unknown;
+}) {
+  if (!stmtXrefs) {
+    return errorResult(
+      "Querverweis-Daten nicht geladen. Bitte 'bun run download-crossrefs.ts' ausführen."
+    );
+  }
+  const resolved = requireTranslation(args.translation);
+  if ("error" in resolved) {
+    return errorResult(resolved.error);
+  }
+  const translation = resolved.code;
+
+  const { book } = args;
+  if (!book || typeof book !== "string" || book.length > 50) {
+    return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  }
+  const chapter = toInt(args.chapter);
+  if (chapter === null || chapter < 1 || chapter > 150) {
+    return errorResult("Error: 'chapter' must be a positive integer.");
+  }
+  const verse = toInt(args.verse);
+  if (verse === null || verse < 1 || verse > 200) {
+    return errorResult("Error: 'verse' must be a positive integer.");
+  }
+  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 30);
+
+  const bookId = resolveBook(book);
+  if (bookId === null) {
+    return errorResult(
+      `Error: Book "${book}" not found. Try the German name (e.g. "1. Mose", "Jesaja", "Römer") or an abbreviation.`
+    );
+  }
+
+  const rows = stmtXrefs.all(bookId, chapter, verse, limit);
+  if (rows.length === 0) {
+    return errorResult(
+      `Keine Querverweise für ${getBookDisplayName(bookId)} ${chapter},${verse} gefunden.`
+    );
+  }
+
+  const verweise = rows.map((r) => {
+    const bookName = getBookDisplayName(r.to_book);
+    const sameChapter = r.to_chapter === r.to_chapter_end;
+    const stelle = sameChapter
+      ? r.to_verse === r.to_verse_end
+        ? `${bookName} ${r.to_chapter},${r.to_verse}`
+        : `${bookName} ${r.to_chapter},${r.to_verse}-${r.to_verse_end}`
+      : `${bookName} ${r.to_chapter},${r.to_verse} – ${r.to_chapter_end},${r.to_verse_end}`;
+
+    // Text: full range within one chapter (capped at 4 verses), otherwise the
+    // first verse only — cross-chapter targets are rare and usually long.
+    let text = "";
+    if (sameChapter) {
+      const span = r.to_verse_end - r.to_verse + 1;
+      const CAP = 4;
+      const verses = stmtVerseRange.all(
+        translation, r.to_book, r.to_chapter, r.to_verse, Math.min(r.to_verse_end, r.to_verse + CAP - 1)
+      );
+      text = verses
+        .map((v) => (span > 1 ? `${v.verse} ${stripHtml(v.text)}` : stripHtml(v.text)))
+        .join(" ");
+      if (span > CAP) text += ` … [bis V. ${r.to_verse_end}]`;
+    } else {
+      const v = stmtVerse.get(translation, r.to_book, r.to_chapter, r.to_verse);
+      if (v) text = `${stripHtml(v.text)} … [Abschnitt bis ${r.to_chapter_end},${r.to_verse_end}]`;
+    }
+    return { stelle, votes: r.votes, text };
+  });
+
+  const response = {
+    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    quelle:
+      "Treasury of Scripture Knowledge (erweitert), OpenBible.info (CC-BY); " +
+      `Text: ${TRANSLATIONS[translation].name}`,
+    verweise,
+  };
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+  };
+}
+
+/**
+ * Handle the `bible_concordance` tool: all occurrences of an original-language
+ * word (by Strong's number or exact lemma) in one edition, with statistics.
+ */
+function handleConcordance(args: {
+  strong?: unknown;
+  lemma?: unknown;
+  texttyp?: unknown;
+  limit?: unknown;
+}) {
+  if (!stmtConcordStrong || !stmtConcordLemma || availableEditions.size === 0) {
+    return errorResult(
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' " +
+        "(und für das AT 'bun run download-heb.ts') ausführen."
+    );
+  }
+
+  // Determine search mode and testament.
+  let strongDigits: string | null = null;
+  let isHebrew: boolean;
+  let suche: string;
+  if (args.strong !== undefined && args.strong !== null && args.strong !== "") {
+    if (typeof args.strong !== "string" || !/^[GHgh]\d{1,5}$/.test(args.strong.trim())) {
+      return errorResult(
+        'Error: \'strong\' muss eine Strong-Nummer mit Präfix sein, z. B. "G26" (NT) oder "H7225" (AT).'
+      );
+    }
+    const s = args.strong.trim().toUpperCase();
+    isHebrew = s[0] === "H";
+    strongDigits = String(parseInt(s.slice(1), 10)); // normalize leading zeros
+    suche = s;
+  } else if (args.lemma !== undefined && args.lemma !== null && args.lemma !== "") {
+    if (typeof args.lemma !== "string" || args.lemma.length > 50) {
+      return errorResult("Error: 'lemma' must be a Greek or Hebrew word.");
+    }
+    const lemma = args.lemma.trim();
+    if (/[֐-׿]/.test(lemma)) {
+      isHebrew = true; // Hebrew block
+    } else if (/[Ͱ-Ͽἀ-῿]/.test(lemma)) {
+      isHebrew = false; // Greek + Greek Extended blocks
+    } else {
+      return errorResult(
+        "Error: 'lemma' muss griechisch oder hebräisch geschrieben sein (wie von bible_original " +
+          "zurückgegeben). Alternativ 'strong' verwenden (z. B. \"G26\", \"H7225\")."
+      );
+    }
+    suche = lemma;
+  } else {
+    return errorResult("Error: entweder 'strong' (z. B. \"G26\") oder 'lemma' angeben.");
+  }
+
+  // Resolve edition: Hebrew → wlc; Greek → NT edition per texttyp.
+  let edition: string;
+  if (isHebrew) {
+    edition = "wlc";
+  } else {
+    const wanted = resolveEdition(args.texttyp);
+    if (wanted === null || !NT_EDITIONS.has(wanted)) {
+      return errorResult(
+        `Error: Unbekannter oder fürs NT ungültiger texttyp "${args.texttyp}". ` +
+          `Erlaubt: "byzantine" (Standard), "sblgnt", "tr".`
+      );
+    }
+    edition = wanted;
+  }
+  if (!availableEditions.has(edition)) {
+    return errorResult(
+      `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}.`
+    );
+  }
+
+  const limit = Math.min(Math.max(toInt(args.limit) ?? 50, 1), 200);
+  let rows =
+    strongDigits !== null
+      ? stmtConcordStrong.all(edition, strongDigits)
+      : stmtConcordLemma.all(edition, suche);
+  if (rows.length === 0 && strongDigits === null) {
+    // Exact match failed — retry via Unicode-normalized lemma lookup.
+    const stored = findStoredLemma(edition, suche);
+    if (stored !== null) rows = stmtConcordLemma.all(edition, stored);
+  }
+  if (rows.length === 0) {
+    return errorResult(
+      `Keine Vorkommen für "${suche}" in Edition "${edition}" gefunden. ` +
+        "Hinweis: Lemma muss exakt (mit Akzenten/Punktierung) übereinstimmen — im Zweifel Strong-Nummer verwenden."
+    );
+  }
+
+  // Aggregate: per-book counts and distinct verses (rows are in canonical order).
+  const bookNames = new Map<number, string>();
+  const name = (id: number): string => {
+    let n = bookNames.get(id);
+    if (n === undefined) { n = getBookDisplayName(id); bookNames.set(id, n); }
+    return n;
+  };
+  const perBook = new Map<number, number>();
+  const verseKeys = new Set<string>();
+  for (const r of rows) {
+    perBook.set(r.book_id, (perBook.get(r.book_id) ?? 0) + 1);
+    verseKeys.add(`${r.book_id}-${r.chapter}-${r.verse}`);
+  }
+
+  const meta0 = EDITION_META[edition]!;
+  const response: Record<string, unknown> = {
+    suche,
+    grundform: rows[0]!.lemma || "—",
+  };
+  // Enrich with the Strong's dictionary entry (transliteration + meaning) if
+  // the lexicon table is loaded and a Strong's number is known.
+  const strongKey =
+    strongDigits !== null
+      ? (isHebrew ? "H" : "G") + strongDigits
+      : rows[0]!.strong
+        ? (isHebrew ? "H" : "G") + rows[0]!.strong
+        : null;
+  if (strongKey !== null && stmtStrongDef) {
+    const def = stmtStrongDef.get(strongKey);
+    if (def) {
+      response.strong = strongKey;
+      if (def.translit) response.umschrift = def.translit;
+      if (def.gloss) response.kurzbedeutung = def.gloss;
+      if (def.definition) response.bedeutung = def.definition;
+      if (def.kjv) response.kjv_woerter = def.kjv;
+      // Full Abbott-Smith lexicon entry (STEPBible TBESG, Greek only) — the
+      // scholarly meaning; typically a few hundred characters, worth the tokens.
+      if (def.meaning) response.lexikon = def.meaning;
+    }
+  }
+  response.texttyp = edition;
+  response.edition = meta0.label;
+  response.gesamt = rows.length;
+  response.verse = verseKeys.size;
+  response.buecher = [...perBook.entries()].map(([id, anzahl]) => ({ buch: name(id), anzahl }));
+  response.vorkommen = rows.slice(0, limit).map((r) => ({
+    stelle: `${name(r.book_id)} ${r.chapter},${r.verse}`,
+    wort: r.surface,
+  }));
+  if (rows.length > limit) {
+    response.hinweis =
+      `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +
+      "'buecher' zeigt die vollständige Verteilung.";
+  }
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+  };
+}
+
+/**
+ * Handle the `bible_search` tool: full-text search over one translation's verses.
+ */
+function handleSearch(args: {
+  query?: unknown;
+  book?: unknown;
+  limit?: unknown;
+  translation?: unknown;
+}) {
+  if (!stmtSearch || !stmtSearchBook || !stmtSearchCount || !stmtSearchCountBook) {
+    return errorResult(
+      "Volltext-Index nicht gebaut. Bitte 'bun run build-fts.ts' ausführen."
+    );
+  }
+  const resolved = requireTranslation(args.translation);
+  if ("error" in resolved) {
+    return errorResult(resolved.error);
+  }
+  const translation = resolved.code;
+
+  const { query } = args;
+  if (!query || typeof query !== "string" || query.length > 100) {
+    return errorResult(
+      "Error: 'query' is required (max 100 characters), e.g. 'Hirte mangeln' or '\"Gnade um Gnade\"'."
+    );
+  }
+  const match = buildFtsQuery(query);
+  if (match === null) {
+    return errorResult("Error: 'query' enthält kein durchsuchbares Wort.");
+  }
+  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 50);
+
+  let bookId: number | null = null;
+  if (args.book !== undefined && args.book !== null && args.book !== "") {
+    if (typeof args.book !== "string" || args.book.length > 50) {
+      return errorResult("Error: 'book' must be a German book name.");
+    }
+    bookId = resolveBook(args.book);
+    if (bookId === null) {
+      return errorResult(`Error: Book "${args.book}" not found.`);
+    }
+  }
+
+  const total =
+    bookId === null
+      ? stmtSearchCount.get(match, translation)!.n
+      : stmtSearchCountBook.get(match, translation, bookId)!.n;
+  if (total === 0) {
+    return errorResult(
+      `Keine Treffer für "${query}"${bookId !== null ? ` in ${getBookDisplayName(bookId)}` : ""} ` +
+        `(${TRANSLATIONS[translation].name}). ` +
+        "Gesucht wird nach exakten Wortformen — Beugungen mitdenken oder Präfixsuche " +
+        'nutzen (z. B. "lieb*").'
+    );
+  }
+  const rows =
+    bookId === null
+      ? stmtSearch.all(match, translation, limit)
+      : stmtSearchBook.all(match, translation, bookId, limit);
+
+  const response: Record<string, unknown> = {
+    suche: query,
+    uebersetzung: TRANSLATIONS[translation].name,
+    treffer: total,
+    verse: rows.map((r) => ({
+      stelle: `${getBookDisplayName(r.book_id)} ${r.chapter},${r.verse}`,
+      text: r.text,
+    })),
+  };
+  if (total > rows.length) {
+    response.hinweis = `Nur die ersten ${rows.length} von ${total} Treffern gelistet (limit erhöhen oder auf ein Buch einschränken).`;
+  }
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+  };
+}
+
+/**
+ * Handle the `bible_compare` tool: word-diff one NT verse across the Greek
+ * editions (pairwise, normalized comparison, original surfaces reported).
+ */
+function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknown }) {
+  if (!stmtOriginal || availableEditions.size === 0) {
+    return errorResult(
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' ausführen."
+    );
+  }
+
+  const { book } = args;
+  if (!book || typeof book !== "string" || book.length > 50) {
+    return errorResult("Error: 'book' is required (e.g. 'Römer', '1Joh').");
+  }
+  const chapter = toInt(args.chapter);
+  if (chapter === null || chapter < 1 || chapter > 150) {
+    return errorResult("Error: 'chapter' must be a positive integer.");
+  }
+  const verse = toInt(args.verse);
+  if (verse === null || verse < 1 || verse > 200) {
+    return errorResult("Error: 'verse' must be a positive integer.");
+  }
+  const bookId = resolveBook(book);
+  if (bookId === null) {
+    return errorResult(`Error: Book "${book}" not found.`);
+  }
+  if (bookId < 40) {
+    return errorResult(
+      "Der Editionsvergleich gilt nur fürs NT — fürs AT gibt es nur eine Edition (hebräischer WLC)."
+    );
+  }
+
+  const editions = ["byzantine", "tr", "sblgnt"].filter((e) => availableEditions.has(e));
+  if (editions.length < 2) {
+    return errorResult(
+      `Mindestens zwei NT-Editionen nötig; geladen: ${editions.join(", ") || "keine"}. ` +
+        "Bitte die Download-Skripte (download-byz.ts, download-tr.ts, download-morph.ts) ausführen."
+    );
+  }
+
+  const texts = editions.map((ed) => ({
+    ed,
+    words: stmtOriginal!.all(ed, bookId, chapter, verse).map((r) => r.surface),
+  }));
+  if (texts.every((t) => t.words.length === 0)) {
+    return errorResult(
+      `Keine Urtext-Daten für ${getBookDisplayName(bookId)} ${chapter},${verse}.`
+    );
+  }
+
+  const vergleiche = [];
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const A = texts[i]!;
+      const B = texts[j]!;
+      const paar = `${A.ed} ↔ ${B.ed}`;
+      if (A.words.length === 0 || B.words.length === 0) {
+        const fehlt = A.words.length === 0 ? A.ed : B.ed;
+        vergleiche.push({ paar, ergebnis: `Vers fehlt in Edition "${fehlt}"` });
+        continue;
+      }
+      const segs = diffSegments(A.words, B.words);
+      if (segs.length === 0) {
+        vergleiche.push({ paar, ergebnis: "identisch (nach Normalisierung)" });
+      } else {
+        vergleiche.push({
+          paar,
+          unterschiede: segs.map((s) =>
+            s.a && s.b
+              ? `${A.ed}: "${s.a}" ↔ ${B.ed}: "${s.b}"`
+              : s.a
+                ? `nur in ${A.ed}: "${s.a}"`
+                : `nur in ${B.ed}: "${s.b}"`
+          ),
+        });
+      }
+    }
+  }
+
+  // Per-word attestation across eight editions (STEPBible TAGNT). Words the
+  // full set attests are only counted; listed are the ones whose witness set
+  // differs — that is where the text-critical signal sits.
+  let bezeugung: Record<string, unknown> | undefined;
+  if (stmtTagnt) {
+    const rows = stmtTagnt.all(bookId, chapter, verse);
+    if (rows.length > 0) {
+      const FULL = "NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz";
+      const abweichend = rows.filter(
+        (r) => r.editions !== FULL || r.meaning_variant !== "" || r.spelling_variant !== ""
+      );
+      bezeugung = {
+        quelle:
+          "STEPBible TAGNT (CC BY 4.0); Editionen: NA28, NA27, Tyn(dale House), SBL, " +
+          "WH (Westcott-Hort), Treg(elles), TR, Byz. typ: N=Nestle-Aland, K=KJV/TR-Tradition, " +
+          "O=andere; Kleinbuchstabe = ohne Übersetzungsrelevanz; »n/«n = Wortstellung verschoben.",
+        woerter_gesamt: rows.length,
+        von_allen_acht_bezeugt: rows.length - abweichend.length,
+        abweichend: abweichend.map((r) => ({
+          wort: r.surface,
+          typ: r.word_type,
+          editionen: r.editions,
+          ...(r.meaning_variant !== "" ? { bedeutungsvariante: r.meaning_variant } : {}),
+          ...(r.spelling_variant !== "" ? { schreibvariante: r.spelling_variant } : {}),
+        })),
+      };
+    }
+  }
+
+  const response = {
+    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    sprache: "Griechisch (Koine)",
+    editionen: texts.map((t) => ({
+      texttyp: t.ed,
+      edition: EDITION_META[t.ed]!.label,
+      text: t.words.join(" ") || "— (Vers in dieser Edition nicht vorhanden)",
+    })),
+    vergleiche,
+    ...(bezeugung !== undefined ? { bezeugung } : {}),
+    hinweis:
+      "Vergleich ignoriert Akzente, Groß-/Kleinschreibung und Schlusssigma (byzantine/tr sind " +
+      "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
+      "Schreibvarianten (z. B. bewegliches Ny).",
+  };
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+  };
+}
+
+/**
+ * Format verse numbers into a compact reference string.
+ * [1,2,3,5,7,8,9] → "1-3.5.7-9"
+ */
+function formatVerseReference(verses: number[]): string {
+  if (verses.length === 0) return "";
+  if (verses.length === 1) return String(verses[0]);
+
+  const sorted = [...verses].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let rangeStart = sorted[0]!;
+  let rangePrev = sorted[0]!;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i]!;
+    if (current === rangePrev + 1) {
+      rangePrev = current;
+    } else {
+      ranges.push(rangeStart === rangePrev ? String(rangeStart) : `${rangeStart}-${rangePrev}`);
+      rangeStart = current;
+      rangePrev = current;
+    }
+  }
+  ranges.push(rangeStart === rangePrev ? String(rangeStart) : `${rangeStart}-${rangePrev}`);
+
+  return ranges.join(".");
+}
+
+// Run the server
+async function main(): Promise<void> {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Bibelstudium MCP server running on stdio");
+}
+
+main().catch((error) => {
+  console.error("Bibelstudium MCP server failed to start:", error);
+  process.exit(1);
+});

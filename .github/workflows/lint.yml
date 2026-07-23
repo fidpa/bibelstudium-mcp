@@ -1,0 +1,78 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: TypeScript (tsc --noEmit, strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+  startup:
+    name: Startup guards (no database / incomplete database)
+    runs-on: ubuntu-latest
+    # CI has no Bible database — it is built locally from the upstream sources
+    # (~25 min, gitignored). What CI can verify is the path every new user hits
+    # first: that a clone without data fails loudly and names the fix.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Missing database exits 1 and names the download script
+        run: |
+          set +e
+          output=$(bun run server.ts 2>&1 </dev/null)
+          rc=$?
+          set -e
+          echo "$output"
+          [ "$rc" -eq 1 ] \
+            || { echo "::error::expected exit 1, got $rc"; exit 1; }
+          echo "$output" | grep -q "download.ts" \
+            || { echo "::error::message does not name download.ts"; exit 1; }
+
+      - name: Incomplete database exits 1 and names the missing tables
+        run: |
+          # Empty file: SQLite opens it fine, but it holds no tables.
+          mkdir -p data && : > data/bible.db
+          set +e
+          output=$(bun run server.ts 2>&1 </dev/null)
+          rc=$?
+          set -e
+          echo "$output"
+          [ "$rc" -eq 1 ] \
+            || { echo "::error::expected exit 1, got $rc"; exit 1; }
+          echo "$output" | grep -q "incomplete" \
+            || { echo "::error::message does not report an incomplete DB"; exit 1; }
+
+  yaml:
+    name: YAML (yamllint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint
+        run: |
+          pipx install yamllint
+          yamllint -d relaxed .
