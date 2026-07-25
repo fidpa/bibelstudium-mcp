@@ -48,6 +48,42 @@ Der Server startet absichtlich auch mit unvollständigen Daten: Alles, wofür
 Daten vorhanden sind, funktioniert; die übrigen Werkzeuge melden gezielt, welches
 Skript fehlt.
 
+### Der Client ruft die Werkzeuge nicht auf
+
+Der Server ist verbunden und die Werkzeuge erscheinen, das Modell antwortet aber
+aus dem Gedächtnis statt nachzuschlagen. Gemessen am 25.07.2026 in Claude
+Desktop: Bei einer erfundenen Stelle („Schlag mir ‚Hesekiel-Zusatz 1,1' nach")
+blieb der Aufruf aus — je sicherer eine Referenz als nicht existent gilt, desto
+weniger Anlass scheint zu bestehen, sie zu prüfen. Bei „Sirach 1,1", einem real
+existierenden, nur kanonfremden Buch, wurde von selbst aufgerufen. Auf
+ausdrückliche Aufforderung lief der Aufruf und lieferte das Richtige.
+
+Die Tool-Beschreibungen weisen inzwischen ausdrücklich auf Existenz- und
+Kanonfragen hin; das allein genügte nicht. Wirksamer sind Anweisungen auf
+Client-Seite (Claude Desktop: *Einstellungen › Anweisungen für Claude*,
+Claude Code: `CLAUDE.md` des konsumierenden Repos):
+
+```text
+Bibelstellen: Wenn der MCP-Server "bibelstudium" verbunden ist, beantworte
+Fragen zu Bibeltext, Grundtext, Querverweisen oder Textvarianten ausschließlich
+über dessen Werkzeuge — nie aus dem Gedächtnis.
+
+Das gilt besonders, wenn eine Stelle unbekannt, falsch geschrieben oder
+erfunden wirkt: Frage den Server, BEVOR du sagst, dass es ein Buch oder eine
+Stelle nicht gibt. Er nennt das nächstliegende Buch und den Kanonumfang. Eine
+verdächtige Referenz ist ein Grund nachzuschlagen, kein Grund es zu lassen.
+
+Gib Warnungen und Hinweise der Werkzeuge (warnung, quellenkonflikte, hinweis,
+lesehinweis) in der Antwort wieder, statt sie wegzulassen.
+
+Zitiere den Grundtext buchstabengetreu: Mehrheitstext und Textus Receptus
+liegen unakzentuiert vor — keine Akzente ergänzen, beim Hebräischen keine
+Zeichen entfernen.
+```
+
+Ob aufgerufen wird, entscheidet am Ende der Client — auch das bleibt ein Anreiz,
+keine Garantie.
+
 ## Datenaufbau
 
 ### `'unzip' not found in $PATH`

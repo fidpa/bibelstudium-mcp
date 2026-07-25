@@ -26,8 +26,8 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 - **Exakter deutscher Verstext** (`bible_lookup`) — vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge
 - **Grundtext Wort für Wort** (`bible_original`) — ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
 - **Konkordanz / Wortstudie** (`bible_concordance`) — alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
-- **Querverweise** (`bible_crossrefs`) — Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, jeweils mit deutschem Zieltext
-- **Volltextsuche** (`bible_search`) — FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch
+- **Querverweise** (`bible_crossrefs`) — Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, jeweils mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt (`verse_einzeln`)
+- **Volltextsuche** (`bible_search`) — FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, Fundstellen im Verstext mit `⟦…⟧` markiert
 - **Editionsvergleich** (`bible_compare`) — Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT) — zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand
 - **Geführte Arbeitsabläufe** — drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
 - **Herkunftsnachweis eingebaut** — jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank
@@ -178,6 +178,8 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `tr` | Textus Receptus (Scrivener-/Stephanus-Tradition) | NT | Vergleich (TR-eigene Lesarten) |
 
 `bible_compare` meldet zusätzlich je Wort, welche von acht Editionen es bezeugen (NA28, NA27, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch — Daten aus STEPBible TAGNT).
+
+Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und dessen „Byz" ist nicht deckungsgleich mit dem hier geladenen Robinson-Pierpont 2005. Der Server gleicht deshalb jede Notiz gegen die tatsächlich vorhandenen Editionstexte ab: `in_dieser_db` nennt je Form die Editionen, die sie wirklich lesen, `abgleich` die Widersprüche. Beispiel 1. Timotheus 3,16 — TAGNT vermerkt `TR: ἀνελήφθη`, obwohl der Mehrheitstext hier ebenso liest; ohne diesen Abgleich lädt die Notiz zum Fehlschluss ein, der Mehrheitstext folge dem kritischen Text. Über 400 zufällige NT-Verse gemessen betrifft das rund 11 % der Verse. Widersprüche stehen zusätzlich als `warnung`/`quellenkonflikte` ganz oben in der Antwort, damit sie beim Wiedergeben nicht untergehen.
 
 ## Architektur
 

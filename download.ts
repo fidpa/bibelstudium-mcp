@@ -47,6 +47,17 @@ function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "").trim();
 }
 
+/**
+ * Fix book names from the API that miss the space before their parenthesis:
+ * "2. Mose(Exodus)" → "2. Mose (Exodus)". Luther 1912 (the default source for
+ * display names) is unaffected, but a run started with another translation
+ * writes the names instead, and those carry the flaw. Book names render in
+ * every concordance, search and cross-reference response.
+ */
+function normalizeBookName(name: string): string {
+  return name.replace(/(\S)\(/g, "$1 (");
+}
+
 async function fetchJson<T>(path: string, retries = 3): Promise<T> {
   const url = `${API_BASE}${path}`;
 
@@ -141,7 +152,7 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
         "INSERT INTO books (book_id, name, chapters) VALUES (?, ?, ?)"
       );
       for (const book of books) {
-        insertBook.run(book.bookid, book.name, book.chapters);
+        insertBook.run(book.bookid, normalizeBookName(book.name), book.chapters);
       }
       const insertAlias = db.prepare(
         "INSERT OR IGNORE INTO aliases (alias, book_id) VALUES (?, ?)"
