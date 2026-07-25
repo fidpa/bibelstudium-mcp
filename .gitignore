@@ -37,6 +37,13 @@ NOTES.md
 .cache
 /tmp/
 
+# Zwischendatei von `bun build --compile`. Sie landet im Arbeitsverzeichnis, also
+# bei einem direkten Aufruf in der Wurzel, und wiegt 63 MB. `build:mcpb` gibt dem
+# Compiler dafür ein eigenes Verzeichnis, ein Aufruf von Hand nicht. Am
+# 25.07.2026 lag genau so eine Datei untracked im Repo und wäre bei einem
+# `git add -A` in die öffentliche Historie gewandert.
+*.bun-build
+
 # Merge and patch leftovers
 *.orig
 *.rej

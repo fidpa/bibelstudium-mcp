@@ -31,6 +31,7 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 - **Editionsvergleich** (`bible_compare`) — Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT) — zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand
 - **Geführte Arbeitsabläufe** — drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
 - **Herkunftsnachweis eingebaut** — jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank
+- **Namensnennung in jeder Antwort**: das Feld `quellen` nennt Werk, Lizenz und die von der Lizenz verlangte Nennung, und zwar nur für die Quellen, die die jeweilige Antwort tatsächlich benutzt hat
 
 ## Bekannte Grenzen
 
@@ -121,6 +122,12 @@ MCP_HTTP_PORT=8931 bun run server.ts     # /mcp und /health, gebunden an 127.0.0
 
 Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor — der Server bringt beides nicht mit.
 
+Zwei Unterschiede zum stdio-Betrieb: **`bible_setup` gibt es im HTTP-Modus nicht** (es lädt 145 MB von fremden Quellen und ersetzt die Datenbank, und das gehört der Betreiberseite, nicht einem beliebigen Aufrufer), und `/health` fragt bei jedem Aufruf die Datenbank, statt den Startzustand zu wiederholen: **503** mit Grund, wenn sie nicht antwortet, sonst 200. Die Datenbank baut auf einem Server also `bun run setup` auf, oder, wenn dort kein Bun liegt, das Binary selbst:
+
+```bash
+./bibelstudium-server --setup             # dieselben acht Schritte, danach beendet sich der Prozess
+```
+
 **Empfohlen:** In Claude Desktop zusätzlich den Text aus
 [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) unter
 *Einstellungen › Anweisungen für Claude* einsetzen. Ob ein Werkzeug aufgerufen und
@@ -187,7 +194,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
-| `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur**, solange die Datenbank fehlt, und lädt erst nach ausdrücklicher Bestätigung |
+| `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur** über stdio und nur, solange die Datenbank fehlt; lädt erst nach ausdrücklicher Bestätigung |
 
 ## Prompts
 

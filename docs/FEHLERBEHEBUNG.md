@@ -84,6 +84,61 @@ Zeichen entfernen.
 Ob aufgerufen wird, entscheidet am Ende der Client — auch das bleibt ein Anreiz,
 keine Garantie.
 
+## HTTP-Modus
+
+Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne
+`MCP_HTTP_HOST` an `127.0.0.1`. Zwei Endpunkte: `/mcp` und `/health`.
+
+### `/health` antwortet mit 503
+
+Der Prozess läuft, die Datenbank nicht. Der Grund steht im Rumpf:
+
+| Grund | Behebung |
+|-------|----------|
+| `Es ist noch keine Bibeldatenbank vorhanden.` | Daten aufbauen (siehe nächster Punkt) |
+| `Der Datenbank fehlen Tabellen (…)` | `bun run download` |
+| `Die Datenbank enthält keine Verse.` | `bun run download` |
+| `Die Tabelle 'verses' hat keine Spalte 'translation' (alter Aufbau).` | `bun run download`, siehe [oben](#the-verses-table-has-no-translation-column-old-database-layout) |
+| `Die Datenbank antwortet, enthält aber keine Bücher.` | `bun run download` |
+| `Die Datenbank ist nicht lesbar: …` | Datei beschädigt oder halb geschrieben; neu aufbauen |
+
+Das sind alle Gründe, die der Server erzeugen kann.
+
+`/health` fragt die Datenbank bei jedem Aufruf, nicht nur beim Start: Ein Schaden
+im laufenden Betrieb wird deshalb sichtbar. Nach einem Neuaufbau ist ein Neustart
+nötig, weil der Prozess über seinen Dateideskriptor weiter die alte Datei hält.
+
+### `bible_setup` fehlt in der Werkzeugliste
+
+Kein Fehler, sondern Absicht: Das Werkzeug lädt rund 145 MB von acht fremden
+Quellen und ersetzt die Datenbankdatei, und das gehört nicht in die Hand eines
+beliebigen Aufrufers. Im HTTP-Modus wird es weder angeboten noch ausgeführt.
+
+Die Daten baut stattdessen die Betreiberseite auf, entweder mit `bun run setup`
+oder, wenn auf dem Zielrechner kein Bun liegt, mit dem Binary selbst:
+
+```bash
+./bibelstudium-server --setup      # baut die Datenbank und beendet sich
+```
+
+Wo die Datei landet, entscheidet `BIBLE_DB_PATH` (siehe `db-path.ts`).
+
+### Anfragen kommen mit `403 Forbidden origin` zurück
+
+Der Aufrufer schickt einen `Origin`-Kopf, der nicht freigegeben ist. Die
+Spezifikation verlangt diese Prüfung gegen DNS-Rebinding. MCP-Clients sind keine
+Browser und schicken keinen Origin, sind also nicht betroffen. Für einen
+browserbasierten Client die erlaubten Herkünfte ausdrücklich freigeben:
+
+```bash
+MCP_HTTP_ALLOWED_ORIGINS=https://example.com MCP_HTTP_PORT=8931 bun run server.ts
+```
+
+### `413` bei einer großen Anfrage
+
+Der Rumpf ist größer als 1 MB. Das ist die Obergrenze und liegt weit über jedem
+echten Werkzeugaufruf; kommt sie vor, stimmt etwas mit dem Client nicht.
+
 ## Datenaufbau
 
 ### `'unzip' not found in $PATH`
@@ -107,12 +162,20 @@ einfach erneut starten.
 
 ### Der Aufbau dauert deutlich länger als angegeben
 
-`download.ts` stellt vier Übersetzungen à 1.190 Kapitel-Anfragen mit 200 ms
-Wartezeit dazwischen — die Untergrenze liegt damit bei rund 16 Minuten, gemessen
-wurden ~20 Minuten. Die sieben übrigen Skripte laden je wenige Dateien und
-brauchen zusammen etwa eine Minute. Der Aufbau ist netzwerk-, nicht CPU-gebunden:
-Auf einem Raspberry Pi 5 und auf einem Mac mini ergaben sich praktisch dieselben
-Zeiten.
+Zu erwarten ist **unter einer Minute** für alle acht Schritte: `download.ts`
+holt je Übersetzung einen statischen Export, die sieben übrigen Skripte je wenige
+Dateien. Gemessen wurden 26 s auf einem Mac mini und 46 s auf einem
+NAS (x86-64, Ubuntu). Der Aufbau ist netzwerk-, nicht CPU-gebunden.
+
+Dauert er **rund 20 Minuten**, läuft ein Checkout vor 0.3.0: Bis dahin stellte
+`download.ts` je Übersetzung 1.190 Kapitel-Anfragen mit 200 ms Wartezeit
+dazwischen, also 4.760 insgesamt. Genau davon rät die API-Dokumentation von
+bolls.life ausdrücklich ab; der Umbau auf den vorgesehenen Export-Endpunkt
+brachte dieselben Verse byteweise identisch in 3,2 s. In diesem Fall nicht
+warten, sondern aktualisieren.
+
+Dauert er merklich länger als eine Minute, ohne dass es an der Fassung liegt,
+sind die Wiederholungen die wahrscheinliche Ursache (siehe voriger Punkt).
 
 ### Daten eines Downloads sind nach einem weiteren Lauf verschwunden
 

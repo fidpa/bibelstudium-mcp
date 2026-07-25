@@ -25,6 +25,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolRequest, GetPromptRequest } from "@modelcontextprotocol/sdk/types.js";
 import { Database } from "bun:sqlite";
+import packageJson from "./package.json";
 import { DB_PATH } from "./db-path.ts";
 import {
   DEFAULT_TRANSLATION,
@@ -32,6 +33,9 @@ import {
   resolveTranslation,
   type TranslationCode,
 } from "./translations.ts";
+
+/** Die eine Versionsangabe, aus der auch das MCPB-Manifest gebaut wird. */
+const PACKAGE_VERSION: string = packageJson.version;
 
 // --- Setup — database connection and integrity check -----------------------
 // DB_PATH comes from db-path.ts, which the data-building scripts import too.
@@ -111,8 +115,35 @@ try {
   console.error(`No Bible database at ${DB_PATH}: ${error}`);
 }
 
-if (dataMissing !== null) {
-  console.error("Der Server läuft, bis auf bible_setup sind alle Werkzeuge gesperrt.");
+/**
+ * Whether this process serves HTTP instead of stdio.
+ *
+ * Read here, next to `dataMissing`, because the two together decide whether
+ * bible_setup exists at all. Over stdio the caller started this process and owns
+ * the machine, so a tool that downloads ~145 MB from eight sources and replaces
+ * the database file is a convenience. On an HTTP endpoint the caller is a
+ * stranger: the tool would let anyone trigger those downloads repeatedly, and
+ * the state that unlocks it — no database — is exactly what a failed or damaged
+ * install produces. So it is a stdio-only tool. The operator of an HTTP endpoint
+ * builds the data with `--setup` or `bun run setup` instead (see main()).
+ *
+ * Derived from the environment rather than passed down from main(), so the value
+ * cannot disagree with the transport actually chosen there.
+ */
+const HTTP_MODE = (process.env["MCP_HTTP_PORT"] ?? "") !== "";
+
+/** True when started to build the database instead of to serve (see main()). */
+const SETUP_CLI = process.argv.includes("--setup");
+
+// Not while building the database: "Der Server läuft" would be plainly wrong
+// there, and the tool availability it reports never comes into play.
+if (dataMissing !== null && !SETUP_CLI) {
+  console.error(
+    HTTP_MODE
+      ? "Der Server läuft, aber ALLE Werkzeuge sind gesperrt: im HTTP-Modus gibt es " +
+          "bible_setup nicht. Datenbank mit '--setup' aufbauen und den Server neu starten."
+      : "Der Server läuft, bis auf bible_setup sind alle Werkzeuge gesperrt."
+  );
 }
 
 // --- Prepared statements — books, aliases, verses --------------------------
@@ -347,14 +378,43 @@ const stmtXrefs = hasXrefs
   : null;
 
 // --- Editions — metadata, aliases, text-type resolution --------------------
+/**
+ * Eine Quellenangabe, wie sie im Feld `quellen` einer Antwort erscheint.
+ *
+ * `nennung` trägt nur, was die Lizenz beim Weitergeben verlangt, und ist sonst
+ * `null`. Public-Domain-Quellen brauchen keine, CC-BY-Quellen schon: Ein
+ * gehosteter Endpunkt macht die Daten öffentlich verfügbar, und das ist nach
+ * CC 4.0 ein „Share". Wer nur über MCP zugreift, sieht weder das Repository
+ * noch die Website, also muss die Nennung an der Antwort hängen. Vorbild ist
+ * orthotomeo, das dasselbe tut.
+ */
+interface Quelle {
+  readonly werk: string;
+  readonly lizenz: string;
+  readonly nennung: string | null;
+}
+
 const EDITION_META: Record<
   string,
-  { label: string; hinweis: string; sprache: string; decoder: "robinson" | "morphgnt" | "hebrew" }
+  {
+    label: string;
+    hinweis: string;
+    sprache: string;
+    decoder: "robinson" | "morphgnt" | "hebrew";
+    // Neben `label`, damit Text und Lizenz einer Edition nicht getrennt
+    // gepflegt werden und auseinanderlaufen können.
+    quelle: Quelle;
+  }
 > = {
   byzantine: {
     label: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)",
     sprache: "Griechisch (Koine)",
     decoder: "robinson",
+    quelle: {
+      werk: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005), Text und Robinson-Parsing",
+      lizenz: "Public Domain",
+      nennung: null,
+    },
     hinweis:
       "Mehrheitstext (Textus-Receptus-Familie, aber breiter bezeugt); enthält z. B. " +
       "kein Comma Johanneum (1Joh 5,7). Von der Mehrheitstext-Position (u. a. R. Liebi) " +
@@ -367,6 +427,16 @@ const EDITION_META: Record<
     label: "SBL Greek New Testament (kritische Edition)",
     sprache: "Griechisch (Koine)",
     decoder: "morphgnt",
+    quelle: {
+      werk: "SBL Greek New Testament (Text) mit MorphGNT-Morphologie",
+      lizenz: "Text: CC BY 4.0; Morphologie: CC BY-SA 3.0",
+      nennung:
+        "SBL Greek New Testament, © Society of Biblical Literature und Logos Bible " +
+        "Software, CC BY 4.0, https://sblgnt.com/license/. Morphologie: MorphGNT, " +
+        "CC BY-SA 3.0, https://github.com/morphgnt/sblgnt. Die Morphologiecodes " +
+        "werden hier aufgeloest, also bearbeitet: Wer diese Ausgabe " +
+        "weiterveroeffentlicht, gibt sie unter CC BY-SA weiter.",
+    },
     hinweis:
       "Kritische (eklektische) Edition, Nestle-Aland-nah — nicht Mehrheitstext. " +
       "Bei Lesarten-Fragen den Texttyp beachten; die Morphologie ist davon unberührt.",
@@ -375,6 +445,11 @@ const EDITION_META: Record<
     label: "Textus Receptus (Robinson, Scrivener/Stephens-Tradition)",
     sprache: "Griechisch (Koine)",
     decoder: "robinson",
+    quelle: {
+      werk: "Textus Receptus (Scrivener-/Stephanus-Tradition), Text und Robinson-Parsing",
+      lizenz: "Public Domain",
+      nennung: null,
+    },
     hinweis:
       "Textus Receptus — die einzige der drei Editionen mit dem Comma Johanneum " +
       "(1Joh 5,7 Langform) und weiteren TR-Sonderlesarten. Zum direkten Lesarten-" +
@@ -387,6 +462,13 @@ const EDITION_META: Record<
     label: "Westminster Leningrad Codex (masoretisch, OSHB-Morphologie)",
     sprache: "Hebräisch/Aramäisch",
     decoder: "hebrew",
+    quelle: {
+      werk: "Westminster Leningrad Codex mit OSHB-Morphologie",
+      lizenz: "Text: Public Domain; Morphologie und Lemmata: CC BY 4.0",
+      nennung:
+        "Morphologie und Lemmata: Open Scriptures Hebrew Bible Project, CC BY 4.0, " +
+        "https://github.com/openscriptures/morphhb",
+    },
     hinweis:
       "Masoretischer Text (Ben Ascher, Leningrad-Codex). Geschriebener Text = Ketiv " +
       "(die Qere-Lesart der Randmasora ist nicht enthalten). Für das AT die von der " +
@@ -396,6 +478,73 @@ const EDITION_META: Record<
       "Zitieren weder Zeichen entfernen noch ergänzen.",
   },
 };
+
+/**
+ * Quellen, die keine Edition sind: Querverweise, Bezeugung, Lexika.
+ *
+ * Konkrete Schlüssel statt `Record<string, Quelle>`, und Zugriff per Punkt statt
+ * per Klammer: Unter `noUncheckedIndexedAccess` liefert ein verschriebener
+ * Klammerzugriff `Quelle | undefined`, und genau dieser Typ ist in `quellen()`
+ * der legitime Kanal für „bedingt unbenutzt". Ein Tippfehler würde also
+ * kompilieren, alle Tests grün lassen und eine lizenzpflichtige Nennung
+ * stillschweigend weglassen: genau der Fehler, den dieses Feld verhindern soll.
+ * So ist ein falscher Name ein Typfehler.
+ */
+const DATASET_QUELLEN = {
+  crossrefs: {
+    werk: "Querverweise: Treasury of Scripture Knowledge (erweitert, mit Community-Stimmen)",
+    lizenz: "CC BY 4.0",
+    nennung: "OpenBible.info, CC BY 4.0, https://www.openbible.info/labs/cross-references/",
+  },
+  tagnt: {
+    werk: "Bezeugung über acht griechische Editionen (STEPBible TAGNT)",
+    lizenz: "CC BY 4.0",
+    nennung:
+      "STEPBible-Data (TAGNT), © Tyndale House, Cambridge, CC BY 4.0, " +
+      "https://github.com/STEPBible/STEPBible-Data",
+  },
+  lexikon_strongs: {
+    werk: "Strong-Wörterbücher 1890 (Grundformen, Umschriften, Definitionen)",
+    lizenz: "CC BY-SA (Version von der Quelle nicht angegeben)",
+    nennung:
+      "Open Scriptures, https://github.com/openscriptures/strongs. Das Werk von " +
+      "James Strong (1890) ist gemeinfrei; die Share-Alike-Pflicht betrifft die " +
+      "digitale Aufbereitung von 2009, die hier in ein eigenes Schema überführt ist.",
+  },
+  lexikon_step: {
+    werk: "Tyndale-Glossen und Abbott-Smith-Lexikon (STEPBible TBESG/TBESH)",
+    lizenz: "CC BY 4.0",
+    nennung:
+      "STEPBible-Data (TBESG/TBESH), © Tyndale House, Cambridge, CC BY 4.0, " +
+      "https://github.com/STEPBible/STEPBible-Data",
+  },
+} as const satisfies Record<string, Quelle>;
+
+/**
+ * Baut das Feld `quellen` aus genau den Quellen, die die Antwort benutzt hat.
+ *
+ * Bewusst kein konstanter Block über allen Werkzeugen: Eine Antwort aus
+ * `bible_lookup` mit Luther 1912 berührt keine CC-BY-Quelle, und eine
+ * Attribution zu behaupten, die gar nicht einschlägig ist, ist derselbe Fehler
+ * wie eine weggelassene. `null`-Einträge fallen weg, damit die Liste kurz
+ * bleibt.
+ */
+function quellen(...verwendet: ReadonlyArray<Quelle | undefined>): Quelle[] {
+  const seen = new Set<string>();
+  const out: Quelle[] = [];
+  for (const q of verwendet) {
+    if (q === undefined || seen.has(q.werk)) continue;
+    seen.add(q.werk);
+    out.push(q);
+  }
+  return out;
+}
+
+/** Quellenangabe einer Übersetzung, aus der Registry in translations.ts. */
+function translationQuelle(code: TranslationCode): Quelle {
+  const meta = TRANSLATIONS[code];
+  return { werk: meta.name, lizenz: meta.license, nennung: meta.attribution };
+}
 
 const EDITION_ALIASES: Record<string, string> = {
   byzantine: "byzantine", byz: "byzantine", mehrheitstext: "byzantine",
@@ -1173,10 +1322,11 @@ const SETUP_ANNOTATIONS = {
 
 const handleListTools = async () => ({
   tools: [
-    // Advertised only while data is missing: once the database is in place this
-    // tool has nothing to offer, and a visible "set up the database" action
-    // invites a model to re-run downloads that already succeeded.
-    ...(dataMissing !== null
+    // Advertised only while data is missing, and never over HTTP: once the
+    // database is in place this tool has nothing to offer, and a visible "set up
+    // the database" action invites a model to re-run downloads that already
+    // succeeded. On an HTTP endpoint it must not appear at all — see HTTP_MODE.
+    ...(dataMissing !== null && !HTTP_MODE
       ? [
           {
             name: "bible_setup",
@@ -1519,6 +1669,15 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
  * the model has something concrete to present before asking.
  */
 async function handleSetup(args: { bestaetigung?: unknown }) {
+  // Hiding the tool from tools/list is not enough: a caller may name any tool it
+  // likes, and this one writes. The refusal has to sit in the handler.
+  if (HTTP_MODE) {
+    return errorResult(
+      "Dieses Werkzeug steht im HTTP-Modus nicht zur Verfügung. Die Datenbank baut " +
+        "die Betreiberin oder der Betreiber des Endpunkts auf, nicht der aufrufende Client."
+    );
+  }
+
   if (dataMissing === null) {
     return errorResult(
       "Die Datenbank ist bereits vorhanden und vollständig. Es gibt nichts einzurichten."
@@ -1622,12 +1781,22 @@ const handleCallTool = async (request: CallToolRequest) => {
   // database every one of them would otherwise answer "book not found", which
   // reads like the reference was wrong rather than like nothing is loaded yet.
   if (dataMissing !== null) {
+    // Two audiences, two messages. Over stdio the caller can fix this, so name
+    // the tool that does it. Over HTTP the caller is a stranger with no access to
+    // the machine: pointing at bible_setup would name a tool that is not offered
+    // and cannot be used. The one instruction that holds either way is the last
+    // sentence.
     return errorResult(
-      `${dataMissing} Dieser Server bringt die Bibeldaten nicht mit, sie werden einmalig ` +
-        "von den Originalquellen geladen (etwa eine Minute, Internetverbindung nötig).\n\n" +
-        "Frage die Nutzerin oder den Nutzer, ob der Download jetzt starten soll, und rufe " +
-        "dann bible_setup mit bestaetigung=true auf. Beantworte die Bibelfrage bis dahin " +
-        "nicht aus dem Gedächtnis."
+      HTTP_MODE
+        ? `${dataMissing} Dieser Endpunkt hat derzeit keine Bibeldaten und kann keine ` +
+            "Stelle nachschlagen. Das lässt sich nur serverseitig beheben; ein erneuter " +
+            "Aufruf hilft nicht. Beantworte die Bibelfrage nicht aus dem Gedächtnis, " +
+            "sondern sage, dass der Bibelserver derzeit keine Daten hat."
+        : `${dataMissing} Dieser Server bringt die Bibeldaten nicht mit, sie werden einmalig ` +
+            "von den Originalquellen geladen (etwa eine Minute, Internetverbindung nötig).\n\n" +
+            "Frage die Nutzerin oder den Nutzer, ob der Download jetzt starten soll, und rufe " +
+            "dann bible_setup mit bestaetigung=true auf. Beantworte die Bibelfrage bis dahin " +
+            "nicht aus dem Gedächtnis."
     );
   }
 
@@ -1777,6 +1946,7 @@ const handleCallTool = async (request: CallToolRequest) => {
     translation: translationName,
     text,
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
+    quellen: quellen(translationQuelle(resolved.code)),
   };
 
   return {
@@ -1893,6 +2063,7 @@ function handleOriginal(args: {
     sprache: meta0.sprache,
     hinweis: meta0.hinweis + hinweisZusatz,
     woerter,
+    quellen: quellen(meta0.quelle),
   };
 
   return {
@@ -1992,9 +2163,6 @@ function handleCrossrefs(args: {
   const hinweise = bracketHints(verweise.map((v) => v.text));
   const response = {
     reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
-    quelle:
-      "Treasury of Scripture Knowledge (erweitert), OpenBible.info (CC-BY); " +
-      `Text: ${TRANSLATIONS[translation].name}`,
     verweise,
     ...(verweise.some((v) => "verse_einzeln" in v)
       ? {
@@ -2005,6 +2173,7 @@ function handleCrossrefs(args: {
         }
       : {}),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
+    quellen: quellen(DATASET_QUELLEN.crossrefs, translationQuelle(translation)),
   };
 
   return {
@@ -2127,6 +2296,12 @@ function handleConcordance(args: {
       : rows[0]!.strong
         ? (isHebrew ? "H" : "G") + rows[0]!.strong
         : null;
+  // Which lexicon actually contributed decides the attribution below: translit,
+  // definition and kjv come from the Strong's dictionaries (CC BY-SA), gloss and
+  // the Abbott-Smith entry from STEPBible (CC BY 4.0). Naming a source that did
+  // not contribute is the same error as omitting one that did.
+  let usedStrongsLexicon = false;
+  let usedStepLexicon = false;
   if (strongKey !== null && stmtStrongDef) {
     const def = stmtStrongDef.get(strongKey);
     if (def) {
@@ -2138,6 +2313,8 @@ function handleConcordance(args: {
       // Full Abbott-Smith lexicon entry (STEPBible TBESG, Greek only) — the
       // scholarly meaning; typically a few hundred characters, worth the tokens.
       if (def.meaning) response.lexikon = def.meaning;
+      usedStrongsLexicon = Boolean(def.translit || def.definition || def.kjv);
+      usedStepLexicon = Boolean(def.gloss || def.meaning);
     }
   }
   response.texttyp = edition;
@@ -2154,6 +2331,11 @@ function handleConcordance(args: {
       `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +
       "'buecher' zeigt die vollständige Verteilung.";
   }
+  response.quellen = quellen(
+    meta0.quelle,
+    usedStrongsLexicon ? DATASET_QUELLEN.lexikon_strongs : undefined,
+    usedStepLexicon ? DATASET_QUELLEN.lexikon_step : undefined
+  );
 
   return {
     content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
@@ -2259,6 +2441,7 @@ function handleSearch(args: {
   );
   hinweise.push(...bracketHints(rows.map((r) => r.text)));
   response.hinweis = hinweise.join(" ");
+  response.quellen = quellen(translationQuelle(translation));
 
   return {
     content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
@@ -2433,6 +2616,13 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
       "Schreibvarianten. Welche Art vorliegt, steht in 'bezeugung' ('schreibvariante' bzw. " +
       "'bedeutungsvariante', dazu 'typ') — nicht aus diesem Hinweis erschließen und die " +
       "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht.",
+    // Aus `editions`, nicht aus einer festen Dreierliste: die Auswahl ist nach
+    // dem tatsächlich geladenen Bestand gefiltert und kann zwei Editionen
+    // umfassen. TAGNT nur, wenn eine Bezeugung in der Antwort steht.
+    quellen: quellen(
+      ...editions.map((ed) => EDITION_META[ed]!.quelle),
+      bezeugung !== undefined ? DATASET_QUELLEN.tagnt : undefined
+    ),
   };
 
   return {
@@ -2447,7 +2637,13 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
 // shared; an instance is just the handler wiring.
 function createServer(): Server {
   const s = new Server(
-    { name: "bibelstudium-mcp", version: "0.2.2" },
+    // Version aus package.json, nicht daneben gepflegt: sie lief bereits
+    // auseinander. Der v0.3.0-Commit hob die Zahl hier von 0.2.1 auf 0.2.2,
+    // während das Paket auf 0.3.0 ging, und jeder Client sah seither im
+    // initialize eine Version, die es als Release nicht gibt. Der Import
+    // funktioniert unter `bun run` und im kompilierten Binary gleichermaßen
+    // (beides geprüft); build-mcpb.ts liest dieselbe Datei für das Manifest.
+    { name: "bibelstudium-mcp", version: PACKAGE_VERSION },
     { capabilities: { tools: {}, prompts: {} } }
   );
   s.setRequestHandler(ListToolsRequestSchema, handleListTools);
@@ -2486,6 +2682,30 @@ const CORS_HEADERS: Readonly<Record<string, string>> = {
   "access-control-max-age": "86400",
 };
 
+/**
+ * Why /health queries the database instead of reporting `dataMissing`.
+ *
+ * `dataMissing` is decided once, at startup. A file that is swapped or damaged
+ * while the process runs would leave it at `null`, and /health would keep
+ * answering "ok" for a server that can no longer answer a single lookup. The
+ * cheapest query that proves the whole path still works is one row from the
+ * table every tool needs; it is served from SQLite's page cache and costs
+ * microseconds, so a monitor may poll it.
+ *
+ * Returns null when healthy, otherwise the reason, so the caller has something
+ * to put in the response body.
+ */
+function healthProblem(): string | null {
+  if (dataMissing !== null) return dataMissing;
+  try {
+    const row = db.query("SELECT COUNT(*) AS n FROM books").get() as { n: number } | null;
+    if (row === null || row.n === 0) return "Die Datenbank antwortet, enthält aber keine Bücher.";
+    return null;
+  } catch (error) {
+    return `Die Datenbank ist nicht lesbar: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function withCors(response: Response): Response {
   const headers = new Headers(response.headers);
   for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
@@ -2511,6 +2731,17 @@ async function serveHttp(port: number): Promise<void> {
     port,
     hostname: host,
     idleTimeout: 120,
+    // Bun nimmt sonst bis zu 128 MB je Rumpf an. Die größte legitime Anfrage
+    // dieses Servers ist ein Werkzeugaufruf mit einer Bibelstelle, also einige
+    // hundert Byte; 1 MB lässt jeden davon durch und nimmt einem anonymen
+    // Aufrufer die Möglichkeit, Speicher über den JSON-Parser zu binden.
+    maxRequestBodySize: 1024 * 1024,
+    // Ohne das richtet sich der Modus nach NODE_ENV, und im Entwicklungsmodus
+    // liefert Bun bei einer ungefangenen Ausnahme einen Stacktrace an den
+    // Aufrufer aus. Heute fängt der SDK-Transport alle geprüften Fehlerpfade
+    // sauber ab; die Zeile sorgt dafür, dass ein künftiges `throw` im Handler
+    // nicht zum Informationsleck wird.
+    development: false,
     async fetch(request) {
       const url = new URL(request.url);
 
@@ -2518,10 +2749,20 @@ async function serveHttp(port: number): Promise<void> {
         return withCors(new Response(null, { status: 204 }));
       }
       if (url.pathname === "/health") {
+        // Reports whether the service works, not just that the process is up.
+        // An HTTP endpoint has no terminal watching stderr, and with bible_setup
+        // gone there is no in-band way left to notice a broken database: every
+        // tool would simply refuse, one at a time. 503 rather than 200 so a
+        // monitor sees it without parsing the body.
+        const problem = healthProblem();
         return withCors(
-          new Response(JSON.stringify({ status: "ok" }), {
-            headers: { "content-type": "application/json" },
-          })
+          new Response(
+            JSON.stringify(problem === null ? { status: "ok" } : { status: "fehler", grund: problem }),
+            {
+              status: problem === null ? 200 : 503,
+              headers: { "content-type": "application/json" },
+            }
+          )
         );
       }
       if (url.pathname !== "/mcp") return withCors(new Response("Not found", { status: 404 }));
@@ -2531,6 +2772,28 @@ async function serveHttp(port: number): Promise<void> {
       const origin = request.headers.get("origin");
       if (origin !== null && !allowedOrigins.includes(origin)) {
         return withCors(new Response("Forbidden origin", { status: 403 }));
+      }
+
+      // GET wird beantwortet, aber nicht offengehalten.
+      //
+      // Der GET-Kanal dient server-initiierten Nachrichten. Dieser Server sendet
+      // keine: er ist zustandslos, schiebt nichts und hat nichts fortzusetzen.
+      // Ohne diesen Zweig lief ein GET trotzdem durch den Transport und blieb als
+      // SSE-Stream offen, der nie ein Byte liefert: gemessen 120 Sekunden je
+      // Verbindung (Bun `idleTimeout`), 30 parallele GETs hielten 30
+      // Dateideskriptoren samt je einer Serverinstanz. Für einen anonymen
+      // Endpunkt ist das ein kostenloser Verbindungshalter, und eine
+      // Ratenbegrenzung davor greift bei offenen Verbindungen schlecht.
+      //
+      // Warum 200 und nicht 405, das die Spezifikation ausdrücklich erlaubt: Der
+      // einzige fremde Endpunkt, der als authloser Custom Connector in claude.ai
+      // nachweislich funktioniert, antwortet auf GET mit 200, und dieser Server
+      // wurde am 25.07.2026 eigens darauf angeglichen (vorher 400). Ob claude.ai
+      // den Status überhaupt auswertet, ist unbelegt (n=1). Solange das offen
+      // ist, wird die gemessene Angleichung nicht wegen einer Stilfrage
+      // aufgegeben: 200 bleibt, der Stream entfällt.
+      if (request.method === "GET") {
+        return withCors(new Response(null, { status: 200 }));
       }
 
       // Stateless: one server plus transport per request, no session registry.
@@ -2558,6 +2821,40 @@ async function serveHttp(port: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  /**
+   * Build the database and exit — the operator's counterpart to bible_setup.
+   *
+   * Needed because bible_setup is stdio-only (see HTTP_MODE): without this flag,
+   * setting up an HTTP endpoint would require Bun and a checkout on the host, and
+   * the whole point of the compiled binary is that neither is there.
+   *
+   * The flag is read at module level (SETUP_CLI) because the startup log there
+   * has to know about it too; argv is indexed differently for `bun run server.ts`
+   * than for a compiled binary, so it is matched with `includes` rather than at a
+   * fixed position and works in both.
+   */
+  if (SETUP_CLI) {
+    // Anders als bible_setup lehnt diese Flagge bei vorhandener Datenbank nicht
+    // ab: sie ist der Weg, Daten auch zu erneuern. Dann aber sagen, was passiert.
+    if (dataMissing === null) {
+      console.log(`Es liegt bereits eine Datenbank unter ${DB_PATH}. Sie wird neu aufgebaut.`);
+    }
+    const { runSetup } = await import("./scripts/setup.ts");
+    const report = await runSetup((label, i, total) => {
+      console.log(`[${i}/${total}] ${label}`);
+    });
+    for (const step of report.steps) {
+      console.log(`${step.ok ? "ok  " : "FEHL"} ${step.label} (${step.seconds.toFixed(1)}s)`);
+      if (!step.ok) console.log(`     ${step.error}. Nachholen mit: ${step.command}`);
+    }
+    console.log(`Ziel: ${DB_PATH}`);
+    if (report.aborted) {
+      console.error("Abgebrochen: ohne die Übersetzungen gibt es keine Datenbank.");
+      process.exit(1);
+    }
+    return;
+  }
+
   const portRaw = process.env["MCP_HTTP_PORT"];
   if (portRaw !== undefined && portRaw !== "") {
     const port = Number(portRaw);

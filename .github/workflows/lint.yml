@@ -28,8 +28,10 @@ jobs:
     name: Startup guards (no database / incomplete database)
     runs-on: ubuntu-latest
     # CI has no Bible database — it is built locally from the upstream sources
-    # (~25 min, gitignored). What CI can verify is the path every new user hits
-    # first: that a clone without data fails loudly and names the fix.
+    # (gitignored). What CI can verify is the path every new user hits first:
+    # that a clone without data starts anyway, says so, and offers bible_setup.
+    # Until 0.3.0 these steps asserted the opposite (exit 1), which was correct
+    # while the only way to get data was a terminal.
     steps:
       - uses: actions/checkout@v4
 
@@ -41,19 +43,35 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Missing database exits 1 and names the download script
+      - name: Missing database starts anyway and locks the data tools
         run: |
           set +e
           output=$(bun run server.ts 2>&1 </dev/null)
           rc=$?
           set -e
           echo "$output"
-          [ "$rc" -eq 1 ] \
-            || { echo "::error::expected exit 1, got $rc"; exit 1; }
-          echo "$output" | grep -q "bun run download" \
-            || { echo "::error::message does not name the download command"; exit 1; }
+          [ "$rc" -eq 0 ] \
+            || { echo "::error::expected a clean start, got exit $rc"; exit 1; }
+          echo "$output" | grep -q "bible_setup" \
+            || { echo "::error::startup message does not offer bible_setup"; exit 1; }
 
-      - name: Incomplete database exits 1 and names the missing tables
+      - name: Missing database advertises bible_setup and refuses lookups
+        run: |
+          # The tool list must carry bible_setup, and a data tool must answer
+          # with a pointer to it rather than "book not found".
+          output=$({
+            printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+            printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+            printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"bible_lookup","arguments":{"book":"Johannes","chapter":3,"verses":"16"}}}'
+          } | bun run server.ts 2>/dev/null)
+          echo "$output"
+          echo "$output" | grep -q '"name":"bible_setup"' \
+            || { echo "::error::bible_setup missing from tools/list"; exit 1; }
+          echo "$output" | grep -q 'bible_setup mit bestaetigung' \
+            || { echo "::error::bible_lookup does not point at bible_setup"; exit 1; }
+
+      - name: Incomplete database is reported as such
         run: |
           # Empty file: SQLite opens it fine, but it holds no tables.
           mkdir -p data && : > data/bible.db
@@ -62,10 +80,58 @@ jobs:
           rc=$?
           set -e
           echo "$output"
-          [ "$rc" -eq 1 ] \
-            || { echo "::error::expected exit 1, got $rc"; exit 1; }
-          echo "$output" | grep -q "incomplete" \
+          [ "$rc" -eq 0 ] \
+            || { echo "::error::expected a clean start, got exit $rc"; exit 1; }
+          echo "$output" | grep -q "fehlen Tabellen" \
             || { echo "::error::message does not report an incomplete DB"; exit 1; }
+
+      - name: HTTP mode never offers bible_setup
+        run: |
+          # The counterpart to the two stdio guards above, and the one that
+          # matters for a reachable endpoint: bible_setup downloads ~145 MB from
+          # eight external sources and replaces the database, so it is stdio-only.
+          # Guarded here because the state that would unlock it (no database) is
+          # exactly what CI has, and because a regression would be invisible
+          # locally, where the database is present.
+          rm -f data/bible.db
+          MCP_HTTP_PORT=8931 bun run server.ts &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          # No `curl -f` here: without data /health answers 503 by design, and -f
+          # would treat the very state under test as a connection failure.
+          for _ in $(seq 1 20); do
+            if curl -sS -o /dev/null http://127.0.0.1:8931/health; then break; fi
+            sleep 0.5
+          done
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8931/health)
+          echo "health: $status"
+          if [ "$status" != "503" ]; then
+            echo "::error::/health must answer 503 without data, got $status"; exit 1
+          fi
+
+          post() {
+            curl -s -X POST http://127.0.0.1:8931/mcp \
+              -H 'content-type: application/json' \
+              -H 'accept: application/json, text/event-stream' -d "$1"
+          }
+          listed=$(post '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          called=$(post '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"bible_setup","arguments":{"bestaetigung":true}}}')
+          echo "$listed"
+          echo "$called"
+
+          # `if`, not `grep … && exit 1`: under `set -e` a failing left-hand side
+          # of && aborts the whole step, so that spelling fails exactly when the
+          # assertion holds.
+          if ! echo "$listed" | grep -q '"name":"bible_lookup"'; then
+            echo "::error::tools/list did not answer over HTTP"; exit 1
+          fi
+          if echo "$listed" | grep -q 'bible_setup'; then
+            echo "::error::bible_setup is listed in HTTP mode"; exit 1
+          fi
+          if ! echo "$called" | grep -q 'im HTTP-Modus nicht zur Verfügung'; then
+            echo "::error::bible_setup was not refused in HTTP mode"; exit 1
+          fi
 
   yaml:
     name: YAML (yamllint)

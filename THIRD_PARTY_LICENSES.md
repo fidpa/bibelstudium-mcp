@@ -65,11 +65,33 @@ Deutschland seit 2010 gemeinfrei. bolls.life selbst macht zu keiner Übersetzung
 eine Lizenz- oder Copyright-Angabe; die Einordnung in der Tabelle oben stützt
 sich auf das Sterbejahr des Übersetzers, nicht auf eine Aussage der Quelle.
 
-## Was bei einer Weitergabe der Datenbank gälte
+## Weitergabe: was schon jetzt gilt
 
-Dieses Projekt liefert keine Datenbank aus (siehe oben), deshalb ist der
-folgende Punkt heute gegenstandslos. Er steht hier, damit er nicht übersehen
-wird, falls sich das ändert.
+Zwei Fälle sind zu unterscheiden, und der erste ist **nicht** hypothetisch.
+
+### Wer Antworten dieses Servers Dritten zugänglich macht, gibt weiter
+
+„Share" heißt in CC 4.0 ausdrücklich auch, Material öffentlich verfügbar zu
+machen, nicht nur eine Datei auszuliefern. Ein Server, den Fremde benutzen,
+verbreitet die Texte also, obwohl keine Datenbank den Rechner verlässt. Die
+Namensnennung muss dann **bei der Antwort** ankommen, denn wer den Server über
+MCP benutzt, sieht dieses Repository nicht.
+
+Der Server tut das seit 0.4.0 von selbst: Jede Antwort trägt ein Feld `quellen`
+mit Werk, Lizenz und der verlangten Nennung, und zwar für genau die Quellen, aus
+denen sie stammt. Wer den Server nur lokal für sich betreibt, verbreitet nichts
+und braucht sich darum nicht zu kümmern.
+
+CC verlangt zusätzlich den Hinweis, dass das Material verändert wurde. Das
+trifft hier mehrfach zu: HTML-Bereinigung, Normalisierung, Umbau in SQLite,
+Auflösung der Morphologiecodes und das bewusst weggelassene TBESH-Feld
+„Meaning".
+
+### Wer die aufgebaute Datenbank weitergibt, muss mehr beachten
+
+Dieses Projekt liefert keine Datenbank aus, dieser Teil ist also heute
+gegenstandslos. Er steht hier für den Fall, dass jemand seine eigene
+weitergibt.
 
 Zwei der Quellen stehen unter **CC BY-SA**: die MorphGNT-Morphologie (3.0) und
 die Strong-Wörterbücher. Beide werden hier bearbeitet, nicht nur weitergereicht
@@ -79,11 +101,11 @@ ausgelieferte Datenbank müsste deshalb selbst unter CC BY-SA stehen; CC BY-SA
 derselben Lizenz erlaubt. Betroffen wären die **Daten**, nicht der Code dieses
 Repositories, der unter MIT steht.
 
-Hinzu kämen die Pflichten aller CC-BY-Quellen: Urheber, Copyright-Vermerk,
-Lizenzhinweis und Link müssten die Datei **begleiten**, nicht nur im Repository
-stehen. Außerdem verlangt CC einen Hinweis darauf, dass das Material verändert
-wurde, was hier mehrfach zutrifft (HTML-Bereinigung, Normalisierung, Umbau in
-SQLite, das bewusst weggelassene TBESH-Feld „Meaning").
+Ob dasselbe schon für die *Ausgaben* eines gehosteten Servers gilt, ist eine
+offene Frage: Ausgegeben werden bearbeitete Morphologiedaten, aber versweise und
+nicht als Datensammlung. Der Server nennt die Share-Alike-Lizenz deshalb in
+`quellen`, damit ein Weiterverwender sie kennt, statt sie selbst herleiten zu
+müssen.
 
 **Hinweis zur STEPBible-Weiterverbreitung**: STEPBible bittet darum, die eigenen
 Datendateien nur aus dem eigenen Repository zu verbreiten („Refer others to

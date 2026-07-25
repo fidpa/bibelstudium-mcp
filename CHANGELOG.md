@@ -6,6 +6,46 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.4.0] - 2026-07-25
+
+### Hinzugefügt (Namensnennung)
+
+- **Jede Antwort nennt die Quellen, aus denen sie stammt** (Feld `quellen`, je Eintrag `werk`, `lizenz` und `nennung`). Das ist keine Höflichkeit, sondern eine Lizenzpflicht, die durch das Hosten einschlägig wird: Schlachter 1951, die STEPBible-Daten, die OpenBible-Querverweise und die OSHB-Morphologie stehen unter CC BY, die MorphGNT-Morphologie und die Strong-Wörterbücher unter CC BY-SA. CC 4.0 zählt öffentliches Verfügbarmachen ausdrücklich als „Share", und wer den Server nur über MCP benutzt, sieht weder `THIRD_PARTY_LICENSES.md` noch eine Website. Bisher trug keine Ausgabe eine Attribution. Vorbild ist `orthotomeo`, das dasselbe tut.
+
+  Genannt wird nur, was die Antwort benutzt hat: ein `bible_lookup` in Luther 1912 berührt keine CC-BY-Quelle und behauptet auch keine, `bible_concordance` nennt ein Lexikon nur bei beigetragenem Eintrag, `bible_compare` nur die tatsächlich verglichenen Editionen. `nennung: null` heißt „Lizenz verlangt keine". Über stdio geprüft: acht Fälle über alle sechs Werkzeuge, keine fehlende und keine überschüssige Nennung.
+
+- Das Freitextfeld `quelle` in `bible_crossrefs` entfällt; es sagte dasselbe unstrukturiert und nur für dieses eine Werkzeug.
+
+### Geändert (HTTP-Betrieb)
+
+- **`bible_setup` gibt es im HTTP-Modus nicht.** Das Werkzeug lädt rund 145 MB von acht fremden Quellen und ersetzt die Datenbankdatei. Über stdio ist das eine Erleichterung: Wer den Prozess gestartet hat, besitzt den Rechner. An einem erreichbaren Endpunkt ist es eine Handhabe für Fremde, und der Zustand, der es freischaltet (keine Datenbank), ist genau der, den ein Ausfall oder eine beschädigte Datei herstellt. Bei gesetztem `MCP_HTTP_PORT` erscheint das Werkzeug deshalb nicht in `tools/list`, und der Handler lehnt einen trotzdem gesendeten Aufruf ab: eine ungelistete Werkzeugbezeichnung lässt sich weiterhin schicken, die Sperre gehört also in den Handler, nicht in die Liste.
+
+  Gemessen am 25.07.2026 gegen frisch gestartete Prozesse: im HTTP-Modus sechs Werkzeuge ohne `bible_setup`, mit **und** ohne vorhandene Datenbank, ein direkter Aufruf mit `bestaetigung=true` abgelehnt, keine Datei angelegt. Über stdio ohne Datenbank erscheint `bible_setup` unverändert.
+
+- **Die Meldung der gesperrten Werkzeuge unterscheidet die Adressaten.** Ohne Datenbank verwiesen alle sechs Werkzeuge darauf, den Nutzer zu fragen und `bible_setup` aufzurufen. An einem Endpunkt benennt das ein Werkzeug, das dort nicht angeboten wird und dem Aufrufer nicht zur Verfügung steht. Im HTTP-Modus sagt die Meldung jetzt, dass sich das nur serverseitig beheben lässt und ein erneuter Aufruf nicht hilft. Der Satz, der in beiden Fällen gilt, bleibt: nicht aus dem Gedächtnis antworten.
+
+### Hinzugefügt
+
+- **`server.ts --setup` baut die Datenbank und beendet sich.** Das Gegenstück zu `bible_setup` für die Betreiberseite, nötig geworden, weil das Werkzeug im HTTP-Modus entfällt: ohne diese Flagge bräuchte die Einrichtung eines Endpunkts Bun und ein Checkout auf dem Zielrechner, und das eigenständige Binary gibt es gerade deshalb, damit dort keins von beidem liegen muss. Derselbe Ablauf und derselbe Bericht wie `bun run setup`. Die Flagge wird über die vollständige `argv` gesucht, weil ein `bun run server.ts` sie an anderer Stelle führt als ein kompiliertes Binary.
+
+- **Ein CI-Guard für den HTTP-Modus.** Gegenstück zu den beiden stdio-Guards: Er startet den Server mit `MCP_HTTP_PORT` und ohne Datenbank und prüft, dass `/health` mit 503 antwortet, `bible_setup` nicht in `tools/list` steht und ein direkter Aufruf abgelehnt wird. Genau dieser Zustand liegt in der CI ohnehin vor, während er lokal nie auftritt, weil dort eine Datenbank liegt. Gegengeprüft: mit absichtlich ausgehebelter Sperre schlägt er fehl, nicht nur wenn alles stimmt.
+
+- **`/health` prüft die Datenbank, statt den Startzustand zu wiederholen.** Antwortet sie nicht, kommt **503** mit `{"status":"fehler","grund":…}` statt `200 ok`. Ein Endpunkt hat kein Terminal, das stderr mitliest, und mit dem entfallenen `bible_setup` bleibt kein Weg im Protokoll, einen Schaden zu bemerken: die Werkzeuge würden sich nur der Reihe nach verweigern. Der alte Wert wurde einmal beim Booten ermittelt und hätte einen späteren Schaden nicht gezeigt. Gemessen an einer Datenbank, die **im laufenden Betrieb** zerstört wurde: `/health` kippt von 200 auf 503 und nennt „file is not a database". Die Prüfung ist eine Zeile auf `books` aus dem SQLite-Seitencache, also billig genug für einen Monitor.
+
+### Behoben
+
+- **Ein `GET /mcp` blieb zwei Minuten als leerer Stream offen.** Der GET-Kanal dient server-initiierten Nachrichten; dieser Server sendet keine, ist zustandslos und hat nichts fortzusetzen. Trotzdem lief ein GET durch den Transport und wurde als SSE-Stream offengehalten, der nie ein Byte lieferte: gemessen 120 Sekunden je Verbindung, 30 parallele GETs hielten 30 Dateideskriptoren samt je einer Serverinstanz. An einem anonymen Endpunkt ist das ein kostenloser Verbindungshalter, gegen den eine vorgelagerte Ratenbegrenzung schlecht hilft, weil keine Anfragen mehr nachkommen müssen. GET antwortet jetzt sofort. Gemessen: 1,2 ms statt 120 s, und 20 parallele GETs lassen die Deskriptorzahl unverändert.
+
+  Der Status bleibt **200** und wird nicht auf das von der Spezifikation erlaubte 405 geändert: Der einzige fremde Endpunkt, der als authloser Custom Connector nachweislich funktioniert, antwortet mit 200, und dieser Server wurde eigens darauf angeglichen. Begründung an der Entscheidungsstelle im Code.
+
+- **Ein verschriebener Quellen-Schlüssel hätte eine Nennung stillschweigend weggelassen.** `DATASET_QUELLEN` war als `Record<string, Quelle>` typisiert, ein Klammerzugriff mit Tippfehler lieferte damit `undefined` statt eines Fehlers: Er hätte kompiliert, alle Tests grün gelassen und eine lizenzpflichtige Attribution unterdrückt. Die Schlüssel sind jetzt konkret typisiert und werden per Punkt gelesen; gegengeprüft, dass ein Tippfehler nun ein Typfehler ist.
+
+- **Härtung des HTTP-Servers.** `maxRequestBodySize` auf 1 MB, statt Buns Voreinstellung von 128 MB; die größte legitime Anfrage ist ein Werkzeugaufruf mit einer Bibelstelle. Gemessen: ein Rumpf über der Grenze wird mit **413** abgewiesen. Dazu `development: false`, damit eine künftige ungefangene Ausnahme im Handler keinen Stacktrace an den Aufrufer ausliefert; alle heute geprüften Fehlerpfade fängt der SDK-Transport sauber ab.
+
+- **`server.ts --setup` sagt jetzt, dass es eine vorhandene Datenbank ersetzt.** Anders als `bible_setup` lehnt die Flagge bei vorhandenen Daten nicht ab, denn sie ist auch der Weg, sie zu erneuern. Das schweigend zu tun war die falsche Hälfte davon.
+
+- **Der Server meldete eine Version, die es als Release nicht gibt.** In `serverInfo` stand `0.2.2`, während `package.json` und das Release auf `0.3.0` standen: Der v0.3.0-Commit hob die von Hand gepflegte Zahl in `server.ts` von `0.2.1` auf `0.2.2` an, statt sie dem Paket nachzuziehen. Jeder Client bekam das im `initialize` zu sehen. Die Angabe kommt jetzt per JSON-Import aus `package.json`, also aus derselben Datei, aus der auch `build-mcpb.ts` das Manifest baut, und kann nicht mehr auseinanderlaufen. Geprüft unter `bun run` **und** im kompilierten Binary: beide melden die Version des Pakets. Beim Anheben einer Version ist `server.ts` damit nicht mehr anzufassen.
+
 ## [0.3.0] - 2026-07-25
 
 ### Hinzugefügt (Einrichtung ohne Terminal)

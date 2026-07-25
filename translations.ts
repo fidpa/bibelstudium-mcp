@@ -8,11 +8,28 @@
  * license statement at https://ebible.org/deu1951/copyright.htm).
  */
 
+/**
+ * `attribution` ist die Nennung, die die Lizenz beim Weitergeben verlangt, und
+ * `null` dort, wo sie keine verlangt (Public Domain). Sie steht hier und nicht
+ * nur in THIRD_PARTY_LICENSES.md, weil ein gehosteter Server die Texte
+ * öffentlich verfügbar macht: CC BY zählt genau das als „Share", und wer den
+ * Server nur über MCP benutzt, sieht keine Repository-Datei und keine Website.
+ * Der Server hängt die Nennung deshalb an jede betroffene Antwort (Feld
+ * `quellen`). Beim Ergänzen einer Übersetzung: `null` ist eine Aussage, kein
+ * vergessener Wert.
+ */
 export const TRANSLATIONS = {
-  LUT: { name: "Luther 1912", license: "Public Domain" },
-  SCH: { name: "Schlachter 1951", license: "CC BY 4.0 (Genfer Bibelgesellschaft / ebible.org)" },
-  ELB: { name: "Elberfelder 1871", license: "Public Domain" },
-  MB: { name: "Menge", license: "Public Domain" },
+  LUT: { name: "Luther 1912", license: "Public Domain", attribution: null },
+  SCH: {
+    name: "Schlachter 1951",
+    license: "CC BY 4.0 (Genfer Bibelgesellschaft / ebible.org)",
+    attribution:
+      "Die Heilige Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft " +
+      "(Geneva Bible Society), bereitgestellt unter CC BY 4.0, " +
+      "https://ebible.org/deu1951/copyright.htm",
+  },
+  ELB: { name: "Elberfelder 1871", license: "Public Domain", attribution: null },
+  MB: { name: "Menge", license: "Public Domain", attribution: null },
 } as const;
 
 export type TranslationCode = keyof typeof TRANSLATIONS;

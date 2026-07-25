@@ -148,6 +148,48 @@ Schnelle Datenprüfungen laufen direkt über `sqlite3 data/bible.db "…"`.
   startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne `MCP_HTTP_HOST` an
   `127.0.0.1`. Diese Vorgabe nicht aufweichen: sie ist der Unterschied zwischen
   „lokal testbar" und „versehentlich im Netz".
+- **Namensnennung gehört an die Antwort, nicht nur ins Repository.** Vier der
+  Datenquellen stehen unter CC BY, zwei unter CC BY-SA. CC 4.0 zählt
+  öffentliches Verfügbarmachen ausdrücklich als „Share", und wer den Server über
+  MCP benutzt, sieht weder `THIRD_PARTY_LICENSES.md` noch eine Website. Jede
+  Antwort trägt deshalb `quellen`. Zwei Regeln dazu: Die Lizenzangabe liegt
+  **bei den Daten**, die sie betrifft (Editionen in `EDITION_META` neben
+  `label`, Übersetzungen in `translations.ts`), damit Text und Lizenz nicht
+  auseinanderlaufen. Und genannt wird nur, was die Antwort **tatsächlich benutzt
+  hat**: eine behauptete Attribution, die nicht einschlägig ist, ist derselbe
+  Fehler wie eine weggelassene. `nennung: null` heißt „Lizenz verlangt keine"
+  und ist eine Aussage, kein vergessener Wert. Bei einer neuen Datenquelle
+  gehört ihre Quellenangabe in denselben Zug wie ihr Download-Skript.
+- **Eine Zustandsprüfung, die den Startwert wiederholt, prüft nichts.**
+  `/health` las zunächst `dataMissing`, und das wird einmal beim Booten
+  ermittelt: Eine im Betrieb beschädigte Datei hätte weiter `200 ok` gemeldet.
+  Jetzt läuft eine Zeile auf `books`, und das ist gemessen: eine im laufenden
+  Betrieb zerstörte Datenbank kippt die Antwort auf 503 mit „file is not a
+  database". Bei neuen Zustandsanzeigen dieselbe Frage stellen, ob sie den
+  Zustand oder eine Erinnerung daran melden.
+- **Der Transport entscheidet mit, welche Werkzeuge es gibt.** `bible_setup`
+  schreibt: es lädt rund 145 MB von acht fremden Quellen und ersetzt die
+  Datenbankdatei. Über stdio gehört das dem, der den Prozess gestartet hat; an
+  einem erreichbaren Endpunkt gehört es Fremden, und der Zustand, der es
+  freischaltet (keine Datenbank), ist genau der, den ein Ausfall herstellt.
+  `HTTP_MODE` (aus `MCP_HTTP_PORT` abgeleitet, damit es dem tatsächlich
+  gewählten Transport nicht widersprechen kann) nimmt es deshalb aus
+  `tools/list` **und** der Handler lehnt es ab: eine ungelistete
+  Werkzeugbezeichnung lässt sich weiterhin schicken, die Liste ist kein Schutz.
+  Wer künftig ein schreibendes oder netzendes Werkzeug ergänzt, entscheidet
+  dieselbe Frage mit, und dann an beiden Stellen. Gegenstück für die
+  Betreiberseite ist `server.ts --setup`; ohne das bräuchte ein Endpunkt Bun und
+  ein Checkout auf dem Zielrechner, was das eigenständige Binary gerade
+  vermeidet. Gemessen am 25.07.2026 gegen frische Prozesse in drei Fällen
+  (HTTP mit Datenbank, HTTP ohne, stdio ohne).
+- **Fehlermeldungen haben im HTTP-Modus einen anderen Adressaten.** Die Sperre
+  der sechs Werkzeuge verwies ohne Datenbank darauf, den Nutzer zu fragen und
+  `bible_setup` aufzurufen. An einem Endpunkt benennt das ein Werkzeug, das
+  dort nicht existiert und dem Aufrufer nicht zur Verfügung steht. Über stdio
+  ist der Aufrufer der Betreiber, über HTTP ein Fremder. Bei neuen Meldungen,
+  die zu einer Handlung auffordern, prüfen, ob der Aufrufer sie überhaupt
+  ausführen kann; wenn nicht, sagen, dass es serverseitig liegt, statt ihn in
+  eine Wiederholung zu schicken.
 - **`mcpb/manifest.json` ist die dritte Doku-Stelle, und die einzige, die ein
   Endnutzer sicher liest.** `long_description` und die `user_config`-Texte
   stehen im Installationsdialog von Claude Desktop. Beim Umbau auf
@@ -194,12 +236,16 @@ Schnelle Datenprüfungen laufen direkt über `sqlite3 data/bible.db "…"`.
   Aufbaus auf `console.error` um. Wer weiteren Code in den Server importiert,
   prüft ihn zuerst auf `console.log` — die Regel gilt nicht nur für `server.ts`
   selbst, sondern für alles, was in dessen Prozess läuft.
-- **Der Datenbankpfad steht in `db-path.ts`, nirgends sonst.** Server und
-  Skripte müssen dieselbe Datei meinen, sonst lädt `bible_setup` dorthin, wo
-  der Server nie nachsieht. Ein kompilierter Lauf legt die Datenbank in den
-  Benutzerordner, **nicht** neben das Programm: Das Verzeichnis einer
-  installierten Erweiterung wird beim Update ersetzt. Bei neuen Skripten den
-  Pfad importieren, nicht erneut auflösen.
+- **Jede Angabe hat genau einen Ort, und beide Male ist das schon schiefgegangen.**
+  Der **Datenbankpfad** steht in `db-path.ts`: Server und Skripte müssen dieselbe
+  Datei meinen, sonst lädt `bible_setup` dorthin, wo der Server nie nachsieht.
+  Ein kompilierter Lauf legt die Datenbank in den Benutzerordner, **nicht** neben
+  das Programm, denn das Verzeichnis einer installierten Erweiterung wird beim
+  Update ersetzt. Die **Version** steht in `package.json`: Der v0.3.0-Commit hob
+  die daneben gepflegte Zahl in `server.ts` auf 0.2.2 an, während das Paket auf
+  0.3.0 ging, und jeder Client sah im `initialize` eine Version, die es als
+  Release nicht gibt. Beides wird jetzt importiert, nicht erneut hingeschrieben.
+  Bei neuen Skripten und neuen Releases genauso verfahren.
 - **Bibeltexte kommen als statischer Export, nicht kapitelweise.** `download.ts`
   lief bis zum 25.07.2026 über `/get-text/<code>/<buch>/<kapitel>/` und stellte
   damit 4760 Anfragen, obwohl die API-Dokumentation genau davon abrät („Please
