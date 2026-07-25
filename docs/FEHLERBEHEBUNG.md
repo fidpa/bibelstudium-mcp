@@ -10,14 +10,14 @@ MCP-Client stehen sie im Server-Log.
 
 ```
 Failed to open Bible database at …/data/bible.db: SQLiteError: unable to open database file
-Run 'bun run download.ts' first to download the data.
+Run 'bun run download' first to download the data.
 ```
 
 **Ursache**: Es gibt noch keine Datenbank. Das Repository liefert bewusst keine
 mit (siehe README § Bekannte Grenzen).
 
 **Behebung**: Den Datenaufbau aus dem Schnellstart durchlaufen lassen, beginnend
-mit `bun run download.ts`.
+mit `bun run download`.
 
 ### `Bible database is incomplete (missing tables: …)`
 
@@ -25,7 +25,7 @@ mit `bun run download.ts`.
 nach einem abgebrochenen ersten Durchlauf oder wenn eine leere Datei angelegt
 wurde.
 
-**Behebung**: `bun run download.ts` erneut ausführen. Das Skript baut die
+**Behebung**: `bun run download` erneut ausführen. Das Skript baut die
 Übersetzungen vollständig neu auf; bereits vorhandene Zusatzdaten (Grundtext,
 Lexika, Querverweise) bleiben erhalten.
 
@@ -33,16 +33,16 @@ Lexika, Querverweise) bleiben erhalten.
 
 **Ursache**: Eine Datenbank aus einer Fassung vor der Mehr-Übersetzungs-Umstellung.
 
-**Behebung**: `bun run download.ts` — die Migration greift automatisch und lädt
+**Behebung**: `bun run download` — die Migration greift automatisch und lädt
 die Verse neu.
 
 ### Server startet, aber ein Werkzeug meldet fehlende Daten
 
 | Meldung | Fehlendes Skript |
 |---------|------------------|
-| `Urtext-Daten nicht geladen…` | `bun run download-byz.ts` (bzw. `-morph`, `-tr`, `-heb`) |
-| `Volltext-Index nicht gebaut…` | `bun run build-fts.ts` |
-| `Mindestens zwei NT-Editionen nötig…` | mindestens zwei von `download-byz.ts` / `download-morph.ts` / `download-tr.ts` |
+| `Urtext-Daten nicht geladen…` | `bun run download:byz` (bzw. `download:sblgnt`, `download:tr`, `download:heb`) |
+| `Volltext-Index nicht gebaut…` | `bun run build:fts` |
+| `Mindestens zwei NT-Editionen nötig…` | mindestens zwei von `download:byz` / `download:sblgnt` / `download:tr` |
 
 Der Server startet absichtlich auch mit unvollständigen Daten: Alles, wofür
 Daten vorhanden sind, funktioniert; die übrigen Werkzeuge melden gezielt, welches

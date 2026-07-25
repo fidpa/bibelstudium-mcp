@@ -42,7 +42,7 @@ try {
   console.error(`Bible DB loaded: ${DB_PATH}`);
 } catch (error) {
   console.error(`Failed to open Bible database at ${DB_PATH}: ${error}`);
-  console.error("Run 'bun run download.ts' first to download the data.");
+  console.error("Run 'bun run download' first to download the data.");
   process.exit(1);
 }
 
@@ -59,7 +59,7 @@ try {
   if (missing.length > 0) {
     console.error(
       `Bible database is incomplete (missing tables: ${missing.join(", ")}). ` +
-        "Run 'bun run download.ts' to rebuild it."
+        "Run 'bun run download' to rebuild it."
     );
     process.exit(1);
   }
@@ -70,7 +70,7 @@ try {
   if (!verseCols.includes("translation")) {
     console.error(
       "The verses table has no 'translation' column (old database layout). " +
-        "Run 'bun run download.ts' to rebuild it."
+        "Run 'bun run download' to rebuild it."
     );
     process.exit(1);
   }
@@ -873,7 +873,7 @@ function requireTranslation(input: unknown): { code: TranslationCode } | { error
     return {
       error:
         `Übersetzung "${code}" (${TRANSLATIONS[code].name}) ist nicht geladen. ` +
-        `Bitte 'bun run download.ts ${code}' ausführen. Geladen: ` +
+        `Bitte 'bun run download ${code}' ausführen. Geladen: ` +
         `${[...availableTranslations].join(", ") || "keine"}.`,
     };
   }
@@ -1089,7 +1089,7 @@ function crossCheckVariant(
 const server = new Server(
   {
     name: "bibelstudium-mcp",
-    version: "0.2.0",
+    version: "0.2.1",
   },
   {
     capabilities: {
@@ -1580,8 +1580,8 @@ function handleOriginal(args: {
 }) {
   if (!stmtOriginal || availableEditions.size === 0) {
     return errorResult(
-      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' " +
-        "(und optional 'bun run download-morph.ts') ausführen."
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
+        "(und optional 'bun run download:sblgnt') ausführen."
     );
   }
 
@@ -1630,7 +1630,7 @@ function handleOriginal(args: {
     return errorResult(
       `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}. ` +
         (edition === "wlc"
-          ? "Für das AT bitte 'bun run download-heb.ts' ausführen."
+          ? "Für das AT bitte 'bun run download:heb' ausführen."
           : "")
     );
   }
@@ -1691,7 +1691,7 @@ function handleCrossrefs(args: {
 }) {
   if (!stmtXrefs) {
     return errorResult(
-      "Querverweis-Daten nicht geladen. Bitte 'bun run download-crossrefs.ts' ausführen."
+      "Querverweis-Daten nicht geladen. Bitte 'bun run download:crossrefs' ausführen."
     );
   }
   const resolved = requireTranslation(args.translation);
@@ -1800,8 +1800,8 @@ function handleConcordance(args: {
 }) {
   if (!stmtConcordStrong || !stmtConcordLemma || availableEditions.size === 0) {
     return errorResult(
-      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' " +
-        "(und für das AT 'bun run download-heb.ts') ausführen."
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
+        "(und für das AT 'bun run download:heb') ausführen."
     );
   }
 
@@ -1947,7 +1947,7 @@ function handleSearch(args: {
 }) {
   if (!stmtSearch || !stmtSearchBook || !stmtSearchCount || !stmtSearchCountBook) {
     return errorResult(
-      "Volltext-Index nicht gebaut. Bitte 'bun run build-fts.ts' ausführen."
+      "Volltext-Index nicht gebaut. Bitte 'bun run build:fts' ausführen."
     );
   }
   const resolved = requireTranslation(args.translation);
@@ -2047,7 +2047,7 @@ function handleSearch(args: {
 function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknown }) {
   if (!stmtOriginal || availableEditions.size === 0) {
     return errorResult(
-      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download-byz.ts' ausführen."
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' ausführen."
     );
   }
 

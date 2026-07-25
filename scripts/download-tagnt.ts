@@ -28,7 +28,7 @@ const FILES = [
   "TAGNT%20Mat-Jhn%20-%20Translators%20Amalgamated%20Greek%20NT%20-%20STEPBible.org%20CC-BY.txt",
   "TAGNT%20Act-Rev%20-%20Translators%20Amalgamated%20Greek%20NT%20-%20STEPBible.org%20CC-BY.txt",
 ] as const;
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 // TAGNT book abbreviation → bolls.life book_id (40–66).
 const BOOKS: Record<string, number> = {

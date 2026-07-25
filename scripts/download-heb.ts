@@ -36,7 +36,7 @@ const RAW_BASE =
   "https://raw.githubusercontent.com/openscriptures/morphhb/master/wlc";
 const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 120;
 
 // OSIS book name → bolls.life book_id (1–39, Protestant OT order).

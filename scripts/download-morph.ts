@@ -27,7 +27,7 @@ import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
 const RAW_BASE = "https://raw.githubusercontent.com/morphgnt/sblgnt/master";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 150;
 
 // MorphGNT filenames. Internal 6-digit code: book 01=Matthew … 27=Rev;

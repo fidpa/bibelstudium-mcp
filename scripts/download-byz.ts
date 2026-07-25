@@ -29,7 +29,7 @@ const CSV_BASE =
   "https://raw.githubusercontent.com/byztxt/byzantine-majority-text/master/csv-unicode/strongs/with-parsing";
 const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 120;
 
 // Byzantine CSV filename (book abbreviation) → bolls.life book_id (40–66).

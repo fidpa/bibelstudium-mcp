@@ -25,7 +25,7 @@ import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
 const ZIP_URL = "https://a.openbible.info/data/cross-references.zip";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 // OSIS book abbreviation → bolls.life book_id (1–66). The OT part matches the
 // names used by morphhb (see download-heb.ts); NT names per OSIS standard.

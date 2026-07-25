@@ -6,6 +6,13 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.2.1] - 2026-07-25
+
+### Geändert
+
+- Repository-Wurzel aufgeräumt: die neun Datenaufbau-Skripte und ihre Helfer (`schema.ts`, `atomic-db.ts`, `provenance.ts`, `aliases.ts`) liegen jetzt unter `scripts/`. Im Root bleiben nur `server.ts` und `translations.ts` — der Schnitt folgt der Laufzeitgrenze: `server.ts` importiert allein `translations.ts`, alles unter `scripts/` läuft ausschließlich beim Datenaufbau. Für Nutzer ändert sich nichts an den Kommandos.
+- Dokumentation und Fehlermeldungen des Servers nennen die `package.json`-Aliase (`bun run download:byz`) statt der Dateipfade. Die Aliase gab es schon; sie bleiben gültig, wo auch immer die Dateien liegen. `bun run download` akzeptiert weiterhin ein Übersetzungskürzel (`bun run download SCH`).
+
 ## [0.2.0] - 2026-07-25
 
 ### Hinzugefügt

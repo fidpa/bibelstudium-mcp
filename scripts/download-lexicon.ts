@@ -39,7 +39,7 @@ const STEP_LEXICONS: ReadonlyArray<readonly [prefix: "G" | "H", url: string, inc
   ["G", STEP_BASE + "TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt", true],
   ["H", STEP_BASE + "TBESH%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Hebrew%20-%20STEPBible.org%20CC%20BY.txt", false],
 ];
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 interface DictEntry {
   readonly lemma?: string;

@@ -23,17 +23,20 @@ die aktuelle DB, ergänzt seine Daten und tauscht atomar per `rename`; zwei
 parallele Läufe überschreiben sich, der letzte `rename` gewinnt):
 
 ```bash
-bun run download.ts            # 4 deutsche Übersetzungen (verses) — MUSS zuerst laufen
-bun run download.ts SCH        # …oder eine einzelne Übersetzung (LUT/SCH/ELB/MB)
-bun run download-byz.ts        # Edition 'byzantine'
-bun run download-morph.ts      # Edition 'sblgnt'
-bun run download-tr.ts         # Edition 'tr'
-bun run download-heb.ts        # Edition 'wlc'
-bun run download-crossrefs.ts  # Tabelle cross_references (OpenBible.info)
-bun run download-tagnt.ts      # Tabelle tagnt_words (STEPBible-Bezeugung)
-bun run download-lexicon.ts    # Tabelle strong_defs (Strong + STEPBible)
-bun run build-fts.ts           # FTS-Index — nur nötig, wenn download.ts nicht lief
+bun run download            # 4 deutsche Übersetzungen (verses) — MUSS zuerst laufen
+bun run download SCH        # …oder eine einzelne Übersetzung (LUT/SCH/ELB/MB)
+bun run download:byz        # Edition 'byzantine'
+bun run download:sblgnt     # Edition 'sblgnt'
+bun run download:tr         # Edition 'tr'
+bun run download:heb        # Edition 'wlc'
+bun run download:crossrefs  # Tabelle cross_references (OpenBible.info)
+bun run download:tagnt      # Tabelle tagnt_words (STEPBible-Bezeugung)
+bun run download:lexicon    # Tabelle strong_defs (Strong + STEPBible)
+bun run build:fts           # FTS-Index — nur nötig, wenn download nicht lief
 ```
+
+Die Skripte liegen in `scripts/`, angesprochen werden sie über diese
+`package.json`-Aliase — der Pfad ist bewusst nicht Teil der Schnittstelle.
 
 ## Harte Vorgaben
 
@@ -61,18 +64,24 @@ bun run build-fts.ts           # FTS-Index — nur nötig, wenn download.ts nich
 | Datei | Aufgabe |
 |-------|---------|
 | `server.ts` | MCP-Server: sechs Tools, drei Prompts, drei Morphologie-Dekoder, `EDITION_META`/Aliase, Testament-Routing |
-| `translations.ts` | Übersetzungs-Registry (LUT/SCH/ELB/MB), Aliase, `resolveTranslation` |
-| `schema.ts` | Schemata: `verses` (+ Migration), `original_words` (+ Migration), `cross_references`, `strong_defs` (+ Migration), `tagnt_words`, `provenance`; FTS-Neuaufbau |
-| `atomic-db.ts` | `openAtomicDb()` — schreibt auf temporäre Kopie + atomarer `rename` |
-| `provenance.ts` | `createSourceDigest()`/`writeProvenance()` — jeder Download protokolliert Quelle, Anzahl Anfragen, fortlaufende SHA-256 |
-| `download.ts` | Deutsche Übersetzungen (Tabelle `verses`) von bolls.life; `books`/`aliases` schreibt der LUT-Lauf |
-| `download-byz.ts` / `download-morph.ts` / `download-tr.ts` / `download-heb.ts` | Editionen `byzantine` / `sblgnt` / `tr` / `wlc` → `original_words` |
-| `download-crossrefs.ts` | OpenBible.info-Querverweise → `cross_references` |
-| `download-tagnt.ts` | STEPBible TAGNT (Bezeugung über acht Editionen) → `tagnt_words` |
-| `download-lexicon.ts` | Strong-Wörterbücher + STEPBible TBESG/TBESH → `strong_defs` |
-| `build-fts.ts` | FTS5-Index über `verses` → `verses_fts` |
-| `aliases.ts` | Deutsche Buchnamen/Abkürzungen → `book_id` |
+| `translations.ts` | Übersetzungs-Registry (LUT/SCH/ELB/MB), Aliase, `resolveTranslation` — die einzige Datei, die Laufzeit und Datenaufbau teilen |
+| `scripts/schema.ts` | Schemata: `verses` (+ Migration), `original_words` (+ Migration), `cross_references`, `strong_defs` (+ Migration), `tagnt_words`, `provenance`; FTS-Neuaufbau |
+| `scripts/atomic-db.ts` | `openAtomicDb()` — schreibt auf temporäre Kopie + atomarer `rename` |
+| `scripts/provenance.ts` | `createSourceDigest()`/`writeProvenance()` — jeder Download protokolliert Quelle, Anzahl Anfragen, fortlaufende SHA-256 |
+| `scripts/download.ts` | Deutsche Übersetzungen (Tabelle `verses`) von bolls.life; `books`/`aliases` schreibt der LUT-Lauf |
+| `scripts/download-byz.ts` / `-morph.ts` / `-tr.ts` / `-heb.ts` | Editionen `byzantine` / `sblgnt` / `tr` / `wlc` → `original_words` |
+| `scripts/download-crossrefs.ts` | OpenBible.info-Querverweise → `cross_references` |
+| `scripts/download-tagnt.ts` | STEPBible TAGNT (Bezeugung über acht Editionen) → `tagnt_words` |
+| `scripts/download-lexicon.ts` | Strong-Wörterbücher + STEPBible TBESG/TBESH → `strong_defs` |
+| `scripts/build-fts.ts` | FTS5-Index über `verses` → `verses_fts` |
+| `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → `book_id` |
 | `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
+
+Der Schnitt folgt der Laufzeit-Grenze: `server.ts` importiert nur
+`translations.ts`, alles unter `scripts/` läuft ausschließlich beim
+Datenaufbau. Die Skripte lösen ihren DB-Pfad relativ zur eigenen Datei auf und
+steigen dafür eine Ebene hoch (`"..", "data/bible.db"`) — beim Verschieben
+einer dieser Dateien mitziehen, sonst landet die DB still im falschen Ordner.
 
 `server.ts` ist in Abschnitte gegliedert, jeder mit einem Banner
 `// --- Titel ---` (78 Spalten). Reihenfolge: Setup, vorbereitete Statements

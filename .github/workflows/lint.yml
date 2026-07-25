@@ -50,8 +50,8 @@ jobs:
           echo "$output"
           [ "$rc" -eq 1 ] \
             || { echo "::error::expected exit 1, got $rc"; exit 1; }
-          echo "$output" | grep -q "download.ts" \
-            || { echo "::error::message does not name download.ts"; exit 1; }
+          echo "$output" | grep -q "bun run download" \
+            || { echo "::error::message does not name the download command"; exit 1; }
 
       - name: Incomplete database exits 1 and names the missing tables
         run: |

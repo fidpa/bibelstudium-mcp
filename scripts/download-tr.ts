@@ -34,7 +34,7 @@ const RAW_BASE =
   "https://raw.githubusercontent.com/byztxt/greektext-textus-receptus/master/parsed";
 const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 120;
 
 // .UTR filename → bolls.life book_id (40–66).

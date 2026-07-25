@@ -16,7 +16,7 @@ import { dirname, resolve } from "path";
 import { rebuildVersesFts } from "./schema.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 function main(): void {
   console.log("=== Full-text index (FTS5) over the German verses ===");

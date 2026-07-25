@@ -21,10 +21,10 @@ import { BOOK_ALIASES } from "./aliases.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 import { ensureVersesSchema, rebuildVersesFts } from "./schema.ts";
-import { DEFAULT_TRANSLATION, TRANSLATIONS, type TranslationCode } from "./translations.ts";
+import { DEFAULT_TRANSLATION, TRANSLATIONS, type TranslationCode } from "../translations.ts";
 
 const API_BASE = "https://bolls.life";
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 200; // Polite rate limiting between requests
 
 interface BollsBook {

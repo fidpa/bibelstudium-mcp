@@ -17,7 +17,7 @@ Für dieses Projekt und alle Beteiligten gilt unser [Verhaltenskodex](CODE_OF_CO
 3. **Installieren und Datenbank aufbauen**:
    ```bash
    bun install
-   bun run download.ts        # und die übrigen Download-Skripte, siehe README
+   bun run download        # und die übrigen Download-Skripte, siehe README
    ```
 
 ## Grundregeln

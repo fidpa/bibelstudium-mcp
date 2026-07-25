@@ -62,14 +62,14 @@ cd bibelstudium-mcp
 bun install                    # eine Laufzeit-Abhängigkeit: @modelcontextprotocol/sdk
 
 # Datenbank aufbauen — streng der Reihe nach, niemals parallel:
-bun run download.ts            # 4 deutsche Übersetzungen (~20 min) — MUSS zuerst laufen
-bun run download-byz.ts        # Griechisch: Byzantinischer Mehrheitstext (Edition 'byzantine')
-bun run download-morph.ts      # Griechisch: SBLGNT + MorphGNT (Edition 'sblgnt')
-bun run download-tr.ts         # Griechisch: Textus Receptus (Edition 'tr')
-bun run download-heb.ts        # Hebräisch: Westminster Leningrad Codex (Edition 'wlc')
-bun run download-crossrefs.ts  # Querverweise (OpenBible.info)
-bun run download-tagnt.ts      # Bezeugung über acht Editionen (STEPBible TAGNT)
-bun run download-lexicon.ts    # Lexika (Strong + STEPBible-Glossen/Abbott-Smith)
+bun run download            # 4 deutsche Übersetzungen (~20 min) — MUSS zuerst laufen
+bun run download:byz        # Griechisch: Byzantinischer Mehrheitstext (Edition 'byzantine')
+bun run download:sblgnt     # Griechisch: SBLGNT + MorphGNT (Edition 'sblgnt')
+bun run download:tr         # Griechisch: Textus Receptus (Edition 'tr')
+bun run download:heb        # Hebräisch: Westminster Leningrad Codex (Edition 'wlc')
+bun run download:crossrefs  # Querverweise (OpenBible.info)
+bun run download:tagnt      # Bezeugung über acht Editionen (STEPBible TAGNT)
+bun run download:lexicon    # Lexika (Strong + STEPBible-Glossen/Abbott-Smith)
 ```
 
 Warum sequentiell? Jedes Skript arbeitet auf einer Kopie der aktuellen Datenbank und tauscht sie am Ende atomar aus. Laufen zwei gleichzeitig, gewinnt der letzte Austausch — die Daten des anderen sind weg.
