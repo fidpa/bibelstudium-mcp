@@ -4,8 +4,14 @@
  * local SQLite database (table `verses`, one row set per translation).
  *
  * Run:
- *   bun run download.ts          # all four translations (~16 min)
+ *   bun run download.ts          # all four translations (seconds)
  *   bun run download.ts LUT      # a single translation (LUT/SCH/ELB/MB)
+ *
+ * Each translation is fetched as one static JSON export. The API documentation
+ * asks explicitly not to walk `get-text` chapter by chapter ("Please do not do
+ * that! It is not what these endpoints are for, and it may cause performance
+ * issues") and points to these exports instead; the whole Bible arrives in a
+ * single ~7 MB request rather than 1190 of them.
  *
  * All supported translations are freely licensed (see translations.ts and
  * THIRD_PARTY_LICENSES.md). Schlachter 1951 is CC BY 4.0 — © Genfer
@@ -18,14 +24,14 @@
 
 import { dirname, resolve } from "path";
 import { BOOK_ALIASES } from "./aliases.ts";
+import { DB_PATH } from "../db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 import { ensureVersesSchema, rebuildVersesFts } from "./schema.ts";
 import { DEFAULT_TRANSLATION, TRANSLATIONS, type TranslationCode } from "../translations.ts";
 
 const API_BASE = "https://bolls.life";
-const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
-const DELAY_MS = 200; // Polite rate limiting between requests
+const STATIC_BASE = `${API_BASE}/static/translations`;
 
 interface BollsBook {
   readonly bookid: number;
@@ -33,8 +39,10 @@ interface BollsBook {
   readonly chapters: number;
 }
 
+/** One row of a static translation export: the whole Bible in a flat list. */
 interface BollsVerse {
-  readonly pk: number;
+  readonly book: number;
+  readonly chapter: number;
   readonly verse: number;
   readonly text: string;
 }
@@ -58,18 +66,27 @@ function normalizeBookName(name: string): string {
   return name.replace(/(\S)\(/g, "$1 (");
 }
 
-async function fetchJson<T>(path: string, retries = 3): Promise<T> {
-  const url = `${API_BASE}${path}`;
-
+/**
+ * Fetch and parse JSON, returning the raw body alongside the parsed value.
+ *
+ * The raw text feeds the provenance digest, so the checksum covers the bytes
+ * actually received rather than a re-serialization of them.
+ */
+async function fetchJsonWithSource<T>(
+  url: string,
+  retries = 3
+): Promise<{ readonly data: T; readonly raw: string }> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`API error ${response.status}: ${url}`);
       }
-      // Await inside the try so JSON parse errors (truncated body, HTML error
-      // page) are retried like network errors instead of escaping unhandled.
-      return (await response.json()) as T;
+      // Read and parse inside the try so JSON parse errors (truncated body,
+      // HTML error page) are retried like network errors instead of escaping
+      // unhandled.
+      const raw = await response.text();
+      return { data: JSON.parse(raw) as T, raw };
     } catch (error) {
       if (attempt === retries - 1) throw error;
       const backoff = Math.pow(2, attempt) * 1000;
@@ -79,6 +96,10 @@ async function fetchJson<T>(path: string, retries = 3): Promise<T> {
   }
 
   throw new Error(`Failed after ${retries} attempts: ${url}`);
+}
+
+async function fetchJson<T>(path: string, retries = 3): Promise<T> {
+  return (await fetchJsonWithSource<T>(`${API_BASE}${path}`, retries)).data;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -112,16 +133,61 @@ async function fetchBooks(code: TranslationCode): Promise<BollsBook[]> {
   return books;
 }
 
+/**
+ * Validate a static translation export and keep the canonical books.
+ *
+ * The export is one flat list for the whole Bible, so a malformed entry has no
+ * surrounding request to name it: the index and the offending value go into the
+ * message instead. Books beyond 66 are deuterocanonical and dropped, matching
+ * the filter in fetchBooks().
+ */
+function validateVerses(data: unknown, code: TranslationCode): BollsVerse[] {
+  if (!Array.isArray(data)) {
+    throw new Error(`Static export for ${code} is not an array — source changed?`);
+  }
+
+  const out: BollsVerse[] = [];
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i] as Record<string, unknown>;
+    if (row === null || typeof row !== "object") {
+      throw new Error(`Entry ${i} of the ${code} export is not an object`);
+    }
+    const { book, chapter, verse, text } = row;
+    if (typeof book !== "number" || typeof chapter !== "number" || typeof verse !== "number") {
+      throw new Error(
+        `Entry ${i} of the ${code} export has non-numeric book/chapter/verse: ` +
+          `${JSON.stringify({ book, chapter, verse })}`
+      );
+    }
+    if (typeof text !== "string") {
+      throw new Error(`Entry ${i} of the ${code} export has a non-string text field`);
+    }
+    if (book < 1 || book > 66) continue;
+    out.push({ book, chapter, verse, text });
+  }
+
+  if (out.length === 0) {
+    throw new Error(`Static export for ${code} contained no canonical verses`);
+  }
+  return out;
+}
+
 /** Download one translation in its own atomic DB session. */
 async function downloadTranslation(code: TranslationCode): Promise<void> {
   const meta = TRANSLATIONS[code];
   console.log(`\n=== ${meta.name} (${code}) ===`);
 
   console.log("Fetching book list...");
-  const digest = createSourceDigest(`${API_BASE} (translation ${code}, JSON re-serialized)`);
+  const digest = createSourceDigest(`${STATIC_BASE}/${code}.json (+ ${API_BASE}/get-books/${code}/)`);
   const books = await fetchBooks(code);
   digest.add(JSON.stringify(books));
   console.log(`Found ${books.length} books (validated)`);
+
+  console.log("Fetching full translation...");
+  const { data, raw } = await fetchJsonWithSource<unknown>(`${STATIC_BASE}/${code}.json`);
+  digest.add(raw);
+  const verses = validateVerses(data, code);
+  console.log(`Received ${verses.length} verses (${(raw.length / 1048576).toFixed(1)} MB)`);
 
   const { db, commit, abort } = openAtomicDb(DB_PATH);
   try {
@@ -169,40 +235,26 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
       "INSERT INTO verses (translation, book_id, chapter, verse, text) VALUES (?, ?, ?, ?, ?)"
     );
 
-    let totalVerses = 0;
-    const totalChapters = books.reduce((sum, b) => sum + b.chapters, 0);
-    let completedChapters = 0;
-
-    for (const book of books) {
-      const bookStart = totalVerses;
-
-      for (let chapter = 1; chapter <= book.chapters; chapter++) {
-        const verses = await fetchJson<BollsVerse[]>(
-          `/get-text/${code}/${book.bookid}/${chapter}/`
-        );
-        if (!Array.isArray(verses)) {
-          throw new Error(
-            `Unexpected non-array response for ${book.name} chapter ${chapter}`
-          );
-        }
-        digest.add(JSON.stringify(verses));
-
-        db.transaction(() => {
-          for (const v of verses) {
-            insertVerse.run(code, book.bookid, chapter, v.verse, stripHtml(v.text));
-            totalVerses++;
-          }
-        })();
-
-        completedChapters++;
-        await sleep(DELAY_MS);
+    // One transaction for the whole translation: the data is already in memory,
+    // so there is nothing to stream and no partial state worth keeping.
+    db.transaction(() => {
+      for (const v of verses) {
+        insertVerse.run(code, v.book, v.chapter, v.verse, stripHtml(v.text));
       }
+    })();
 
-      const bookVerses = totalVerses - bookStart;
-      const pct = ((completedChapters / totalChapters) * 100).toFixed(1);
-      console.log(
-        `  [${pct}%] ${book.name}: ${bookVerses} verses (${book.chapters} chapters)`
-      );
+    const perBook = new Map<number, number>();
+    for (const v of verses) {
+      perBook.set(v.book, (perBook.get(v.book) ?? 0) + 1);
+    }
+    for (const book of books) {
+      const n = perBook.get(book.bookid) ?? 0;
+      if (n === 0) {
+        throw new Error(
+          `No verses for "${book.name}" (book ${book.bookid}) in the ${code} export`
+        );
+      }
+      console.log(`  ${book.name}: ${n} verses (${book.chapters} chapters)`);
     }
 
     const count = db
@@ -225,8 +277,10 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  const arg = (process.argv[2] ?? "all").trim();
+export async function main(selection?: string): Promise<void> {
+  // The parameter exists for setup.ts, which calls this from inside the server
+  // where process.argv carries the client's arguments, not ours.
+  const arg = (selection ?? process.argv[2] ?? "all").trim();
   let codes: readonly TranslationCode[];
   if (arg.toLowerCase() === "all") {
     codes = Object.keys(TRANSLATIONS) as TranslationCode[];
@@ -251,7 +305,11 @@ async function main(): Promise<void> {
   console.log(`\nDatabase size: ${sizeMB} MB`);
 }
 
-main().catch((error) => {
-  console.error("Download failed:", error);
-  process.exit(1);
-});
+// Run only when invoked directly. setup.ts imports main() so the server can
+// build the database itself; an import must not start a download.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Download failed:", error);
+    process.exit(1);
+  });
+}

@@ -6,6 +6,63 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.3.0] - 2026-07-25
+
+### Hinzugefügt (Einrichtung ohne Terminal)
+
+- **`bible_setup`: der Server baut seine Datenbank selbst.** Wer den Server über das MCPB-Bundle installiert, hat kein Terminal im Spiel und konnte die Datenbank deshalb bisher gar nicht herstellen. Der Server startet jetzt auch ohne sie: er meldet, was fehlt, bietet `bible_setup` an und sperrt die sechs Datenwerkzeuge mit einem Hinweis darauf, statt sie „Buch nicht gefunden" antworten zu lassen. Nach dem Aufbau verschwindet `bible_setup` wieder aus der Werkzeugliste.
+
+  **Der Download startet nur auf ausdrückliche Bestätigung.** Ohne `bestaetigung=true` liefert das Werkzeug lediglich den Plan: Dauer, Umfang, Internetbedarf und was jeder der acht Schritte beisteuert. Es lädt rund 145 MB von acht fremden Quellen, und das gehört nicht hinter dem Rücken der Nutzerin gestartet, nur weil ein Modell nach einem Vers gefragt hat.
+
+  **In Claude Desktop durchgemessen (25.07.2026)**, im installierten Bundle mit leer gelassenem Datenbankfeld: Auf „Wie lautet Johannes 3,29?" fragte das Modell zurück, ob der Download starten solle, **statt ihn sofort auszulösen** — die Bestätigung ist nur eine Bitte an das Modell, keine Mechanik, und hielt hier stand. Nach der Zusage liefen alle acht Schritte durch, der Neustart-Hinweis wurde an den Nutzer weitergegeben statt verschluckt, und nach dem Neustart kam der Vers wortgetreu aus Luther 1912. Ein Werkzeugaufruf über rund eine Minute lief dabei ohne Timeout durch.
+
+  **Ein Teilausfall bricht nicht den ganzen Aufbau ab.** Jeder Schritt arbeitet auf einer privaten Kopie und tauscht sie atomar ein, ein Fehlschlag lässt den vorherigen Stand also unberührt. Nur der erste Schritt ist zwingend (ohne Verse gibt es keine Datenbank); scheitert einer der übrigen, laufen die restlichen weiter, und der Bericht nennt den Fehler, die dadurch fehlende Funktion und den Befehl zum Nachholen. Gemessen: acht von acht Schritten in **26 Sekunden**, und der erzeugte Verstext hat denselben SHA-256 wie eine über die Skripte gebaute Datenbank.
+
+- `bun run setup` führt dieselben acht Schritte auf der Kommandozeile aus, mit demselben Bericht.
+
+- **`db-path.ts`**: eine gemeinsame Auflösung des Datenbankpfads für Server und Skripte. Vorher löste jede Datei ihn für sich auf, was harmlos war, solange die Skripte nur aus einem Checkout liefen. Mit `bible_setup` wurde es zum Fehler: Der Server hätte `BIBLE_DB_PATH` beachtet, die von ihm aufgerufenen Skripte hätten neben ihren eigenen Quelltext geschrieben. Ein installiertes Bundle ohne eigene Angabe legt die Datenbank jetzt im Benutzerordner ab (unter macOS `~/Library/Application Support/bibelstudium-mcp/`), nicht neben dem Programm: Das Verzeichnis einer Erweiterung wird bei einem Update ersetzt, und die geladenen Daten wären stillschweigend weg.
+
+- Im Bundle ist die Angabe der Datenbank damit **optional** geworden. Wer schon eine `bible.db` hat, wählt sie weiterhin aus; wer nicht, lässt das Feld leer.
+
+### Behoben
+
+- **Ein leer gelassenes Feld im Installationsdialog machte den Aufbau unmöglich.** Claude Desktop ersetzt `${user_config.db_path}` nicht durch eine leere Zeichenkette, sondern reicht den Platzhalter wörtlich als `BIBLE_DB_PATH` durch. Der Download lief daraufhin vollständig durch und scheiterte erst beim Schreiben, mit einer SQLite-Meldung („unable to open database file"), die wie ein Netzwerkfehler klingt und auch so an den Nutzer gemeldet wurde. `db-path.ts` verwirft jetzt jeden Wert, der einen unaufgelösten `${…}`-Platzhalter enthält, und fällt auf den Benutzerordner zurück. Gemessen im installierten Bundle am 25.07.2026; danach 8 von 8 Schritten in 47 Sekunden, Datenbank im Benutzerordner, alle sechs Werkzeuge nutzbar.
+
+- **Das Bundle enthielt eine 63 MB große Blindkopie des Servers.** `bun build --compile` legt eine temporäre Kopie im Arbeitsverzeichnis ab; lief der Compiler im Staging-Ordner, wurde sie mitgepackt und verdoppelte das Bundle (121 MB statt 61 MB entpackt, 46 MB statt 23 MB gepackt). Der Compiler arbeitet jetzt in einem eigenen Verzeichnis, das vor und nach dem Lauf geleert wird.
+
+### Geändert
+
+- **`bun run download` lädt jede Übersetzung als einen statischen Export statt Kapitel für Kapitel.** Bisher lief eine Schleife über `/get-text/<code>/<buch>/<kapitel>/`: 1190 Anfragen je Übersetzung, 4760 insgesamt, mit 200 ms Zwangspause dazwischen. Genau davon rät die API-Dokumentation ausdrücklich ab („Please do not do that! It is not what these endpoints are for, and it may cause performance issues") und verweist stattdessen auf `\/static/translations/<code>.json`. Der Aufbau der vier Übersetzungen fällt damit von rund 20 Minuten auf **3,2 Sekunden**, und der Betreiber sieht statt 4760 Anfragen noch acht (vier Exporte plus vier Buchlisten).
+
+  Belegt gegen den bisherigen Stand: identischer SHA-256 über alle 124 441 Verse (`translation|book_id|chapter|verse|text`, sortiert) und über die `books`-Tabelle. Der Text ist byteweise derselbe, nur der Weg dorthin ist ein anderer.
+
+  Der Provenance-Digest hasht jetzt die tatsächlich empfangenen Bytes statt einer Neuserialisierung des geparsten JSON, und die Quellenangabe in der Tabelle `provenance` nennt die Export-URL. Bestehende Datenbanken müssen deshalb nicht neu gebaut werden, ihr Herkunftseintrag beschreibt aber den alten Weg.
+
+### Hinzugefügt
+
+- **MCPB-Bundle (`.mcpb`) für Claude Desktop**, gebaut mit `bun run build:mcpb`. Das Bundle trägt ein eigenständiges Binary aus `bun build --compile` (61 MB, gepackt 23 MB) und braucht deshalb **kein installiertes Bun**. Damit entfallen zwei dokumentierte Stolperstellen auf einmal: GUI-Anwendungen erben unter macOS die Shell-`PATH` nicht, weshalb ein blankes `"command": "bun"` mit „server disconnected" scheitert — im Bundle steht ein absoluter Pfad über `${__dirname}`; und Claude Desktop überschreibt beim Beenden die `claude_desktop_config.json` und verwirft dabei unbekannte Schlüssel, während installierte Bundles davon unberührt bleiben. Manifest-Quelle in `mcpb/manifest.json`, Build-Skript in `scripts/build-mcpb.ts`, Ergebnis unter `tmp/` (nicht versioniert).
+
+  Das Bundle enthält **nicht** die Datenbank: sie ist rund 145 MB groß, und STEPBible bittet darum, ihre Datendateien nicht weiterzuverbreiten. Der Nutzer wählt beim Installieren eine bereits gebaute `bible.db` über einen Dateiauswahldialog aus (`user_config.db_path`); Claude Desktop reicht sie als `BIBLE_DB_PATH` an den Server. Ein Bundle ersetzt damit den Einrichtungsaufwand nicht — es setzt eine aufgebaute Datenbank voraus und richtet sich an Nutzer, die diesen Schritt bereits hinter sich haben.
+
+  Ein Bundle enthält genau ein Binary und läuft deshalb auf genau einer Plattform und Architektur; `compatibility.platforms` wird aus dem Compile-Target abgeleitet statt alle drei zu behaupten. Für andere Ziele nimmt das Skript ein Target-Argument (`bun run build:mcpb bun-windows-x64`). Gebaut und geprüft wurde bisher nur `bun-darwin-arm64`.
+
+- `BIBLE_DB_PATH` überschreibt den Pfad zur Datenbank. Ohne die Variable bleibt es beim bisherigen Verhalten (`data/bible.db` neben dem Skript). Ein gesetzter, aber leerer Wert zählt als nicht gesetzt — ein im Installationsdialog leer gelassenes Feld erreicht den Server als leere Zeichenkette und liefe sonst als Pfad in einen nackten SQLite-Fehler. Nötig wurde die Variable durch das Bundle: in einem `bun build --compile`-Binary zeigt `import.meta.path` in Buns virtuelles Dateisystem, sodass die bisherige skriptrelative Auflösung dort `/$bunfs/root/data/bible.db` ergab und der Server nicht startete. Kompilierte Läufe suchen jetzt neben dem Binary; erkannt wird der Fall daran, dass das virtuelle Verzeichnis auf der Platte nicht existiert (gemessen), nicht an einem fest verdrahteten Bun-Pfad.
+
+## [0.2.2] - 2026-07-25
+
+### Hinzugefügt
+
+- Alle sechs Werkzeuge tragen jetzt `annotations: { readOnlyHint: true, openWorldHint: false }`. Beide Angaben sind sachlich richtig — jedes Werkzeug liest ausschließlich aus der lokalen, read-only geöffneten SQLite-Datei, ohne Schreibzugriff, Seiteneffekte oder Netzwerk — und beide weichen vom Vorgabewert der Spezifikation ab (`readOnlyHint` sonst `false`, `openWorldHint` sonst `true`). `destructiveHint` und `idempotentHint` bleiben bewusst weg: das Schema definiert sie als nur dann bedeutsam, wenn `readOnlyHint` `false` ist. Rein additiv, keine bestehende Ausgabe ändert sich. Ob ein bestimmter Client die Angaben sichtbar auswertet, ist damit nicht behauptet.
+
+- **HTTP-Transport (Streamable HTTP), optional über `MCP_HTTP_PORT`.** Ohne die Variable spricht der Server wie bisher stdio; ist sie gesetzt, lauscht er zusätzlich auf `/mcp` und beantwortet `/health`. Gebunden wird standardmäßig an `127.0.0.1` — Erreichbarkeit von außen muss über `MCP_HTTP_HOST` ausdrücklich gewollt sein, und der Server warnt dann auf stderr. Der Modus arbeitet **zustandslos**: jede Anfrage erhält eine eigene Serverinstanz (`createServer()`), Datenbank und vorbereitete Statements bleiben geteilt. Sitzungen brächten diesem Server nichts, weil er keine Benachrichtigungen schiebt und nichts fortzusetzen hat; über 1200 Anfragen gemessen bleibt der Speicher stabil. Gesetzt werden CORS-Kopfzeilen (`access-control-allow-origin: *`, Sitzungs-ID als `expose-headers`) und `OPTIONS` wird beantwortet, damit auch browserbasierte Clients den Endpunkt nutzen können; die Origin-Prüfung bleibt davon unberührt und weist fremde Herkunft weiterhin mit 403 ab. Damit ist der Server für Clients nutzbar, die keinen Kindprozess starten können. Voraussetzung fürs Hosting sind TLS und Zugriffsschutz davor; beides bringt der Server nicht mit.
+- `docs/anweisungen/claude-desktop.txt`: fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop. Ob ein Werkzeug aufgerufen und wie sein Ergebnis wiedergegeben wird, entscheidet der Client; der Server kann es nur anbieten. Die Anweisungen adressieren die Punkte, an denen Modelle im Ursprungs-Repo messbar danebenlagen: geglättete Zitate, selbst gezählte statt abgelesene Zahlen, übergangene Vorbehalte, angeschnittene mehrversige Zitate. Auf die Datenlage dieses Repos zugeschnitten — vier Übersetzungen mit eigenen Trefferzahlen, Klammer-Einschübe nur in der Menge-Übersetzung (137 Verse), keine Fußnotenziffern. Im README verlinkt.
+- `bun run test` (`scripts/test-golden.ts`): Regressionstest für die Serverkorrektheit. Startet einen frischen Serverprozess, fährt 15 Werkzeugaufrufe über stdio und prüft 58 Zusicherungen — Grenzwertmeldungen, Werkzeug-Annotationen, Buchauflösung, Klammerhinweise, Comma Johanneum, TAGNT-Quellenkonflikt, hebräische Morphologie, Treffer- gegen Vorkommenszahlen, `verse_einzeln`. Braucht eine gebaute Datenbank und läuft deshalb nicht in der CI; lokal nach jeder Änderung an `server.ts` aufzurufen.
+- `bible_lookup`, `bible_crossrefs` und `bible_search` weisen auf Wörter in eckigen Klammern hin, sobald welche in der Ausgabe stehen. Menge setzt erklärende Einschübe so (137 Verse; die drei anderen Übersetzungen verwenden keine). Die Klammern gehören zum Wortlaut der Übersetzung: ohne sie liest sich ein Einschub der Ausgabe wie gewöhnlicher Text. Gemessen im Ursprungs-Repo am 25.07.2026 an einem Vers mit solchen Klammern — ein Client, der das Werkzeug nachweislich aufgerufen hatte, entfernte sie beim Zitieren. Der Hinweis nennt bewusst kein Beispielwort.
+
+### Behoben
+
+- `bible_original`, `bible_crossrefs` und `bible_compare` wiesen Kapitel- und Versnummern außerhalb des gültigen Bereichs mit „`'verse' must be a positive integer`" zurück — einer Bedingung, die die Eingabe erfüllt. Bei `verse=999` ist 999 sehr wohl eine positive Ganzzahl; verletzt war die Obergrenze 200. Sechs Meldungen in drei Handlern nennen jetzt die tatsächliche Grenze (`must be an integer between 1 and 200` bzw. `… 1 and 150`), wie `bible_lookup` es bereits tat. Grenzen und Meldungstexte liegen dafür in gemeinsamen Konstanten (`MAX_CHAPTER`, `MAX_VERSE`, `chapterOutOfRange`, `verseOutOfRange`), damit sie nicht erneut auseinanderlaufen. Belegt gegen einen Golden-Snapshot aus 20 stdio-Aufrufen: außer den neun beabsichtigten Meldungen und den sechs Annotationsblöcken ist jede Antwort byteweise unverändert.
+
 ## [0.2.1] - 2026-07-25
 
 ### Geändert

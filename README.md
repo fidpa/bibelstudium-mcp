@@ -34,11 +34,10 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 
 ## Bekannte Grenzen
 
-> **WICHTIG**: Dieses Repository liefert **keine Datenbank** mit. Der erste Aufbau
-> lädt alle Daten von den Originalquellen (~20–25 Minuten, ~145 MB fertige
-> Datenbank). Das ist Absicht: STEPBible bittet darum, ihre Datendateien nicht
-> weiterzuverbreiten — und die Download-Skripte plus Herkunftstabelle machen den
-> Aufbau reproduzierbar und überprüfbar.
+> **WICHTIG**: Die Datenbank wird nicht mitgeliefert, sondern einmalig von den
+> Originalquellen geladen (rund 30 Sekunden, ~145 MB fertige Datenbank). Das ist
+> Absicht, die Gründe stehen unter [Designentscheidungen](#designentscheidungen).
+> Nötig ist dafür kein Terminal: Der Server kann den Aufbau selbst übernehmen.
 >
 > - Die **Lexikondaten** (Strong, Abbott-Smith, Glossen) sind **englisch** — ein frei lizenziertes deutsches Lexikon vergleichbarer Tiefe existiert nicht
 > - Die NT-Voreinstellung ist der **Byzantinische Mehrheitstext** — eine dokumentierte redaktionelle Entscheidung, keine Aussage über den Forschungskonsens; SBLGNT (kritisch) und Textus Receptus sind einen Parameter entfernt
@@ -47,12 +46,14 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 
 ## Voraussetzungen
 
-| Anforderung | Zweck |
-|-------------|-------|
-| [Bun](https://bun.sh/) 1.2+ | Führt TypeScript direkt aus, SQLite eingebaut — kein Build-Schritt, kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert |
-| `unzip` | Für den Querverweis-Download. Auf macOS vorinstalliert, in minimalen Linux-Images nicht (`sudo apt install unzip`) |
-| ~1 GB freier Speicher | ~145 MB fertige Datenbank plus temporäre Kopie beim Aufbau |
-| Internetzugang | Nur für den einmaligen Datenaufbau — danach läuft der Server vollständig offline |
+Für **Claude Desktop** genügt das fertige Bundle (siehe [unten](#claude-desktop-bundle-statt-konfigurationsdatei)): Es bringt die Laufzeit mit, Bun muss nicht installiert sein.
+
+| Anforderung | Gilt für | Zweck |
+|-------------|----------|-------|
+| [Bun](https://bun.sh/) 1.2+ | Betrieb aus dem Repository | Führt TypeScript direkt aus, SQLite eingebaut — kein Build-Schritt, kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert |
+| `unzip` | beide Wege | Für den Querverweis-Download. Auf macOS vorinstalliert, in minimalen Linux-Images nicht (`sudo apt install unzip`). Fehlt es, scheitert nur dieser eine Schritt; der Rest der Datenbank entsteht trotzdem |
+| ~1 GB freier Speicher | beide Wege | ~145 MB fertige Datenbank plus temporäre Kopie beim Aufbau |
+| Internetzugang | beide Wege | Nur für den einmaligen Datenaufbau — danach läuft der Server vollständig offline |
 
 ## Schnellstart
 
@@ -61,8 +62,11 @@ git clone https://github.com/fidpa/bibelstudium-mcp.git
 cd bibelstudium-mcp
 bun install                    # eine Laufzeit-Abhängigkeit: @modelcontextprotocol/sdk
 
-# Datenbank aufbauen — streng der Reihe nach, niemals parallel:
-bun run download            # 4 deutsche Übersetzungen (~20 min) — MUSS zuerst laufen
+# Datenbank aufbauen — alle acht Schritte auf einmal (~30 s):
+bun run setup
+
+# …oder einzeln, streng der Reihe nach, niemals parallel:
+bun run download            # 4 deutsche Übersetzungen (~5 s) — MUSS zuerst laufen
 bun run download:byz        # Griechisch: Byzantinischer Mehrheitstext (Edition 'byzantine')
 bun run download:sblgnt     # Griechisch: SBLGNT + MorphGNT (Edition 'sblgnt')
 bun run download:tr         # Griechisch: Textus Receptus (Edition 'tr')
@@ -87,7 +91,42 @@ Server im MCP-Client registrieren, z. B. `.mcp.json` für Claude Code:
 }
 ```
 
-Der Pfad zur Datenbank wird relativ zum Skript aufgelöst — das Arbeitsverzeichnis des Clients spielt keine Rolle.
+Wo die Datenbank liegt, entscheidet `db-path.ts`: `BIBLE_DB_PATH` hat Vorrang, sonst `data/bible.db` neben dem Repository, und bei einem installierten Bundle der Benutzerordner (unter macOS `~/Library/Application Support/bibelstudium-mcp/`). Das Arbeitsverzeichnis des Clients spielt in keinem Fall eine Rolle.
+
+### Claude Desktop: Bundle statt Konfigurationsdatei
+
+Für Claude Desktop lässt sich der Server als MCPB-Bundle installieren, statt `claude_desktop_config.json` von Hand zu bearbeiten:
+
+```bash
+bun run build:mcpb          # erzeugt tmp/bibelstudium-mcp-<version>-<plattform>.mcpb
+```
+
+Installation über *Einstellungen › Extensions › Advanced settings › Extension Developer › Install Extension…*.
+
+Der Installationsdialog fragt nach einer vorhandenen `bible.db`. **Dieses Feld darf leer bleiben** — der Server lädt die Daten dann selbst: Bei der ersten Bibelfrage meldet er, dass sie fehlen, und fragt, ob er sie holen soll. Nach einer Bestätigung lädt er rund 145 MB von den Originalquellen (gemessen: 26 Sekunden) und legt sie im Benutzerordner ab. Danach ist einmal ein Neustart von Claude Desktop nötig, weil der laufende Serverprozess die neue Datei nicht mehr aufgreifen kann.
+
+Damit braucht es für die Einrichtung **kein Terminal, kein Bun und keine Skripte**. Wer die Datenbank bereits gebaut hat, trägt sie stattdessen im Dialog ein und überspringt den Download.
+
+Fällt eine der acht Quellen aus, laufen die übrigen trotzdem durch: Der Bericht nennt dann, welcher Schritt scheiterte, welche Funktion dadurch fehlt und mit welchem Befehl er sich nachholen lässt. Nur die deutschen Übersetzungen sind zwingend, ohne sie entsteht keine Datenbank.
+
+Zwei Vorteile gegenüber dem JSON-Weg: Das Bundle bringt ein eigenständiges Binary mit, der Rechner braucht kein installiertes Bun — und es ist unempfindlich dagegen, dass Claude Desktop die Konfigurationsdatei beim Beenden zurückschreibt und unbekannte Schlüssel dabei verwirft.
+
+Ein Bundle enthält genau ein Binary und läuft deshalb nur auf der Plattform und Architektur, für die es gebaut wurde. Für andere Ziele: `bun run build:mcpb bun-windows-x64` (bekannte Ziele nennt das Skript bei einer unbekannten Eingabe). Das Packen selbst nutzt `npx @anthropic-ai/mcpb`, braucht also einmalig Node.
+
+Wer einen Client bedienen muss, der keinen Kindprozess starten kann, schaltet den HTTP-Transport frei:
+
+```bash
+MCP_HTTP_PORT=8931 bun run server.ts     # /mcp und /health, gebunden an 127.0.0.1
+```
+
+Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor — der Server bringt beides nicht mit.
+
+**Empfohlen:** In Claude Desktop zusätzlich den Text aus
+[docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) unter
+*Einstellungen › Anweisungen für Claude* einsetzen. Ob ein Werkzeug aufgerufen und
+wie sein Ergebnis wiedergegeben wird, entscheidet der Client — der Server kann es
+nur anbieten. Die Anweisungen schärfen Zitiertreue, Zahlenangaben und den Umgang
+mit den Vorbehalten des Servers.
 
 ## Verwendung
 
@@ -148,6 +187,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
+| `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur**, solange die Datenbank fehlt, und lädt erst nach ausdrücklicher Bestätigung |
 
 ## Prompts
 
@@ -187,20 +227,28 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 |-------|---------|
 | `server.ts` | MCP-Server: sechs Werkzeuge, drei Prompts, drei Morphologie-Dekoder, Editions-/Testament-Routing |
 | `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
-| `schema.ts` | Tabellen-Schemata + FTS-Neuaufbau |
-| `atomic-db.ts` | Atomare Datenbank-Schreibvorgänge (temporäre Kopie + Umbenennen) — sicher bei parallelen Lesern |
-| `provenance.ts` | Quellen-/Prüfsummen-Protokoll für jeden Download |
-| `aliases.ts` | Deutsche Buchnamen/Abkürzungen → Buch-IDs |
-| `download*.ts` | Ein Skript je Datenquelle, additiv, atomarer Austausch |
+| `db-path.ts` | Wo die Datenbank liegt — geteilt von Server und Datenaufbau |
+| `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
+| `scripts/schema.ts` | Tabellen-Schemata + FTS-Neuaufbau |
+| `scripts/atomic-db.ts` | Atomare Datenbank-Schreibvorgänge (temporäre Kopie + Umbenennen) — sicher bei parallelen Lesern |
+| `scripts/provenance.ts` | Quellen-/Prüfsummen-Protokoll für jeden Download |
+| `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → Buch-IDs |
+| `scripts/download*.ts` | Ein Skript je Datenquelle, additiv, atomarer Austausch |
+| `scripts/build-mcpb.ts` | Baut das MCPB-Bundle für Claude Desktop |
+| `mcpb/manifest.json` | Manifest-Quelle des Bundles |
 | `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
 
 ### Designentscheidungen
 
-**Warum keine mitgelieferte Datenbank?** Drei Gründe: STEPBible bittet darum, ihre Datendateien nur aus dem eigenen Repository zu verbreiten; eine selbst aufgebaute Datenbank mit `provenance`-Tabelle (Quell-URL + SHA-256 je Download) ist auf eine Weise überprüfbar, wie es ein heruntergeladener Datenklumpen nie sein kann; und die Aufbau-Skripte dokumentieren zugleich, woher jedes einzelne Wort stammt.
+**Warum keine mitgelieferte Datenbank?** Drei Gründe: STEPBible bittet darum, ihre Datendateien nur aus dem eigenen Repository zu verbreiten; eine selbst aufgebaute Datenbank mit `provenance`-Tabelle (Quell-URL + SHA-256 je Download) ist auf eine Weise überprüfbar, wie es ein heruntergeladener Datenklumpen nie sein kann; und die Aufbau-Skripte dokumentieren zugleich, woher jedes einzelne Wort stammt. Der Preis dafür war früher ein Terminal-Schritt — den nimmt seit `bible_setup` der Server ab.
+
+**Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von acht fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
 
 **Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge sind einen Parameter entfernt — und `translation-compare` stellt sie nebeneinander.
 
 **Warum ist der Byzantinische Mehrheitstext die NT-Voreinstellung?** Der Server dient wortgetreuer Arbeit, und die hier mitgelieferten deutschen Übersetzungen stehen in der Mehrheitstext-Tradition (Luther und Schlachter folgen der TR-/byzantinischen Linie). Der kritische SBLGNT ist über `texttyp: "sblgnt"` vollständig verfügbar — und `bible_compare` zeigt genau, wo die Editionen auseinandergehen, samt Bezeugung zur Beurteilung jeder Lesart.
+
+**Warum sind alle Werkzeuge als `readOnlyHint` markiert?** Jedes der sechs liest ausschließlich aus der lokalen SQLite-Datei, die read-only geöffnet wird: kein Schreibzugriff, keine Seiteneffekte, kein Netzwerk. Ohne Angabe würde die Spezifikation das Gegenteil annehmen (`readOnlyHint: false`, `openWorldHint: true`). `destructiveHint` und `idempotentHint` fehlen bewusst — sie sind laut Schema nur bedeutsam, wenn ein Werkzeug schreibt.
 
 **Warum englische Tool-Namen bei deutscher Ausgabe?** MCP-Tool-Namen sind Entwickler-Oberfläche (englische Konvention); der Inhalt, den ein Mensch liest, ist deutsch, weil der ausgelieferte Bibeltext deutsch ist.
 
@@ -210,8 +258,10 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Dokument | Inhalt |
 |----------|--------|
+| [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop: schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
 | [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md) | Fehlerbilder beim Datenaufbau und Serverstart, jeweils mit Ursache und Behebung |
 | [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md) | Code-Stil-Regeln, Typecheck, bewusst nicht übernommene Konventionen |
+| [mcpb/manifest.json](mcpb/manifest.json) | Manifest-Quelle des MCPB-Bundles für Claude Desktop; gebaut wird es mit `bun run build:mcpb` |
 | [AGENTS.md](AGENTS.md) | Arbeitsregeln im Repository: Befehle, Architektur, gemessene Fallstricke |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Mitwirken: Grundregeln, Prüfschritte, Pull-Request-Ablauf |
 | [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) | Vollständige Quellen- und Lizenztabelle aller Bibeldaten |

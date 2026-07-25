@@ -25,6 +25,7 @@
 
 import { dirname, resolve } from "path";
 import { ensureStrongDefsSchema } from "./schema.ts";
+import { DB_PATH } from "../db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance, type SourceDigest } from "./provenance.ts";
 
@@ -39,7 +40,6 @@ const STEP_LEXICONS: ReadonlyArray<readonly [prefix: "G" | "H", url: string, inc
   ["G", STEP_BASE + "TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt", true],
   ["H", STEP_BASE + "TBESH%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Hebrew%20-%20STEPBible.org%20CC%20BY.txt", false],
 ];
-const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 interface DictEntry {
   readonly lemma?: string;
@@ -112,7 +112,7 @@ function parseStepLexicon(
   return out;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log("=== Strong's Lexicon (Open Scriptures, Greek + Hebrew) Download ===");
   console.log(`Database: ${DB_PATH}`);
 
@@ -192,7 +192,11 @@ async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-main().catch((error) => {
-  console.error("Download failed:", error);
-  process.exit(1);
-});
+// Run only when invoked directly. setup.ts imports main() so the server can
+// build the database itself; an import must not start a download.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Download failed:", error);
+    process.exit(1);
+  });
+}

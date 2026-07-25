@@ -29,6 +29,7 @@
 
 import { dirname, resolve } from "path";
 import { ensureOriginalWordsSchema } from "./schema.ts";
+import { DB_PATH } from "../db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
@@ -36,7 +37,6 @@ const RAW_BASE =
   "https://raw.githubusercontent.com/openscriptures/morphhb/master/wlc";
 const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js";
-const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 const DELAY_MS = 120;
 
 // OSIS book name → bolls.life book_id (1–39, Protestant OT order).
@@ -88,7 +88,7 @@ function parseStrongsLemmas(js: string): Map<string, string> {
   return map;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log("=== Hebrew OT (WLC / morphhb, edition 'wlc') Download ===");
   console.log(`Database: ${DB_PATH}`);
 
@@ -177,7 +177,11 @@ async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-main().catch((error) => {
-  console.error("Download failed:", error);
-  process.exit(1);
-});
+// Run only when invoked directly. setup.ts imports main() so the server can
+// build the database itself; an import must not start a download.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Download failed:", error);
+    process.exit(1);
+  });
+}

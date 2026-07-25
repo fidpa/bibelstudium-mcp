@@ -19,6 +19,7 @@
 
 import { dirname, resolve } from "path";
 import { ensureTagntSchema } from "./schema.ts";
+import { DB_PATH } from "../db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
@@ -28,7 +29,6 @@ const FILES = [
   "TAGNT%20Mat-Jhn%20-%20Translators%20Amalgamated%20Greek%20NT%20-%20STEPBible.org%20CC-BY.txt",
   "TAGNT%20Act-Rev%20-%20Translators%20Amalgamated%20Greek%20NT%20-%20STEPBible.org%20CC-BY.txt",
 ] as const;
-const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 // TAGNT book abbreviation → bolls.life book_id (40–66).
 const BOOKS: Record<string, number> = {
@@ -60,7 +60,7 @@ async function fetchText(url: string, retries = 3): Promise<string> {
   throw new Error(`Failed: ${url}`);
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log("=== STEPBible TAGNT (edition attestation) Download ===");
   console.log(`Database: ${DB_PATH}`);
 
@@ -142,7 +142,11 @@ async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-main().catch((error) => {
-  console.error("Download failed:", error);
-  process.exit(1);
-});
+// Run only when invoked directly. setup.ts imports main() so the server can
+// build the database itself; an import must not start a download.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Download failed:", error);
+    process.exit(1);
+  });
+}

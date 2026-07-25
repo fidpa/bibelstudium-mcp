@@ -1,0 +1,94 @@
+{
+  "manifest_version": "0.2",
+  "name": "bibelstudium-mcp",
+  "display_name": "Bibelstudium",
+  "version": "0.0.0",
+  "description": "Wortgetreue Bibelarbeit: vier deutsche Übersetzungen, Grundtext, Konkordanz, Querverweise, Volltextsuche, Editionsvergleich.",
+  "long_description": "Lokaler MCP-Server für wortgetreue Bibelarbeit. Vier frei lizenzierte deutsche Übersetzungen (Luther 1912, Schlachter 1951, Elberfelder 1871, Menge), Grundtext Wort für Wort (Hebräisch WLC; Griechisch Mehrheitstext, SBLGNT, Textus Receptus) mit Strong-Nummern und aufgelöster Morphologie, Konkordanz, Querverweise (OpenBible.info), Volltextsuche und Editionsvergleich mit Bezeugung über acht Editionen.\n\nDie Bibeldaten sind nicht Teil dieses Bundles. Sie müssen aber nichts vorbereiten: Bei der ersten Bibelfrage meldet der Server, dass die Daten fehlen, und fragt, ob er sie laden soll. Nach Ihrer Bestätigung holt er rund 145 MB von den Originalquellen (etwa eine Minute, Internetverbindung nötig) und legt sie in Ihrem Benutzerordner ab. Danach starten Sie Claude Desktop einmal neu.\n\nDas Feld unten können Sie leer lassen. Es ist nur für den Fall gedacht, dass Sie bereits eine fertige bible.db aus dem Repository haben.",
+  "author": {
+    "name": "fidpa",
+    "url": "https://github.com/fidpa"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fidpa/bibelstudium-mcp"
+  },
+  "homepage": "https://github.com/fidpa/bibelstudium-mcp",
+  "documentation": "https://github.com/fidpa/bibelstudium-mcp#readme",
+  "support": "https://github.com/fidpa/bibelstudium-mcp/issues",
+  "license": "MIT",
+  "keywords": ["bible", "bibel", "greek", "hebrew", "concordance", "mcp"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/bibelstudium-server",
+    "mcp_config": {
+      "command": "${__dirname}/server/bibelstudium-server",
+      "args": [],
+      "env": {
+        "BIBLE_DB_PATH": "${user_config.db_path}"
+      }
+    }
+  },
+  "user_config": {
+    "db_path": {
+      "type": "file",
+      "title": "Vorhandene Bibeldatenbank (optional)",
+      "description": "Nur ausfüllen, wenn Sie bereits eine bible.db gebaut haben, etwa aus dem Repository. Sonst leer lassen: die Daten werden beim ersten Gebrauch auf Nachfrage geladen (etwa eine Minute) und in Ihrem Benutzerordner abgelegt.",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "bible_lookup",
+      "description": "Exakter Verstext in vier deutschen Übersetzungen, gegen Gedächtniszitate."
+    },
+    {
+      "name": "bible_original",
+      "description": "Grundtext Wort für Wort mit Grundform, Strong-Nummer und aufgelöster Morphologie."
+    },
+    {
+      "name": "bible_crossrefs",
+      "description": "Querverweise zu einem Vers, nach Votes sortiert, mit dem Text der Zielstellen."
+    },
+    {
+      "name": "bible_concordance",
+      "description": "Alle Vorkommen eines Urtext-Wortes mit Statistik, Buchverteilung und Lexikondaten."
+    },
+    {
+      "name": "bible_search",
+      "description": "Volltextsuche im deutschen Text: Wörter, Phrasen, Präfix, optional auf ein Buch begrenzt."
+    },
+    {
+      "name": "bible_compare",
+      "description": "Wort-Diff eines NT-Verses über drei griechische Editionen, mit Bezeugung über acht."
+    },
+    {
+      "name": "bible_setup",
+      "description": "Lädt die Bibeldaten einmalig herunter, wenn noch keine vorhanden sind. Nur auf ausdrückliche Bestätigung."
+    }
+  ],
+  "prompts": [
+    {
+      "name": "word-study",
+      "description": "Wortstudie: Vorkommen, Bedeutung und Verwendung eines Urtext-Wortes.",
+      "arguments": ["wort"],
+      "text": "Untersuche das Urtext-Wort systematisch mit bible_concordance."
+    },
+    {
+      "name": "variant-check",
+      "description": "Textvarianten einer Stelle über die griechischen Editionen prüfen.",
+      "arguments": ["stelle"],
+      "text": "Vergleiche die Stelle mit bible_compare über die Editionen."
+    },
+    {
+      "name": "translation-compare",
+      "description": "Eine Stelle über die vier deutschen Übersetzungen vergleichen.",
+      "arguments": ["stelle"],
+      "text": "Zeige die Stelle mit bible_lookup in allen vier Übersetzungen."
+    }
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin"]
+  }
+}

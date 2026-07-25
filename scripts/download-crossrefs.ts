@@ -21,11 +21,11 @@
 import { dirname, resolve } from "path";
 import { unlinkSync, writeFileSync } from "fs";
 import { ensureCrossRefsSchema } from "./schema.ts";
+import { DB_PATH } from "../db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
 const ZIP_URL = "https://a.openbible.info/data/cross-references.zip";
-const DB_PATH = resolve(dirname(import.meta.path), "..", "data/bible.db");
 
 // OSIS book abbreviation → bolls.life book_id (1–66). The OT part matches the
 // names used by morphhb (see download-heb.ts); NT names per OSIS standard.
@@ -91,7 +91,7 @@ function requireUnzip(): void {
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log("=== OpenBible.info Cross-References (TSK expanded, CC-BY) Download ===");
   console.log(`Database: ${DB_PATH}`);
 
@@ -176,7 +176,11 @@ async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-main().catch((error) => {
-  console.error("Download failed:", error);
-  process.exit(1);
-});
+// Run only when invoked directly. setup.ts imports main() so the server can
+// build the database itself; an import must not start a download.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Download failed:", error);
+    process.exit(1);
+  });
+}

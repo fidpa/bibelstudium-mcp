@@ -16,6 +16,8 @@ Datei ist für die Arbeit **am Code**.
 bun install                      # einmalig (eine Laufzeit-Abhängigkeit: das MCP-SDK)
 bun run typecheck                # tsc --noEmit, strict — das erzwingt die CI
 bun run server.ts                # stdio-Server starten
+bun run setup                    # alle acht Downloads nacheinander, mit Bericht
+bun run build:mcpb [target]      # MCPB-Bundle für Claude Desktop nach tmp/
 ```
 
 Datenbankaufbau — **streng sequentiell**, niemals parallel (jedes Skript kopiert
@@ -74,6 +76,10 @@ Die Skripte liegen in `scripts/`, angesprochen werden sie über diese
 | `scripts/download-tagnt.ts` | STEPBible TAGNT (Bezeugung über acht Editionen) → `tagnt_words` |
 | `scripts/download-lexicon.ts` | Strong-Wörterbücher + STEPBible TBESG/TBESH → `strong_defs` |
 | `scripts/build-fts.ts` | FTS5-Index über `verses` → `verses_fts` |
+| `scripts/setup.ts` | Orchestriert die acht Downloads für `bible_setup` und `bun run setup`; Teilfehler brechen den Lauf nicht ab |
+| `db-path.ts` | Auflösung des Datenbankpfads, geteilt von Server und Skripten |
+| `scripts/build-mcpb.ts` | MCPB-Bundle: `bun build --compile` + Manifest aus `mcpb/manifest.json` → `tmp/` |
+| `mcpb/manifest.json` | Manifest-Quelle des Bundles; Version, Ziel und Plattform setzt das Build-Skript |
 | `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → `book_id` |
 | `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
 
@@ -101,7 +107,18 @@ Priorität steht in `resolveEdition`, im Routing und im `hinweis` jeder Antwort
 
 ## Testen
 
-Der Server spricht **stdio JSON-RPC** (MCP). Zum Testen ohne echten MCP-Client
+```bash
+bun run test        # 58 Zusicherungen gegen einen frischen Server über stdio
+```
+
+`scripts/test-golden.ts` ist der Regressionstest nach Änderungen an `server.ts`:
+Grenzwertmeldungen, Werkzeug-Annotationen, Buchauflösung, Klammerhinweise,
+Comma Johanneum, TAGNT-Quellenkonflikt, hebräische Morphologie, Treffer- gegen
+Vorkommenszahlen, `verse_einzeln`. Er braucht eine gebaute Datenbank und läuft
+deshalb **nicht** in der CI — dort steht nur `typecheck` samt den
+Startup-Guards. Lokal vor jedem Commit an `server.ts` laufen lassen.
+
+Für einzelne Aufrufe von Hand spricht der Server **stdio JSON-RPC** (MCP);
 JSON-RPC-Zeilen nach stdin leiten:
 
 ```bash
@@ -116,6 +133,138 @@ Schnelle Datenprüfungen laufen direkt über `sqlite3 data/bible.db "…"`.
 
 ## Fallstricke (gemessen, nicht vermutet)
 
+- **Zwei Transporte, eine Serverfabrik.** `createServer()` liefert je Anfrage
+  eine eigene Instanz, weil ein `Server` genau einen Transport bindet. Der
+  HTTP-Modus läuft **zustandslos** (`sessionIdGenerator: undefined`): dieser
+  Server schiebt keine Benachrichtigungen und hat nichts fortzusetzen, Sitzungen
+  brächten ihm also nichts und kosteten eine Registratur, die verfallen und
+  gedeckelt werden müsste. Eine frühere sitzungsbehaftete Fassung lief genau
+  dort aus (21 Anfragen, 21 Sitzungen, die nie verschwanden). Gemessen über
+  1200 Anfragen ist der Speicher stabil. Datenbank,
+  vorbereitete Statements und die Werkzeugliste liegen auf Modulebene und werden
+  geteilt. Beim Ergänzen eines Handlers **beide** Stellen bedienen: die benannte
+  Handler-Konstante und ihre Registrierung in `createServer()` — eine Registrierung
+  auf einem Singleton gibt es nicht mehr. Stdio bleibt Voreinstellung; HTTP
+  startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne `MCP_HTTP_HOST` an
+  `127.0.0.1`. Diese Vorgabe nicht aufweichen: sie ist der Unterschied zwischen
+  „lokal testbar" und „versehentlich im Netz".
+- **`mcpb/manifest.json` ist die dritte Doku-Stelle, und die einzige, die ein
+  Endnutzer sicher liest.** `long_description` und die `user_config`-Texte
+  stehen im Installationsdialog von Claude Desktop. Beim Umbau auf
+  `bible_setup` blieben sie unangetastet und behaupteten weiter „etwa 25
+  Minuten" und „beim Installieren über den Dateiauswahldialog ausgewählt" —
+  beides zu dem Zeitpunkt falsch, und dem Nutzer angezeigt, während README und
+  CHANGELOG längst stimmten (25.07.2026). Dazu zwei falsche Jahreszahlen bei
+  den Übersetzungen, die `translations.ts` anders führt. Wer Ablauf, Dauer,
+  Voraussetzungen oder Werkzeugbestand ändert, prüft das Manifest im selben
+  Zug: die Werkzeugliste dort ist handgepflegt und wächst nicht von selbst mit.
+- **Die Architektur gehört in den Bundle-Dateinamen.**
+  `compatibility.platforms` kennt nur `darwin`/`win32`/`linux`. Ein Intel-Mac
+  besteht die Manifest-Prüfung eines arm64-Bundles deshalb und scheitert erst
+  am Binary, mit einer Meldung des Betriebssystems statt einer des Bundles.
+  `build-mcpb.ts` schreibt daher `…-darwin-arm64.mcpb`; beim Anhängen an ein
+  Release den Namen unverändert lassen.
+- **Ein leeres `user_config`-Feld kommt als unaufgelöster Platzhalter an.**
+  Claude Desktop ersetzt `${user_config.db_path}` **nicht** durch eine leere
+  Zeichenkette, wenn das Feld optional ist und leer bleibt: der Server bekommt
+  den Literalstring `${user_config.db_path}` als `BIBLE_DB_PATH`. Gemessen am
+  25.07.2026 im installierten Bundle. Die Prüfung auf „leer" reichte deshalb
+  nicht; `db-path.ts` verwirft jetzt jeden Wert, der `${…}` enthält. Der
+  Fehlerverlauf war besonders irreführend: Der Download lief vollständig durch
+  (31 102 Verse empfangen) und scheiterte erst beim Schreiben, mit der
+  SQLite-Meldung „unable to open database file" — die das Modell als
+  Netzwerkproblem deutete und dem Nutzer auch so meldete. Bei neuen
+  `user_config`-Feldern denselben Filter anwenden.
+- **`bun build --compile` packt seinen eigenen Müll mit ein.** Der Compiler legt
+  eine temporäre Kopie des Binaries im Arbeitsverzeichnis ab und lässt sie
+  liegen, wenn die Zieldatei auf einem anderen Dateisystem sitzt. Steht das
+  Arbeitsverzeichnis auf dem Staging-Ordner des Bundles, landet diese Kopie
+  **im `.mcpb`**: 63 MB blinder Passagier, Bundle doppelt so groß (gemessen am
+  25.07.2026, 121 MB statt 61 MB entpackt). Der Compiler bekommt deshalb ein
+  eigenes Verzeichnis unter `tmp/`, das vor und nach dem Lauf gelöscht wird.
+  Nach Änderungen am Build die Dateiliste prüfen: `mcpb pack` gibt sie aus, es
+  müssen genau zwei Einträge sein (Manifest und Binary).
+- **`console.log` in importiertem Code bricht den stdio-Transport.** Die
+  Download-Skripte melden ihren Fortschritt mit `console.log`, was auf einer
+  Konsole richtig ist. Sobald `bible_setup` sie **im Serverprozess** aufruft,
+  landet jede dieser Zeilen auf stdout, wo ausschließlich JSON-RPC stehen darf:
+  der erste End-to-End-Lauf lieferte einen unparsbaren Strom (gemessen am
+  25.07.2026, alle acht Schritte liefen durch, die Antwort war trotzdem
+  unbrauchbar). `handleSetup` biegt `console.log` deshalb für die Dauer des
+  Aufbaus auf `console.error` um. Wer weiteren Code in den Server importiert,
+  prüft ihn zuerst auf `console.log` — die Regel gilt nicht nur für `server.ts`
+  selbst, sondern für alles, was in dessen Prozess läuft.
+- **Der Datenbankpfad steht in `db-path.ts`, nirgends sonst.** Server und
+  Skripte müssen dieselbe Datei meinen, sonst lädt `bible_setup` dorthin, wo
+  der Server nie nachsieht. Ein kompilierter Lauf legt die Datenbank in den
+  Benutzerordner, **nicht** neben das Programm: Das Verzeichnis einer
+  installierten Erweiterung wird beim Update ersetzt. Bei neuen Skripten den
+  Pfad importieren, nicht erneut auflösen.
+- **Bibeltexte kommen als statischer Export, nicht kapitelweise.** `download.ts`
+  lief bis zum 25.07.2026 über `/get-text/<code>/<buch>/<kapitel>/` und stellte
+  damit 4760 Anfragen, obwohl die API-Dokumentation genau davon abrät („Please
+  do not do that! … it may cause performance issues") und
+  `\/static/translations/<code>.json` als vorgesehenen Weg nennt. Der Umbau
+  brachte 20 Minuten auf 3,2 Sekunden bei **byteweise identischem** Ergebnis
+  (gleicher SHA-256 über alle 124 441 Verse und über `books`). Wer eine weitere
+  Quelle anbindet: erst deren Dokumentation auf einen Massen-Endpunkt prüfen,
+  bevor eine Schleife über Einzelabrufe entsteht.
+- **Im kompilierten Binary zeigt `import.meta.path` ins Nichts.** `bun build
+  --compile` legt den Quelltext in ein virtuelles Dateisystem; `import.meta.path`
+  ergibt dort `/$bunfs/root`, und die skriptrelative Auflösung suchte die
+  Datenbank folglich unter `/$bunfs/root/data/bible.db` — der Server startete im
+  MCPB-Bundle gar nicht (gemessen am 25.07.2026). Kompilierte Läufe suchen
+  deshalb neben `process.execPath`. Erkannt wird der Fall daran, dass das
+  Verzeichnis auf der Platte **nicht existiert** (`existsSync` ist dort `false`,
+  beim echten Skriptverzeichnis `true` — beides gemessen); ein fest verdrahtetes
+  `/$bunfs` wäre geraten, sobald es um Windows geht. Wer Dateien relativ zum
+  eigenen Modul auflöst, prüft das vor dem nächsten Bundle-Build.
+- **`BIBLE_DB_PATH` kann gesetzt und trotzdem leer sein.** Ein im
+  Installationsdialog leer gelassenes `user_config`-Feld erreicht den Server als
+  leere Zeichenkette, nicht als fehlende Variable — `??` allein fängt das nicht,
+  und `""` liefe als Pfad in einen nackten SQLite-Fehler ohne Ursachenangabe.
+  Deshalb zählt leer als nicht gesetzt. Bei weiteren `user_config`-Feldern
+  genauso verfahren.
+- **Ein Bundle läuft auf genau einer Plattform.** `bun build --compile` erzeugt
+  ein architekturspezifisches Binary, und ein `.mcpb` trägt genau eines.
+  `compatibility.platforms` wird deshalb in `scripts/build-mcpb.ts` aus dem
+  Compile-Target abgeleitet, nicht aus dem Manifest übernommen. Geprüft ist
+  bislang allein `bun-darwin-arm64`; wer ein anderes Ziel baut, prüft es dort,
+  statt die Angabe zu erweitern.
+- **Der Client entscheidet, ob ein Werkzeug aufgerufen wird — nicht der Server.**
+  `docs/anweisungen/claude-desktop.txt` ist der client-seitige Hebel dafür und
+  gehört bei neuen Beobachtungen mitgepflegt: jede Regel dort geht auf einen
+  gemessenen Fehlgriff zurück, nicht auf eine Vermutung. Beim Ergänzen die
+  Datenlage **dieses** Repos prüfen — Trefferzahlen gelten je Übersetzung,
+  Klammer-Einschübe gibt es nur in Menge (137 Verse), Fußnotenziffern gar nicht.
+  Regeln aus dem Ursprungs-Repo nicht ungeprüft übernehmen.
+- **Wörter in eckigen Klammern gehören zum Wortlaut.** Menge setzt erklärende
+  Einschübe so — 137 Verse, ausschließlich in `MB`; Luther, Schlachter und
+  Elberfelder verwenden keine, und keine der vier trägt Fußnotenziffern.
+  Entfernt ein Client die Klammern, liest sich der Einschub der Ausgabe wie
+  gewöhnlicher Text. `BRACKET_WORD_RE`/`BRACKET_WORD_HINT` über `bracketHints()`
+  in `bible_lookup`, `bible_crossrefs`, `bible_search`. Der Hinweis nennt
+  **kein** Beispielwort: ein konkretes Beispiel wurde schon einmal als Etikett
+  aufgegriffen und auf einen unpassenden Fall gesetzt (siehe den `hinweis` von
+  `bible_compare`). Gemessen im Ursprungs-Repo am 25.07.2026, dort an
+  Schlachter-Klammern.
+- **Grenzwerte und ihre Meldungstexte laufen auseinander.** `bible_original`,
+  `bible_crossrefs` und `bible_compare` wiesen `verse=999` mit „'verse' must be
+  a positive integer" zurück — einer Bedingung, die die Eingabe erfüllt;
+  verletzt war die Obergrenze 200. Sechs Meldungen in drei Handlern, während
+  `bible_lookup` dieselbe Prüfung von Anfang an richtig formulierte
+  (25.07.2026). Ursache war die dreifach kopierte Zahl neben einem separat
+  formulierten Text. Grenzen und Meldungen liegen deshalb jetzt in gemeinsamen
+  Konstanten (`MAX_CHAPTER`, `MAX_VERSE`, `chapterOutOfRange`,
+  `verseOutOfRange`) — bei neuen Prüfungen diese verwenden, keine Zahl erneut
+  hinschreiben.
+- **Tool-Annotationen: Vorgabewerte sind hier falsch.** Ohne `annotations` gilt
+  laut Spezifikation `readOnlyHint: false` und `openWorldHint: true` — beides
+  trifft auf keines der sechs Werkzeuge zu. Sie tragen deshalb
+  `READ_ONLY_LOCAL`. `destructiveHint`/`idempotentHint` **nicht** ergänzen: das
+  Schema definiert sie als nur bedeutsam, wenn `readOnlyHint` `false` ist. Dass
+  ein Client die Angaben sichtbar auswertet, ist **nicht** gemessen — die
+  Begründung ist allein, dass die Vorgabewerte falsch wären.
 - **Drei Morphologie-Schemata, nicht eines.** `sblgnt` nutzt MorphGNT-Codes
   (8 Zeichen, `decodeParse`), `byzantine`/`tr` nutzen Robinson-Codes
   (`decodeRobinson`), `wlc` nutzt OSHB-Codes (`decodeHebrew`). **Robinson-

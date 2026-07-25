@@ -16,14 +16,16 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolRequest, GetPromptRequest } from "@modelcontextprotocol/sdk/types.js";
 import { Database } from "bun:sqlite";
-import { dirname, resolve } from "path";
+import { DB_PATH } from "./db-path.ts";
 import {
   DEFAULT_TRANSLATION,
   TRANSLATIONS,
@@ -32,48 +34,85 @@ import {
 } from "./translations.ts";
 
 // --- Setup — database connection and integrity check -----------------------
-const DB_PATH = resolve(dirname(import.meta.path), "data/bible.db");
+// DB_PATH comes from db-path.ts, which the data-building scripts import too.
+// Both sides must name the same file: bible_setup calls those scripts, and if
+// they disagreed the download would land where the server never looks.
 
-let db: Database;
-try {
-  db = new Database(DB_PATH, { readonly: true });
-  // No WAL pragma — database is read-only; WAL sidecar files could be tampered with.
-  // The download script checkpoints WAL before closing so the DB is self-contained.
-  console.error(`Bible DB loaded: ${DB_PATH}`);
-} catch (error) {
-  console.error(`Failed to open Bible database at ${DB_PATH}: ${error}`);
-  console.error("Run 'bun run download' first to download the data.");
-  process.exit(1);
+/**
+ * Why a missing database no longer ends the process.
+ *
+ * Someone who installed the MCPB bundle has no terminal in the loop: exiting
+ * here would show them "server disconnected" and nothing else. Instead the
+ * server starts against an empty in-memory database, reports `dataMissing`, and
+ * offers bible_setup to build the real one. Every other tool refuses with a
+ * pointer to it (see handleCallTool).
+ *
+ * The in-memory schema exists so the prepared statements below can compile; it
+ * is never written to and is replaced by a restart once the download finished.
+ * Only the three tables the statements require are declared — the optional ones
+ * are detected by existence, and their absence is already a supported state.
+ */
+function emptyDatabase(): Database {
+  const mem = new Database(":memory:");
+  mem.exec("CREATE TABLE books (book_id INTEGER PRIMARY KEY, name TEXT NOT NULL, chapters INTEGER NOT NULL)");
+  mem.exec("CREATE TABLE aliases (alias TEXT PRIMARY KEY COLLATE NOCASE, book_id INTEGER NOT NULL)");
+  mem.exec(
+    "CREATE TABLE verses (translation TEXT NOT NULL, book_id INTEGER NOT NULL, " +
+      "chapter INTEGER NOT NULL, verse INTEGER NOT NULL, text TEXT NOT NULL, " +
+      "PRIMARY KEY (translation, book_id, chapter, verse))"
+  );
+  return mem;
 }
 
-// A DB file can exist but be incomplete (e.g. only original_words after a
-// partial rebuild). Check before preparing statements so the failure mode is a
-// clear message instead of a raw "no such table" stack trace.
-{
+/** Why the real database cannot be used, or null when it can. */
+function databaseProblem(candidate: Database): string | null {
   const tables = new Set(
-    (db
+    (candidate
       .query("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as Array<{ name: string }>).map((r) => r.name)
   );
   const missing = ["books", "aliases", "verses"].filter((t) => !tables.has(t));
   if (missing.length > 0) {
-    console.error(
-      `Bible database is incomplete (missing tables: ${missing.join(", ")}). ` +
-        "Run 'bun run download' to rebuild it."
-    );
-    process.exit(1);
+    return `Der Datenbank fehlen Tabellen (${missing.join(", ")}).`;
   }
   // A verses table from an older single-translation layout lacks the
   // `translation` column; download.ts migrates it on the next run.
-  const verseCols = (db.query("PRAGMA table_info(verses)").all() as Array<{ name: string }>)
+  const verseCols = (candidate.query("PRAGMA table_info(verses)").all() as Array<{ name: string }>)
     .map((c) => c.name);
   if (!verseCols.includes("translation")) {
-    console.error(
-      "The verses table has no 'translation' column (old database layout). " +
-        "Run 'bun run download' to rebuild it."
-    );
-    process.exit(1);
+    return "Die Tabelle 'verses' hat keine Spalte 'translation' (alter Aufbau).";
   }
+  const verseCount = (candidate.query("SELECT COUNT(*) AS n FROM verses").get() as { n: number }).n;
+  if (verseCount === 0) {
+    return "Die Datenbank enthält keine Verse.";
+  }
+  return null;
+}
+
+let db: Database;
+let dataMissing: string | null = null;
+try {
+  // No WAL pragma — database is read-only; WAL sidecar files could be tampered with.
+  // The download script checkpoints WAL before closing so the DB is self-contained.
+  const candidate = new Database(DB_PATH, { readonly: true });
+  const problem = databaseProblem(candidate);
+  if (problem === null) {
+    db = candidate;
+    console.error(`Bible DB loaded: ${DB_PATH}`);
+  } else {
+    candidate.close();
+    dataMissing = problem;
+    db = emptyDatabase();
+    console.error(`${problem} Erwartet unter: ${DB_PATH}`);
+  }
+} catch (error) {
+  dataMissing = "Es ist noch keine Bibeldatenbank vorhanden.";
+  db = emptyDatabase();
+  console.error(`No Bible database at ${DB_PATH}: ${error}`);
+}
+
+if (dataMissing !== null) {
+  console.error("Der Server läuft, bis auf bible_setup sind alle Werkzeuge gesperrt.");
 }
 
 // --- Prepared statements — books, aliases, verses --------------------------
@@ -624,6 +663,26 @@ function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "");
 }
 
+// Words in square brackets are part of the edition's wording, not something this
+// server added: Menge sets explanatory additions this way (137 verses; the other
+// three translations use none, and none of the four carries footnote digits, so
+// there is no numeric counterpart to distinguish here). Measured in the upstream
+// repo on 25.07.2026: asked for a verse carrying such brackets, a client that had
+// called the tool unwrapped them, turning an addition of the edition into plain
+// text. No sample word in the hint on purpose — a concrete example has once been
+// picked up as a label and pinned to the wrong case (see AGENTS.md).
+const BRACKET_WORD_RE = /\[(?!\d+\])[^\]]+\]/;
+const BRACKET_WORD_HINT =
+  "Wörter in eckigen Klammern gehören zum Wortlaut der Übersetzung und sind " +
+  "keine Einfügung dieses Servers. Beim Zitieren entfallen sie nicht: ohne die " +
+  "Klammern steht der Einschub da wie der übrige Text, und die Ausgabe setzt " +
+  "ihn gerade ab.";
+
+/** Hint if any of `texts` carries bracketed words; empty otherwise. */
+function bracketHints(texts: readonly string[]): string[] {
+  return texts.some((t) => BRACKET_WORD_RE.test(t)) ? [BRACKET_WORD_HINT] : [];
+}
+
 function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, "\\$&");
 }
@@ -760,13 +819,20 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
   );
 }
 
+// Reference bounds. Shared so that the limit and the message that reports it
+// cannot drift apart: three handlers used to reject `verse=999` with "must be a
+// positive integer", which names a condition the input satisfies (25.07.2026).
+const MAX_CHAPTER = 150; // Psalms has the most chapters (150)
+const MAX_VERSE = 200; // Longest chapter (Psalm 119) has 176 verses
+const chapterOutOfRange = `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}`;
+const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_VERSE}`;
+
 // --- bible_lookup helpers --------------------------------------------------
 /**
  * Parse a verse reference string like "4", "16-17", "1,3,5", "1-3,7".
  * Returns an array of individual verse numbers.
  */
 function parseVerses(versesStr: string): number[] {
-  const MAX_VERSE = 200; // Longest chapter (Psalm 119) has 176 verses
   const MAX_PARTS = 30; // Limit comma-separated segments to prevent excessive DB queries
   const verses: number[] = [];
   const parts = versesStr.split(",").map((p) => p.trim()).slice(0, MAX_PARTS);
@@ -1085,24 +1151,60 @@ function crossCheckVariant(
   return { belege, abgleich };
 }
 
-// --- MCP server — construction and tool registration -----------------------
-const server = new Server(
-  {
-    name: "bibelstudium-mcp",
-    version: "0.2.1",
-  },
-  {
-    capabilities: {
-      tools: {},
-      prompts: {},
-    },
-  }
-);
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+// All six tools only read: one local SQLite file opened read-only, no writes,
+// no side effects, no network. Both spec defaults are wrong here (readOnlyHint
+// defaults to false, openWorldHint to true), so both are stated. destructiveHint
+// and idempotentHint stay out on purpose — the schema defines them as meaningful
+// only when readOnlyHint is false.
+const READ_ONLY_LOCAL = { readOnlyHint: true, openWorldHint: false } as const;
+
+// bible_setup is the one tool that writes: it downloads the Bible data and
+// replaces the database file. readOnlyHint and openWorldHint are therefore both
+// wrong for it, and destructiveHint becomes meaningful — it only ever adds data,
+// and running it again rebuilds the same tables, so it is neither destructive
+// nor harmful to repeat.
+const SETUP_ANNOTATIONS = {
+  readOnlyHint: false,
+  openWorldHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+} as const;
+
+const handleListTools = async () => ({
   tools: [
+    // Advertised only while data is missing: once the database is in place this
+    // tool has nothing to offer, and a visible "set up the database" action
+    // invites a model to re-run downloads that already succeeded.
+    ...(dataMissing !== null
+      ? [
+          {
+            name: "bible_setup",
+            annotations: SETUP_ANNOTATIONS,
+            description:
+              "Download the Bible data this server needs. The database is not shipped with " +
+              "the server and has to be built once from the original sources; it takes about " +
+              "a minute and needs an internet connection. " +
+              "Call this only after the user has explicitly agreed to start the download: " +
+              "ask first, then pass bestaetigung=true. Without that flag the tool only " +
+              "reports what would be downloaded.",
+            inputSchema: {
+              type: "object" as const,
+              properties: {
+                bestaetigung: {
+                  type: "boolean" as const,
+                  description:
+                    "Set to true only when the user has agreed to start the download now. " +
+                    "Omit it to get the plan without downloading anything.",
+                },
+              },
+            },
+          },
+        ]
+      : []),
     {
       name: "bible_lookup",
+      annotations: READ_ONLY_LOCAL,
       // The "quotes" framing alone was read as covering only requests for
       // wording: "Schlag mir Hesekiel-Zusatz 1,1 nach" was answered from memory
       // because the book seemed not to exist, so no quote was expected
@@ -1147,6 +1249,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "bible_original",
+      annotations: READ_ONLY_LOCAL,
       description:
         "Return one Bible verse word-by-word in the ORIGINAL language with lemma, Strong's " +
         "number and full morphology. Use this to verify what the original text says — e.g. " +
@@ -1179,6 +1282,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "bible_crossrefs",
+      annotations: READ_ONLY_LOCAL,
       description:
         "Find cross-references (related/parallel passages) for one Bible verse, ranked by " +
         "relevance votes, each with its German text (default: Luther 1912). Use this to find " +
@@ -1210,6 +1314,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "bible_concordance",
+      annotations: READ_ONLY_LOCAL,
       description:
         "Concordance / word study: find ALL occurrences of an original-language word across " +
         'the Bible. Search by Strong\'s number (preferred; "G26" = Greek/NT, "H7225" = ' +
@@ -1247,6 +1352,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "bible_search",
+      annotations: READ_ONLY_LOCAL,
       description:
         "Full-text search over the German Bible text (default: Luther 1912). Finds verses " +
         "containing ALL given words (exact word forms; umlauts/accents are folded, so 'fuhrt' " +
@@ -1280,6 +1386,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "bible_compare",
+      annotations: READ_ONLY_LOCAL,
       description:
         "Compare one NT verse word-by-word across the Greek editions (byzantine Majority Text, " +
         "tr Textus Receptus, sblgnt critical text) and list the textual differences. " +
@@ -1303,7 +1410,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
   ],
-}));
+});
 
 // --- MCP server — guided prompts -------------------------------------------
 // Workflow prompts that orchestrate the six tools. Names/descriptions are
@@ -1357,11 +1464,11 @@ const PROMPTS = [
   },
 ] as const;
 
-server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+const handleListPrompts = async () => ({
   prompts: PROMPTS.map((p) => ({ ...p, arguments: [...p.arguments] })),
-}));
+});
 
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+const handleGetPrompt = async (request: GetPromptRequest) => {
   const name = request.params.name;
   const args = (request.params.arguments ?? {}) as Record<string, string>;
 
@@ -1400,16 +1507,130 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     description: meta.description,
     messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
   };
-});
+};
+
+// --- bible_setup — build the database from inside the server ---------------
+/**
+ * Guarded by an explicit confirmation flag rather than running on first use.
+ *
+ * The download takes about a minute and reaches out to eight external sources;
+ * that is not something to start behind the user's back because a model happened
+ * to ask for a verse. Without `bestaetigung` the tool answers with the plan, so
+ * the model has something concrete to present before asking.
+ */
+async function handleSetup(args: { bestaetigung?: unknown }) {
+  if (dataMissing === null) {
+    return errorResult(
+      "Die Datenbank ist bereits vorhanden und vollständig. Es gibt nichts einzurichten."
+    );
+  }
+
+  // Import here, not at module scope: this pulls in all eight download modules,
+  // and a server that already has its data should never load them.
+  const { runSetup, SETUP_STEPS } = await import("./scripts/setup.ts");
+
+  if (args.bestaetigung !== true) {
+    const plan = {
+      status: "bestaetigung_erforderlich",
+      grund: dataMissing,
+      erklaerung:
+        "Die Bibeldaten werden nicht mitgeliefert und müssen einmalig von den " +
+        "Originalquellen geladen werden. Frage die Nutzerin oder den Nutzer, ob der " +
+        "Download jetzt starten soll, und rufe dieses Werkzeug danach mit " +
+        "bestaetigung=true erneut auf.",
+      dauer: "ungefähr eine Minute",
+      voraussetzung: "Internetverbindung",
+      umfang_mb: 145,
+      schritte: SETUP_STEPS.map((s) => ({ schritt: s.label, liefert: s.provides })),
+      ziel: DB_PATH,
+    };
+    return { content: [{ type: "text" as const, text: JSON.stringify(plan, null, 2) }] };
+  }
+
+  console.error("bible_setup: starting download");
+  // The download scripts report progress with console.log, which is right for a
+  // terminal and fatal here: stdout carries the JSON-RPC stream, and a single
+  // stray line makes the client treat the server as broken. Measured — the first
+  // end-to-end run of this tool produced an unparseable stream. Redirect for the
+  // duration rather than rewriting every log line in eight scripts that are also
+  // used standalone.
+  const consoleLog = console.log;
+  console.log = console.error;
+  let report;
+  try {
+    report = await runSetup((label, i, total) => {
+      console.error(`bible_setup [${i}/${total}] ${label}`);
+    });
+  } finally {
+    console.log = consoleLog;
+  }
+
+  const fehlgeschlagen = report.steps.filter((s) => !s.ok);
+  const gelungen = report.steps.filter((s) => s.ok).map((s) => s.label);
+
+  if (report.aborted) {
+    return errorResult(
+      `Der Aufbau ist fehlgeschlagen: ${fehlgeschlagen[0]?.error ?? "unbekannter Fehler"}\n\n` +
+        "Ohne die deutschen Übersetzungen entsteht keine Datenbank, deshalb wurden die " +
+        "weiteren Schritte übersprungen. Die vorhandenen Daten sind unverändert geblieben. " +
+        "Häufigste Ursache ist eine fehlende Internetverbindung; ein erneuter Aufruf " +
+        "beginnt von vorn."
+    );
+  }
+
+  // A restart is required because the connection and its prepared statements are
+  // bound to the empty in-memory database this process started with.
+  const result = {
+    status: report.complete ? "fertig" : "teilweise_fertig",
+    dauer_sekunden: Math.round(report.seconds),
+    geladen: gelungen,
+    ...(fehlgeschlagen.length > 0
+      ? {
+          fehlgeschlagen: fehlgeschlagen.map((s) => ({
+            schritt: s.label,
+            fehler: s.error,
+            fehlt_dadurch: s.provides,
+            nachholen_mit: s.command,
+          })),
+          hinweis_unvollstaendig:
+            "Die übrigen Daten sind vollständig geladen und nutzbar. Die fehlgeschlagenen " +
+            "Schritte lassen sich einzeln nachholen, ohne alles neu zu laden.",
+        }
+      : {}),
+    naechster_schritt:
+      "Die Daten liegen jetzt auf der Festplatte. Bitte Claude Desktop einmal vollständig " +
+      "beenden und neu starten — erst danach kann dieser Server sie lesen. Gib diesen Satz " +
+      "unbedingt weiter.",
+  };
+  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+}
 
 // --- MCP server — request dispatch (bible_lookup handled inline) -----------
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+const handleCallTool = async (request: CallToolRequest) => {
   const toolName = request.params.name;
   // `arguments` is optional per the MCP schema, and clients do omit it when the
   // model calls a tool without parameters. Without this fallback every handler
   // would throw a raw TypeError into the JSON-RPC layer instead of returning
   // the "field is required" tool error the caller can act on.
   const rawArgs = request.params.arguments ?? {};
+
+  if (toolName === "bible_setup") {
+    return handleSetup(rawArgs as { bestaetigung?: unknown });
+  }
+
+  // One gate for all six data tools instead of a check per handler: without a
+  // database every one of them would otherwise answer "book not found", which
+  // reads like the reference was wrong rather than like nothing is loaded yet.
+  if (dataMissing !== null) {
+    return errorResult(
+      `${dataMissing} Dieser Server bringt die Bibeldaten nicht mit, sie werden einmalig ` +
+        "von den Originalquellen geladen (etwa eine Minute, Internetverbindung nötig).\n\n" +
+        "Frage die Nutzerin oder den Nutzer, ob der Download jetzt starten soll, und rufe " +
+        "dann bible_setup mit bestaetigung=true auf. Beantworte die Bibelfrage bis dahin " +
+        "nicht aus dem Gedächtnis."
+    );
+  }
+
   if (toolName === "bible_original") {
     return handleOriginal(
       rawArgs as {
@@ -1482,11 +1703,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 
-  const MAX_CHAPTER = 150; // Psalms has the most chapters (150)
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
     return {
-      content: [{ type: "text" as const, text: `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}` }],
+      content: [{ type: "text" as const, text: chapterOutOfRange }],
       isError: true,
     };
   }
@@ -1551,10 +1771,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     })
     .join(" ");
 
+  const hinweise = bracketHints([text]);
   const response = {
     reference,
     translation: translationName,
     text,
+    ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
   };
 
   return {
@@ -1565,7 +1787,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       },
     ],
   };
-});
+};
 
 // --- Tool handlers ---------------------------------------------------------
 /**
@@ -1591,12 +1813,12 @@ function handleOriginal(args: {
     return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
   }
   const chapter = toInt(args.chapter);
-  if (chapter === null || chapter < 1 || chapter > 150) {
-    return errorResult("Error: 'chapter' must be a positive integer.");
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    return errorResult(chapterOutOfRange);
   }
   const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > 200) {
-    return errorResult("Error: 'verse' must be a positive integer.");
+  if (verse === null || verse < 1 || verse > MAX_VERSE) {
+    return errorResult(verseOutOfRange);
   }
 
   const bookId = resolveBook(book);
@@ -1705,12 +1927,12 @@ function handleCrossrefs(args: {
     return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
   }
   const chapter = toInt(args.chapter);
-  if (chapter === null || chapter < 1 || chapter > 150) {
-    return errorResult("Error: 'chapter' must be a positive integer.");
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    return errorResult(chapterOutOfRange);
   }
   const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > 200) {
-    return errorResult("Error: 'verse' must be a positive integer.");
+  if (verse === null || verse < 1 || verse > MAX_VERSE) {
+    return errorResult(verseOutOfRange);
   }
   const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 30);
 
@@ -1767,6 +1989,7 @@ function handleCrossrefs(args: {
     };
   });
 
+  const hinweise = bracketHints(verweise.map((v) => v.text));
   const response = {
     reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
     quelle:
@@ -1781,6 +2004,7 @@ function handleCrossrefs(args: {
             "übernehmen — nicht Anfang oder Ende des Abschnitts weglassen.",
         }
       : {}),
+    ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
   };
 
   return {
@@ -2033,6 +2257,7 @@ function handleSearch(args: {
       : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert — " +
           "je Vers daran abzählen, nicht schätzen."
   );
+  hinweise.push(...bracketHints(rows.map((r) => r.text)));
   response.hinweis = hinweise.join(" ");
 
   return {
@@ -2056,12 +2281,12 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     return errorResult("Error: 'book' is required (e.g. 'Römer', '1Joh').");
   }
   const chapter = toInt(args.chapter);
-  if (chapter === null || chapter < 1 || chapter > 150) {
-    return errorResult("Error: 'chapter' must be a positive integer.");
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    return errorResult(chapterOutOfRange);
   }
   const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > 200) {
-    return errorResult("Error: 'verse' must be a positive integer.");
+  if (verse === null || verse < 1 || verse > MAX_VERSE) {
+    return errorResult(verseOutOfRange);
   }
   const bookId = resolveBook(book);
   if (bookId === null) {
@@ -2215,10 +2440,135 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
   };
 }
 
+// --- MCP server — construction and tool registration -----------------------
+// A factory, not a singleton: one `Server` binds exactly one transport, so the
+// HTTP mode below needs a fresh instance per session. Everything expensive
+// (database, prepared statements, the tool list) lives at module level and is
+// shared; an instance is just the handler wiring.
+function createServer(): Server {
+  const s = new Server(
+    { name: "bibelstudium-mcp", version: "0.2.2" },
+    { capabilities: { tools: {}, prompts: {} } }
+  );
+  s.setRequestHandler(ListToolsRequestSchema, handleListTools);
+  s.setRequestHandler(ListPromptsRequestSchema, handleListPrompts);
+  s.setRequestHandler(GetPromptRequestSchema, handleGetPrompt);
+  s.setRequestHandler(CallToolRequestSchema, handleCallTool);
+  return s;
+}
+
 // --- Bootstrap -------------------------------------------------------------
+/**
+ * HTTP mode, opt-in via MCP_HTTP_PORT. Without it the server speaks stdio as
+ * before, so local clients and `bun run test` are unaffected.
+ *
+ * Binds to 127.0.0.1 unless MCP_HTTP_HOST says otherwise. That default is the
+ * security-relevant part: reaching this server from outside should require a
+ * deliberate step (a tunnel or reverse proxy that terminates TLS), never a
+ * forgotten default. Publishing the port directly also exposes the machine's
+ * address, and neither TLS nor access control is provided here.
+ *
+ * Stateless: `Server` binds a single transport, so each request gets its own
+ * instance from createServer(). The database and every prepared statement stay
+ * shared at module level, so a request costs almost nothing beyond the handler
+ * wiring.
+ */
+// CORS, damit auch browserbasierte Clients den Endpunkt nutzen können. Für
+// MCP-Clients ohne Browser ist es folgenlos: die schicken keinen Origin. Kein
+// Widerspruch zur Origin-Prüfung unten — die entscheidet, WER antworten
+// bekommt, diese Kopfzeilen sagen dem Browser nur, was er damit tun darf.
+// Ohne 'expose' käme der Client nicht an die Sitzungs-ID heran.
+const CORS_HEADERS: Readonly<Record<string, string>> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-headers": "content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id",
+  "access-control-expose-headers": "mcp-session-id",
+  "access-control-max-age": "86400",
+};
+
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function serveHttp(port: number): Promise<void> {
+  const host = process.env["MCP_HTTP_HOST"] ?? "127.0.0.1";
+  // Browser origins that may talk to this server. Empty by default: MCP clients
+  // are not browsers and send no Origin at all, so the strict default costs
+  // nothing and closes the DNS-rebinding hole the spec requires servers to
+  // close. A web client is opt-in via MCP_HTTP_ALLOWED_ORIGINS.
+  const allowedOrigins = (process.env["MCP_HTTP_ALLOWED_ORIGINS"] ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o !== "");
+
+  Bun.serve({
+    port,
+    hostname: host,
+    idleTimeout: 120,
+    async fetch(request) {
+      const url = new URL(request.url);
+
+      if (request.method === "OPTIONS") {
+        return withCors(new Response(null, { status: 204 }));
+      }
+      if (url.pathname === "/health") {
+        return withCors(
+          new Response(JSON.stringify({ status: "ok" }), {
+            headers: { "content-type": "application/json" },
+          })
+        );
+      }
+      if (url.pathname !== "/mcp") return withCors(new Response("Not found", { status: 404 }));
+
+      // Spec: servers MUST validate Origin. The SDK's own option for this is
+      // deprecated in favour of exactly this kind of outer check.
+      const origin = request.headers.get("origin");
+      if (origin !== null && !allowedOrigins.includes(origin)) {
+        return withCors(new Response("Forbidden origin", { status: 403 }));
+      }
+
+      // Stateless: one server plus transport per request, no session registry.
+      // This server is pure request/response — it never pushes notifications and
+      // has nothing to resume — so sessions would buy nothing and cost a registry
+      // that has to be swept, capped and expired. An earlier stateful version
+      // leaked exactly that way (21 requests, 21 sessions that never went away,
+      // measured 25.07.2026). Both objects fall out of scope once the response
+      // stream ends.
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      await createServer().connect(transport);
+      return withCors(await transport.handleRequest(request));
+    },
+  });
+
+  console.error(`Bibelstudium MCP server running on http://${host}:${port}/mcp`);
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    console.error(
+      `WARNUNG: gebunden an ${host}, also nicht nur lokal erreichbar. ` +
+        "Ohne vorgelagertes TLS und Zugriffsschutz nicht ins offene Netz stellen."
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  const portRaw = process.env["MCP_HTTP_PORT"];
+  if (portRaw !== undefined && portRaw !== "") {
+    const port = Number(portRaw);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`MCP_HTTP_PORT ist keine gültige Portnummer: ${portRaw}`);
+    }
+    await serveHttp(port);
+    return;
+  }
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await createServer().connect(transport);
   console.error("Bibelstudium MCP server running on stdio");
 }
 
