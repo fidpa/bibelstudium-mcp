@@ -81,6 +81,7 @@ Die Skripte liegen in `scripts/`, angesprochen werden sie über diese
 | `scripts/build-mcpb.ts` | MCPB-Bundle: `bun build --compile` + Manifest aus `mcpb/manifest.json` → `tmp/` |
 | `mcpb/manifest.json` | Manifest-Quelle des Bundles; Version, Ziel und Plattform setzt das Build-Skript |
 | `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → `book_id` |
+| `tests/test-golden.ts` | `bun run test` — Zusicherungen gegen einen frischen Server über stdio; liegt bewusst **nicht** in `scripts/`, das ist der Datenaufbau |
 | `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
 
 Der Schnitt folgt der Laufzeit-Grenze: `server.ts` importiert nur
@@ -108,10 +109,10 @@ Priorität steht in `resolveEdition`, im Routing und im `hinweis` jeder Antwort
 ## Testen
 
 ```bash
-bun run test        # 58 Zusicherungen gegen einen frischen Server über stdio
+bun run test        # 61 Zusicherungen gegen einen frischen Server über stdio
 ```
 
-`scripts/test-golden.ts` ist der Regressionstest nach Änderungen an `server.ts`:
+`tests/test-golden.ts` ist der Regressionstest nach Änderungen an `server.ts`:
 Grenzwertmeldungen, Werkzeug-Annotationen, Buchauflösung, Klammerhinweise,
 Comma Johanneum, TAGNT-Quellenkonflikt, hebräische Morphologie, Treffer- gegen
 Vorkommenszahlen, `verse_einzeln`. Er braucht eine gebaute Datenbank und läuft
@@ -385,6 +386,15 @@ Schnelle Datenprüfungen laufen direkt über `sqlite3 data/bible.db "…"`.
   passen; `vorkommen_gesamt` nennt die Vorkommen. Ohne diese Trennung leiten
   Konsumenten Vorkommenszahlen aus der Verszahl ab und schätzen sie (beobachtet
   am 25.07.2026).
+- **Jede Zahl, die ein Konsument brauchen könnte, gehört ins Ergebnis.** Über
+  sechs Läufe von Hand nachgerechnet (25.07.2026): Zahlen, die ein Werkzeug
+  **nennt**, kamen 10/10 richtig an; selbst abgeleitete Kapitelsummen und
+  Wortzahlen waren in etwa der Hälfte der Fälle falsch — jedes Mal so, dass die
+  Gesamtsumme aufgeht und die Auszählung dadurch belegt wirkt (das Comma
+  Johanneum als „16 zusätzliche Wörter", wo es 17 sind). Daher `verteilung` in
+  `bible_search` und `woerter` samt Klammerzahlen in `bible_compare`. Bei neuen
+  Feldern gleich mitdenken: Was nicht dasteht, wird geschätzt und klingt
+  trotzdem wie gemessen.
 - **Das Feld `wort` ist quellentreu, nicht hübsch.** `byzantine`/`tr` liegen
   unakzentuiert vor, `sblgnt` akzentuiert, `wlc` mit Teamim und dem
   OSHB-Morphemtrenner `/` (`בְּ/רֵאשִׁ֖ית`). Konsumierende Modelle ergänzen sonst beim

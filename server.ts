@@ -325,15 +325,20 @@ const stmtSearchBook = hasFts
     )
   : null;
 
+// book_id and chapter ride along so one scan serves both the occurrence total
+// and the per-book/per-chapter breakdown — see the `verteilung` block below.
 const stmtSearchAll = hasFts
-  ? db.prepare<{ text: string }, [string, string, number]>(
-      "SELECT highlight(verses_fts, 0, '⟦', '⟧') as text " +
+  ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, string, number]>(
+      "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
         "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? LIMIT ?"
     )
   : null;
 const stmtSearchAllBook = hasFts
-  ? db.prepare<{ text: string }, [string, string, number, number]>(
-      "SELECT highlight(verses_fts, 0, '⟦', '⟧') as text " +
+  ? db.prepare<
+      { book_id: number; chapter: number; text: string },
+      [string, string, number, number]
+    >(
+      "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
         "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? LIMIT ?"
     )
   : null;
@@ -2407,19 +2412,50 @@ function handleSearch(args: {
   // as findings and try to break the number down per verse, guessing the
   // per-verse counts (observed 25.07.2026). Count the highlight markers over
   // all matching verses so the second number is stated rather than inferred.
-  const vorkommen =
+  const scan =
     total <= OCCURRENCE_SCAN_LIMIT && stmtSearchAll && stmtSearchAllBook
-      ? (bookId === null
-          ? stmtSearchAll.all(match, translation, OCCURRENCE_SCAN_LIMIT)
-          : stmtSearchAllBook.all(match, translation, bookId, OCCURRENCE_SCAN_LIMIT)
-        ).reduce((sum, r) => sum + r.text.split(HIT_OPEN).length - 1, 0)
+      ? bookId === null
+        ? stmtSearchAll.all(match, translation, OCCURRENCE_SCAN_LIMIT)
+        : stmtSearchAllBook.all(match, translation, bookId, OCCURRENCE_SCAN_LIMIT)
       : null;
+  const hits = (text: string) => text.split(HIT_OPEN).length - 1;
+  const vorkommen = scan === null ? null : scan.reduce((sum, r) => sum + hits(r.text), 0);
+
+  // Any breakdown a consumer might want has to be counted here rather than left
+  // to the model: over six measured runs the numbers the tool stated were right
+  // 10/10, while self-derived chapter sums were wrong in three of five — and
+  // wrong in a way that looks counted, because the total still adds up
+  // (25.07.2026). Group by book for a whole-Bible search and by chapter when the
+  // search is confined to one book: that is the level the question is asked at
+  // in each case. Only emitted with more than one bucket — a single-entry
+  // breakdown repeats `treffer` and teaches nothing.
+  const verteilung: Array<Record<string, unknown>> = [];
+  if (scan !== null) {
+    const buckets = new Map<number, { treffer: number; vorkommen: number }>();
+    for (const r of scan) {
+      const key = bookId === null ? r.book_id : r.chapter;
+      const bucket = buckets.get(key) ?? { treffer: 0, vorkommen: 0 };
+      bucket.treffer += 1;
+      bucket.vorkommen += hits(r.text);
+      buckets.set(key, bucket);
+    }
+    if (buckets.size > 1) {
+      for (const [key, bucket] of [...buckets].sort((a, b) => a[0] - b[0])) {
+        verteilung.push({
+          ...(bookId === null ? { buch: getBookDisplayName(key) } : { kapitel: key }),
+          treffer: bucket.treffer,
+          vorkommen: bucket.vorkommen,
+        });
+      }
+    }
+  }
 
   const response: Record<string, unknown> = {
     suche: query,
     uebersetzung: TRANSLATIONS[translation].name,
     treffer: total,
     ...(vorkommen !== null && vorkommen !== total ? { vorkommen_gesamt: vorkommen } : {}),
+    ...(verteilung.length > 0 ? { verteilung } : {}),
     verse: rows.map((r) => ({
       stelle: `${getBookDisplayName(r.book_id)} ${r.chapter},${r.verse}`,
       text: r.text,
@@ -2439,6 +2475,13 @@ function handleSearch(args: {
       : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert — " +
           "je Vers daran abzählen, nicht schätzen."
   );
+  if (verteilung.length > 0) {
+    hinweise.push(
+      `'verteilung' ist über alle ${total} Treffer ausgezählt, nicht über die gelisteten Verse: ` +
+        `je ${bookId === null ? "Buch" : "Kapitel"} die Zahl der Verse ('treffer') und der Vorkommen ` +
+        "('vorkommen'). Diese Zahlen übernehmen, nicht aus der Trefferliste selbst aufteilen."
+    );
+  }
   hinweise.push(...bracketHints(rows.map((r) => r.text)));
   response.hinweis = hinweise.join(" ");
   response.quellen = quellen(translationQuelle(translation));
@@ -2514,14 +2557,23 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
       if (segs.length === 0) {
         vergleiche.push({ paar, ergebnis: "identisch (nach Normalisierung)" });
       } else {
+        // The word count of a variant run is stated, not left to be counted:
+        // the Comma Johanneum was reported as "16 additional words" where the
+        // edition diff and the TAGNT attestation both say 17 (25.07.2026).
+        // Only for runs of two or more — "(1 Wort)" on every single-word
+        // difference is noise that buries the cases that matter.
+        const laenge = (s: string) => {
+          const n = s === "" ? 0 : s.split(" ").length;
+          return n > 1 ? ` (${n} Wörter)` : "";
+        };
         vergleiche.push({
           paar,
           unterschiede: segs.map((s) =>
             s.a && s.b
-              ? `${A.ed}: "${s.a}" ↔ ${B.ed}: "${s.b}"`
+              ? `${A.ed}: "${s.a}"${laenge(s.a)} ↔ ${B.ed}: "${s.b}"${laenge(s.b)}`
               : s.a
-                ? `nur in ${A.ed}: "${s.a}"`
-                : `nur in ${B.ed}: "${s.b}"`
+                ? `nur in ${A.ed}: "${s.a}"${laenge(s.a)}`
+                : `nur in ${B.ed}: "${s.b}"${laenge(s.b)}`
           ),
         });
       }
@@ -2601,6 +2653,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     editionen: texts.map((t) => ({
       texttyp: t.ed,
       edition: EDITION_META[t.ed]!.label,
+      woerter: t.words.length,
       text: t.words.join(" ") || "— (Vers in dieser Edition nicht vorhanden)",
     })),
     vergleiche,
@@ -2615,7 +2668,9 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
       "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
       "Schreibvarianten. Welche Art vorliegt, steht in 'bezeugung' ('schreibvariante' bzw. " +
       "'bedeutungsvariante', dazu 'typ') — nicht aus diesem Hinweis erschließen und die " +
-      "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht.",
+      "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht. " +
+      "Wortzahlen stehen im Ergebnis: je Edition in 'woerter', je Unterschied in Klammern " +
+      "hinter der Lesart — diese Zahlen übernehmen, nicht selbst nachzählen.",
     // Aus `editions`, nicht aus einer festen Dreierliste: die Auswahl ist nach
     // dem tatsächlich geladenen Bestand gefiltert und kann zwei Editionen
     // umfassen. TAGNT nur, wenn eine Bezeugung in der Antwort steht.

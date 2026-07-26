@@ -6,6 +6,22 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.0] - 2026-07-26
+
+### Hinzugefügt (Zahlen, die bisher geschätzt wurden)
+
+- **`bible_search` nennt eine Verteilung** (`verteilung`): je Buch bei einer Suche über die ganze Bibel, je Kapitel bei einer auf ein Buch eingegrenzten, mit der Zahl der Verse (`treffer`) und der Vorkommen (`vorkommen`). Sie wird über **alle** Treffer ausgezählt, nicht über die gelisteten Verse, und entfällt bei nur einem Eintrag, weil sie dann nur `treffer` wiederholt.
+
+- **`bible_compare` beziffert Wortzahlen**: je Edition in `woerter`, und hinter jedem Unterschied mit mehr als einem Wort die Länge des Laufs in Klammern (`(17 Wörter)`). Ein-Wort-Unterschiede bleiben unbeziffert, sonst ersäuft der interessante Fall im Rauschen.
+
+  Beides geht auf dieselbe Messung zurück: Über sechs Läufe von Hand nachgerechnet waren die Zahlen, die das Werkzeug **nennt**, 10/10 richtig, während selbst abgeleitete Kapitelsummen und Wortzahlen in etwa der Hälfte der Fälle falsch waren — und zwar so, dass die Gesamtsumme aufgeht und die Auszählung belegt wirkt. Konkret: das Comma Johanneum als „16 zusätzliche Wörter" wiedergegeben, wo Editionsdiff und TAGNT-Bezeugung übereinstimmend **17** sagen. Wo eine Zahl nicht im Werkzeugergebnis steht, wird sie geschätzt und erscheint trotzdem im Tonfall einer Messung.
+
+  Additiv, keine bestehenden Felder geändert. Über stdio gegen einen frischen Prozess geprüft und per SQL gegengerechnet; die Zusicherungen zu den Wortzahlen stehen in `tests/test-golden.ts`.
+
+### Geändert (Ablage)
+
+- **Der Regressionstest liegt in `tests/`** statt in `scripts/`. `scripts/` ist der Datenaufbau: einmalige Läufe, die aus dem Netz laden und die Datenbank schreiben. Der Test tut das Gegenteil, er startet den fertigen Server als eigenen Prozess und liest nur. Aufgerufen wird er unverändert über `bun run test`; der Pfad ist keine Schnittstelle. Ältere Einträge in dieser Datei nennen weiterhin den alten Pfad — sie beschreiben den Stand ihres Releases und werden nicht rückwirkend umgeschrieben.
+
 ## [0.4.0] - 2026-07-25
 
 ### Hinzugefügt (Namensnennung)

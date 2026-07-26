@@ -214,6 +214,23 @@ console.log("Editionsvergleich");
   eq("1Joh 5,7 sblgnt", byType.get("sblgnt"), "ὅτι τρεῖς εἰσιν οἱ μαρτυροῦντες");
   has("1Joh 5,7 tr trägt das Comma", byType.get("tr") ?? "", "ο πατηρ ο λογος και το αγιον πνευμα");
   check("1Joh 5,7 ohne Quellenkonflikt", !("warnung" in (comma!.json ?? {})));
+  // Word counts are stated so nobody has to count: the Comma was reported as 16
+  // additional words where diff and TAGNT attestation both say 17 (25.07.2026).
+  const woerter = new Map(
+    ((comma!.json?.editionen ?? []) as Array<{ texttyp: string; woerter: number }>).map((e) => [
+      e.texttyp,
+      e.woerter,
+    ])
+  );
+  eq("1Joh 5,7: Wortzahl tr", woerter.get("tr"), 22);
+  eq("1Joh 5,7: Wortzahl byzantine", woerter.get("byzantine"), 5);
+  const diffs = ((comma!.json?.vergleiche ?? []) as Array<{ unterschiede?: string[] }>).flatMap(
+    (v) => v.unterschiede ?? []
+  );
+  check(
+    "1Joh 5,7: Zusatz mit 17 Wörtern beziffert",
+    diffs.some((d) => d.includes("(17 Wörter)"))
+  );
 }
 {
   has("Mk 14,46: warnung oben", String(mk1446!.json?.warnung ?? ""), "widerspricht die TAGNT-Bezeugung");
