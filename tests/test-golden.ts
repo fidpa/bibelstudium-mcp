@@ -203,9 +203,18 @@ console.log("Server-Auskunft");
   for (const t of geladen ?? []) {
     check(`${t.code}: Jahreszahl im Namen`, /\d{4}/.test(t.name), `war "${t.name}"`);
   }
-  const editionen = j?.urtext_editionen as string[] | undefined;
+  const editionen = j?.urtext_editionen as Array<{ code: string; name: string }> | undefined;
   has("Urtext: Mehrheitstext", JSON.stringify(editionen), "byzantine");
   has("Urtext: AT (WLC)", JSON.stringify(editionen), "wlc");
+  // Every edition must carry a resolved name: "tr" alone identifies no text, and
+  // name === code means the EDITION_META fallback silently took over.
+  for (const e of editionen ?? []) {
+    check(
+      `${e.code}: Name aufgeloest`,
+      typeof e.name === "string" && e.name.length > 0 && e.name !== e.code,
+      `war "${e.name}"`
+    );
+  }
   const zusatz = (j?.zusatzdaten ?? {}) as Record<string, unknown>;
   for (const key of [
     "strong_lexikon",

@@ -191,10 +191,6 @@ const hasOriginal =
     )
     .get() !== null;
 
-// Which original-language editions this file actually carries, for
-// bible_server_info. Queried once: the set is fixed for the lifetime of the file,
-// and it is the honest answer to "which source texts do you have" — the download
-// steps are separate, so wlc without sblgnt (or the reverse) is a real state.
 // Newest fetch recorded in the provenance table, date only. The one number that
 // dates the whole inventory: "your data is from 2026-07-23" answers more support
 // questions than any count. Table is optional (older builds lack it) and the
@@ -209,6 +205,10 @@ const dataFetchedAt: string | null = (() => {
   return row?.t ? row.t.slice(0, 10) : null;
 })();
 
+// Which original-language editions this file actually carries, for
+// bible_server_info. Queried once: the set is fixed for the lifetime of the file,
+// and it is the honest answer to "which source texts do you have" — the download
+// steps are separate, so wlc without sblgnt (or the reverse) is a real state.
 const originalEditions: readonly string[] = hasOriginal
   ? (
       db.query("SELECT DISTINCT edition FROM original_words ORDER BY edition").all() as Array<{
@@ -1838,9 +1838,18 @@ function handleServerInfo() {
       code,
       name: TRANSLATIONS[code as TranslationCode]?.name ?? code,
     })),
-    // byzantine = Mehrheitstext, tr = Textus Receptus, sblgnt = kritischer Text,
-    // wlc = Westminster Leningrad Codex (AT). Leer, wenn download-morph.ts nie lief.
-    urtext_editionen: [...originalEditions],
+    // Same shape as `uebersetzungen`, and for the same reason: the bare keys
+    // ("byzantine", "tr") do not identify an edition, and a caller cannot look
+    // them up anywhere in this payload. Which text form is loaded decides which
+    // questions this instance can answer at all, so the name belongs here.
+    // Names come from EDITION_META, where text, license and hinweis already sit
+    // together, rather than a second list that could drift from it. Empty when
+    // download-morph.ts never ran; `?? code` keeps an edition the database
+    // carries but the table does not know visible instead of dropping it.
+    urtext_editionen: originalEditions.map((code) => ({
+      code,
+      name: EDITION_META[code]?.label ?? code,
+    })),
     zusatzdaten: {
       strong_lexikon: hasStrongDefs,
       // Ältere Datenbanken haben strong_defs ohne die STEPBible-Spalten, dann
@@ -2798,11 +2807,18 @@ function createServer(): Server {
       capabilities: { tools: {}, prompts: {} },
       // Version auch hier, nicht nur in serverInfo: das initialize trägt sie
       // ohnehin, aber kein Client zeigt sie an, und ein Bug-Report ohne
-      // Versionsangabe kostet eine Rückfrage. Über instructions landet sie im
-      // Kontext des Modells, also ist die Frage im Chat beantwortbar, ohne
-      // dafür ein Werkzeug in jede tools/list zu hängen (die wiegt bereits
-      // ~1800 Tokens). Dieselbe einzige Quelle wie serverInfo und das
-      // MCPB-Manifest, sie kann also nicht auseinanderlaufen.
+      // Versionsangabe kostet eine Rückfrage.
+      //
+      // Dieses Feld allein genügt dafür nicht: Claude Desktop reicht weder das
+      // initialize-Result noch instructions an das Modell durch (gemessen am
+      // 26.07.2026 in zwei Sitzungen). Im Chat ist die Frage hierüber also
+      // nicht beantwortbar, und genau deshalb gibt es bible_server_info, dessen
+      // Ergebnis das Modell sicher sieht. Gesetzt bleibt es trotzdem: andere
+      // Clients dürfen es durchreichen, und es kostet keine tools/list.
+      // Wer hier etwas ändert, ändert es dort mit.
+      //
+      // Dieselbe einzige Quelle wie serverInfo und das MCPB-Manifest, sie kann
+      // also nicht auseinanderlaufen.
       instructions:
         `bibelstudium-mcp server, version ${PACKAGE_VERSION}. ` +
         `Quote scripture only from the bible_* tools, never from memory. ` +

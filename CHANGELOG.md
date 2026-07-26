@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.4] - 2026-07-26
+
+### Geändert
+
+- **`bible_server_info` nennt die Urtext-Editionen jetzt beim Namen.** Das Feld `urtext_editionen` liefert statt der blanken Kürzel dieselbe Form wie `uebersetzungen`, also `{"code": "byzantine", "name": "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)"}` und entsprechend für `sblgnt`, `tr` und `wlc`.
+
+  Anlass war eine Chat-Aufzeichnung vom 26.07.2026: Das Modell gab die Auskunft korrekt wieder, reichte die Kürzel aber unverändert durch („Urtext-Editionen: byzantine, sblgnt, tr, wlc"), weil der Payload sie nirgends auflöst. Welche Textform geladen ist, entscheidet aber darüber, welche Fragen diese Instanz überhaupt beantworten kann: `tr` und `byzantine` unterscheiden sich in genau den Lesarten, wegen derer jemand nach dem Grundtext fragt.
+
+  Die Namen stammen aus `EDITION_META`, wo Text, Lizenz und `hinweis` bereits zusammenstehen, statt aus einer zweiten Liste, die davon abdriften könnte. Eine Edition, die die Datenbank führt und die Tabelle nicht kennt, erscheint weiterhin mit ihrem Kürzel, statt aus der Auskunft zu verschwinden.
+
+  **Was es kostet:** Die Antwort wächst von 624 auf 995 Zeichen, gemessen an einer Installation mit allen vier Editionen. Das fällt je Aufruf an, nicht je Sitzung: Die `tools/list` bleibt unverändert, weil die Beschreibung des Werkzeugs nicht angefasst wurde.
+
+- **Zwei Kommentare in `server.ts`, die einander widersprachen, sagen jetzt dasselbe.** Der Kommentar am `instructions`-Feld in `createServer()` begründete, die Versionsfrage sei darüber im Chat beantwortbar, „ohne dafür ein Werkzeug in jede `tools/list` zu hängen". Er beschrieb den Stand vor der Messung und blieb in 0.5.2 stehen, also in genau dem Commit, der `bible_server_info` einführte, weil die Messung das Gegenteil ergeben hatte. Wer nur diese Stelle las, konnte das Werkzeug für vermeidbaren Ballast halten und entfernen.
+
+  Der Kommentar hält jetzt den gemessenen Stand fest, nennt den Grund, warum das Feld trotzdem gesetzt bleibt (andere Clients dürfen es durchreichen, und es kostet keine `tools/list`), und verweist auf die zweite Stelle. Ein Kommentarblock über `dataFetchedAt`, der zur Hälfte die Urtext-Editionen erklärte, steht jetzt bei der Konstante, um die es geht. Am Verhalten des Servers ändert sich durch beides nichts.
+
+### Behoben (Dokumentation)
+
+- **`docs/TYPESCRIPT.md` behauptete, dieses Repository habe keine Testsuite.** Gemeint war „kein Test-Framework", und genau so steht es jetzt da, mit Verweis auf `tests/test-golden.ts`, das ohne `bun:test` auskommt und über einen eigenen stdio-Treiber gegen einen frischen Server prüft. In der bisherigen Fassung war die vorhandene Suite für Mitwirkende unsichtbar. Ebenfalls nachgezogen: Der Server wird dort nicht mehr nur als stdio-Server beschrieben, denn der HTTP-Modus über `MCP_HTTP_PORT` trägt den öffentlichen Endpunkt.
+
+### Anmerkung zur Messung
+
+Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringify(result)` der `tools/list` gemessen: 7201 Zeichen für alle sieben Werkzeuge, davon 361 für `bible_server_info`. Der Abschnitt zu 0.5.2 nennt 7572 beziehungsweise 379; woher diese Zahlen stammen, ließ sich nicht mehr nachvollziehen, und sie bleiben dort unverändert stehen. Für Vergleiche über Fassungen hinweg gilt die hier genannte Methode.
+
 ## [0.5.3] - 2026-07-26
 
 ### Geändert (Infrastruktur)

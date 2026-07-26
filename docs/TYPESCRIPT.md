@@ -1,9 +1,9 @@
 # TypeScript-Richtlinien: bibelstudium-mcp
 
 Code-Stil-Regeln für dieses Repository, zugeschnitten auf das, was hier
-tatsächlich zutrifft: Bun, ein stdio-MCP-Server, SQLite, keine Oberfläche, keine
-Testsuite, bewusst eine einzige *Laufzeit*-Abhängigkeit
-(`@modelcontextprotocol/sdk`).
+tatsächlich zutrifft: Bun, ein MCP-Server über stdio und optional HTTP, SQLite,
+keine Oberfläche, kein Test-Framework, bewusst eine einzige
+*Laufzeit*-Abhängigkeit (`@modelcontextprotocol/sdk`).
 
 ## Typecheck
 
@@ -86,5 +86,5 @@ Dekodern) sind in Ordnung.
 | Gängige Regel | Warum hier nicht |
 |---------------|------------------|
 | Result-Typen, eigene Fehlerklassen | Überdimensioniert für die Anzahl der Handler; das MCP-Muster ist `errorResult()` oder throw + `abort()`. |
-| Test-Framework, Coverage-Ziele | Keine Testsuite; verifiziert wird über einen stdio-Treiber gegen den echten Server und per SQL gegen die echte DB (siehe AGENTS.md „Testen"). |
+| Test-Framework, Coverage-Ziele | Kein Framework; verifiziert wird über einen stdio-Treiber gegen den echten Server (`tests/test-golden.ts`, Zusicherungen ohne `bun:test`) und per SQL gegen die echte DB (siehe AGENTS.md „Testen"). |
 | Logging-Framework | `console.error` nach stderr ist im stdio-MCP-Kontext das richtige Logging (stdout gehört dem JSON-RPC). |
