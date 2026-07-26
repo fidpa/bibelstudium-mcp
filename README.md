@@ -23,7 +23,7 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 
 ## Funktionen
 
-- **Exakter deutscher Verstext** (`bible_lookup`) – vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge
+- **Exakter deutscher Verstext** (`bible_lookup`) – vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge 1939
 - **Grundtext Wort für Wort** (`bible_original`) – ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
 - **Konkordanz / Wortstudie** (`bible_concordance`): alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
 - **Querverweise** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, jeweils mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt (`verse_einzeln`)
@@ -211,7 +211,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `LUT` | Luther 1912 (Voreinstellung) | Public Domain |
 | `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) |
 | `ELB` | Elberfelder 1871 | Public Domain |
-| `MB` | Menge | Public Domain |
+| `MB` | Menge 1939 | Public Domain |
 
 ## Editionen & Voreinstellungen
 
@@ -251,7 +251,7 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 **Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von acht fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
 
-**Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge sind einen Parameter entfernt, und `translation-compare` stellt sie nebeneinander.
+**Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge 1939 sind einen Parameter entfernt, und `translation-compare` stellt sie nebeneinander.
 
 **Warum ist der Byzantinische Mehrheitstext die NT-Voreinstellung?** Der Server dient wortgetreuer Arbeit, und die hier mitgelieferten deutschen Übersetzungen stehen in der Mehrheitstext-Tradition (Luther und Schlachter folgen der TR-/byzantinischen Linie). Der kritische SBLGNT ist über `texttyp: "sblgnt"` vollständig verfügbar, und `bible_compare` zeigt genau, wo die Editionen auseinandergehen, samt Bezeugung zur Beurteilung jeder Lesart.
 

@@ -191,6 +191,32 @@ const hasOriginal =
     )
     .get() !== null;
 
+// Which original-language editions this file actually carries, for
+// bible_server_info. Queried once: the set is fixed for the lifetime of the file,
+// and it is the honest answer to "which source texts do you have" — the download
+// steps are separate, so wlc without sblgnt (or the reverse) is a real state.
+// Newest fetch recorded in the provenance table, date only. The one number that
+// dates the whole inventory: "your data is from 2026-07-23" answers more support
+// questions than any count. Table is optional (older builds lack it) and the
+// source URLs stay out — those are the same for every install and documented in
+// the README, so repeating them here would only inflate the payload.
+const dataFetchedAt: string | null = (() => {
+  const hasProvenance =
+    db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='provenance'").get() !==
+    null;
+  if (!hasProvenance) return null;
+  const row = db.query("SELECT MAX(fetched_at) AS t FROM provenance").get() as { t: string | null };
+  return row?.t ? row.t.slice(0, 10) : null;
+})();
+
+const originalEditions: readonly string[] = hasOriginal
+  ? (
+      db.query("SELECT DISTINCT edition FROM original_words ORDER BY edition").all() as Array<{
+        edition: string;
+      }>
+    ).map((r) => r.edition)
+  : [];
+
 const stmtOriginal = hasOriginal
   ? db.prepare<
       {
@@ -1395,7 +1421,7 @@ const handleListTools = async () => ({
             type: "string",
             description:
               'Translation: "LUT" (Luther 1912, default), "SCH" (Schlachter 1951), ' +
-              '"ELB" (Elberfelder 1871), "MB" (Menge). Aliases like "luther", "schlachter" accepted.',
+              '"ELB" (Elberfelder 1871), "MB" (Menge 1939). Aliases like "luther", "schlachter" accepted.',
             default: "LUT",
           },
         },
@@ -1562,6 +1588,30 @@ const handleListTools = async () => ({
           verse: { type: "number", description: "Single verse number" },
         },
         required: ["book", "chapter", "verse"],
+      },
+    },
+    // Deliberately about the server, not about scripture: the version reaches
+    // clients in the initialize handshake, but no client shows it to the user
+    // and it does not reach the model either (measured 26.07.2026 — instructions
+    // is set and still invisible in the chat). A tool result is the one channel
+    // the model sees for certain, and "which version are you on?" is the first
+    // question a bug report has to answer.
+    //
+    // Reports only what differs between installations: the release, and which
+    // data this instance holds — data/ is built locally and not shipped, so two
+    // servers on the same version can hold different texts. No host details
+    // (uptime, paths, process, machine): this endpoint is public and
+    // unauthenticated, and a stranger has no business learning them.
+    {
+      name: "bible_server_info",
+      annotations: READ_ONLY_LOCAL,
+      description:
+        "Report this server's own release version and which Bible data it has loaded. " +
+        "Use when asked which version runs, or when collecting facts for a bug report. " +
+        "Returns no scripture — use bible_lookup for verse text.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
       },
     },
   ],
@@ -1769,6 +1819,43 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
   return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
 }
 
+/**
+ * Version and data inventory of this instance. Field names are German like the
+ * other tool payloads. Every value comes from a check already made at startup,
+ * so the call costs nothing beyond serialising.
+ *
+ * Inventory rather than statistics: a verse total says nothing a caller can act
+ * on, while "does this server have the original text, Strong's, cross-references"
+ * decides which questions it can answer at all. The download steps are separate
+ * and each optional, so an instance missing one of them is a normal state — and
+ * the usual cause when a tool comes back empty.
+ */
+function handleServerInfo() {
+  const result = {
+    server: "bibelstudium-mcp",
+    version: PACKAGE_VERSION,
+    uebersetzungen: [...availableTranslations].sort().map((code) => ({
+      code,
+      name: TRANSLATIONS[code as TranslationCode]?.name ?? code,
+    })),
+    // byzantine = Mehrheitstext, tr = Textus Receptus, sblgnt = kritischer Text,
+    // wlc = Westminster Leningrad Codex (AT). Leer, wenn download-morph.ts nie lief.
+    urtext_editionen: [...originalEditions],
+    zusatzdaten: {
+      strong_lexikon: hasStrongDefs,
+      // Ältere Datenbanken haben strong_defs ohne die STEPBible-Spalten, dann
+      // fehlen Gloss und Bedeutung trotz vorhandenem Lexikon.
+      strong_lexikon_vollstaendig: hasStepCols,
+      editionsbezeugung: hasTagnt,
+      querverweise: hasXrefs,
+      volltextsuche: hasFts,
+    },
+    ...(dataFetchedAt !== null ? { daten_stand: dataFetchedAt } : {}),
+    ...(dataMissing !== null ? { hinweis: dataMissing } : {}),
+  };
+  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+}
+
 // --- MCP server — request dispatch (bible_lookup handled inline) -----------
 const handleCallTool = async (request: CallToolRequest) => {
   const toolName = request.params.name;
@@ -1780,6 +1867,14 @@ const handleCallTool = async (request: CallToolRequest) => {
 
   if (toolName === "bible_setup") {
     return handleSetup(rawArgs as { bestaetigung?: unknown });
+  }
+
+  // Answered before the dataMissing gate below, and deliberately so: an instance
+  // without data is exactly when someone asks what this server is and what it
+  // has. Sending "no Bible database" instead of the version would withhold the
+  // one fact that was asked for.
+  if (toolName === "bible_server_info") {
+    return handleServerInfo();
   }
 
   // One gate for all six data tools instead of a check per handler: without a
@@ -2699,7 +2794,20 @@ function createServer(): Server {
     // funktioniert unter `bun run` und im kompilierten Binary gleichermaßen
     // (beides geprüft); build-mcpb.ts liest dieselbe Datei für das Manifest.
     { name: "bibelstudium-mcp", version: PACKAGE_VERSION },
-    { capabilities: { tools: {}, prompts: {} } }
+    {
+      capabilities: { tools: {}, prompts: {} },
+      // Version auch hier, nicht nur in serverInfo: das initialize trägt sie
+      // ohnehin, aber kein Client zeigt sie an, und ein Bug-Report ohne
+      // Versionsangabe kostet eine Rückfrage. Über instructions landet sie im
+      // Kontext des Modells, also ist die Frage im Chat beantwortbar, ohne
+      // dafür ein Werkzeug in jede tools/list zu hängen (die wiegt bereits
+      // ~1800 Tokens). Dieselbe einzige Quelle wie serverInfo und das
+      // MCPB-Manifest, sie kann also nicht auseinanderlaufen.
+      instructions:
+        `bibelstudium-mcp server, version ${PACKAGE_VERSION}. ` +
+        `Quote scripture only from the bible_* tools, never from memory. ` +
+        `When asked which server or MCP version is running, report this version.`,
+    }
   );
   s.setRequestHandler(ListToolsRequestSchema, handleListTools);
   s.setRequestHandler(ListPromptsRequestSchema, handleListPrompts);

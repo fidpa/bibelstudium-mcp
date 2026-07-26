@@ -6,6 +6,26 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.2] - 2026-07-26
+
+### Hinzugefügt
+
+- **`bible_server_info`: der Server sagt jetzt selbst, welche Fassung er ist und welche Daten er hat.** Sieben statt sechs Werkzeuge. Rückgabe: `version`, die geladenen `uebersetzungen` mit Namen, die `urtext_editionen` (`byzantine`, `sblgnt`, `tr`, `wlc`), fünf Flags unter `zusatzdaten` (Strong-Lexikon, dessen STEPBible-Vollständigkeit, Editionsbezeugung, Querverweise, Volltextsuche) sowie `daten_stand`, das neueste `fetched_at` aus der `provenance`-Tabelle.
+
+  **Warum ein Werkzeug und nicht das billigere `instructions`-Feld:** Die Version steht seit je im `initialize`-Handshake unter `serverInfo`, aber kein Client zeigt sie an. Der Versuch, sie über das `instructions`-Feld der `ServerOptions` in den Kontext des Modells zu bekommen, wurde am 26.07.2026 gemessen und **schlug fehl** — zwei Sessions in Claude Desktop sahen ausschließlich die Inhalte von `tools/list`; das `initialize`-Result reicht der Client dem Modell nicht durch. Die Spec sagt „Clients *dürfen*", und dieser tut es nicht. Ein Tool-Result ist der einzige Kanal, den das Modell sicher sieht. Nachgemessen am 26.07.2026: Aufruf über eine frisch verbundene Sitzung liefert die Version korrekt.
+
+  **Was es kostet:** `tools/list` wächst von 7191 auf 7572 Zeichen (+379, +5,3 %). Das zahlt jede Sitzung, in der der Server verbunden ist, weshalb die Beschreibung knapp gehalten ist und abgrenzt („Returns no scripture — use bible_lookup for verse text").
+
+  **Was es bewusst nicht meldet:** Hostname, Pfade, Prozess, Laufzeit. Der HTTP-Endpunkt ist öffentlich und authlos, ein Fremder hat dort nichts zu erfahren; zwei Zusicherungen halten das fest. Ebenfalls draußen: eine Gesamtzahl der Verse (sagt nichts, worauf ein Aufruf sich stützen kann) und die Quell-URLs (für jede Installation identisch, in README und `provenance` dokumentiert).
+
+  **Inventar statt Statistik:** Die Download-Schritte sind einzeln optional, deshalb ist eine Installation ohne Querverweise oder ohne Urtext ein normaler Zustand — und die übliche Ursache, wenn ein Werkzeug leer zurückkommt. `querverweise: false` beantwortet das direkt. Der Handler liegt bewusst **vor** der gemeinsamen `dataMissing`-Sperre der sechs Daten-Werkzeuge: ohne Datenbank ist die Frage nach Fassung und Bestand besonders naheliegend, dort „keine Bibeldaten" zu antworten hielte gerade die erfragte Auskunft zurück.
+
+- Das `instructions`-Feld ist trotz des Messergebnisses gesetzt (aus derselben `package.json`). Es kostet nichts, der MCP-Inspector und andere Clients zeigen es, und der enthaltene Satz „Quote scripture only from the bible_* tools, never from memory" ist unabhängig von der Versionsfrage sinnvoll.
+
+### Geändert
+
+- **Die Menge-Übersetzung heißt jetzt „Menge 1939"** statt nur „Menge", in `translations.ts`, in der Tool-Beschreibung von `bible_lookup`, in README und THIRD_PARTY_LICENSES. Damit tragen alle vier Übersetzungen ihre Ausgabe im Namen. Der Code `MB` und alle bisherigen Aliase bleiben unverändert; `menge1939` kommt als Alias hinzu, passend zu `luther1912`, `schlachter1951` und `elberfelder1871`.
+
 ## [0.5.1] - 2026-07-26
 
 ### Geändert (Typografie)

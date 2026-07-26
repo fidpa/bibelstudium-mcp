@@ -17,7 +17,7 @@ sqlite3 data/bible.db "SELECT * FROM provenance ORDER BY script"
 | LUT | Luther 1912 | Public Domain |
 | SCH | Schlachter 1951 | **CC BY 4.0**, © Genfer Bibelgesellschaft (siehe unten) |
 | ELB | Elberfelder 1871 | Public Domain |
-| MB | Menge | Public Domain (Hermann Menge † 1939) |
+| MB | Menge 1939 | Public Domain (Hermann Menge † 1939) |
 
 **Namensnennung Schlachter 1951** (von CC BY 4.0 vorgeschrieben): Die Heilige
 Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft (Geneva Bible

@@ -29,7 +29,7 @@ export const TRANSLATIONS = {
       "https://ebible.org/deu1951/copyright.htm",
   },
   ELB: { name: "Elberfelder 1871", license: "Public Domain", attribution: null },
-  MB: { name: "Menge", license: "Public Domain", attribution: null },
+  MB: { name: "Menge 1939", license: "Public Domain", attribution: null },
 } as const;
 
 export type TranslationCode = keyof typeof TRANSLATIONS;
@@ -41,7 +41,7 @@ const TRANSLATION_ALIASES: Record<string, TranslationCode> = {
   lut: "LUT", luther: "LUT", luther1912: "LUT",
   sch: "SCH", schlachter: "SCH", schlachter1951: "SCH",
   elb: "ELB", elberfelder: "ELB", elberfelder1871: "ELB",
-  mb: "MB", menge: "MB",
+  mb: "MB", menge: "MB", menge1939: "MB",
 };
 
 /**

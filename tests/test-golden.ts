@@ -14,6 +14,7 @@
  *   bun run test
  */
 import { resolve, dirname } from "node:path";
+import packageJson from "../package.json";
 
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
@@ -153,6 +154,8 @@ const CALLS = [
   ["bible_original", { book: "Psalm", chapter: 23, verse: 1 }],
   ["bible_search", { query: "lieb*", book: "1Joh" }],
   ["bible_crossrefs", { book: "Joh", chapter: 14, verse: 6, limit: 5 }],
+  // server identity — the version must be the packaged one, not a second place
+  ["bible_server_info", {}],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
 const { tools, results } = await callTools(CALLS);
@@ -171,7 +174,8 @@ const [
   ps231,
   searchLieb,
   xrefJoh146,
-] = results as ToolResult[] & { length: 15 };
+  serverInfo,
+] = results as ToolResult[] & { length: 16 };
 
 console.log("Grenzwertmeldungen");
 for (const [label, r] of [
@@ -185,8 +189,40 @@ for (const [label, r] of [
 eq("bible_original chapter", origChap999!.text, "Error: 'chapter' must be an integer between 1 and 150");
 eq("bible_lookup chapter", lookupChap999!.text, "Error: 'chapter' must be an integer between 1 and 150");
 
+console.log("Server-Auskunft");
+{
+  const j = serverInfo!.json as Json;
+  // Against the one failure this tool exists to prevent: a version maintained in
+  // a second place. Compares against package.json, not against a literal here.
+  eq("version == package.json", j?.version, packageJson.version);
+  eq("kein Fehler", serverInfo!.isError, false);
+  const geladen = j?.uebersetzungen as Array<{ code: string; name: string }> | undefined;
+  check("Übersetzungen gelistet", Array.isArray(geladen) && geladen.length > 0);
+  // Each name must carry its edition year: "Schlachter" alone does not identify a
+  // text, and 1951 differs from 2000 in wording.
+  for (const t of geladen ?? []) {
+    check(`${t.code}: Jahreszahl im Namen`, /\d{4}/.test(t.name), `war "${t.name}"`);
+  }
+  const editionen = j?.urtext_editionen as string[] | undefined;
+  has("Urtext: Mehrheitstext", JSON.stringify(editionen), "byzantine");
+  has("Urtext: AT (WLC)", JSON.stringify(editionen), "wlc");
+  const zusatz = (j?.zusatzdaten ?? {}) as Record<string, unknown>;
+  for (const key of [
+    "strong_lexikon",
+    "strong_lexikon_vollstaendig",
+    "editionsbezeugung",
+    "querverweise",
+    "volltextsuche",
+  ]) {
+    check(`zusatzdaten.${key} ist bool`, typeof zusatz[key] === "boolean");
+  }
+  lacks("keine Verszahl", serverInfo!.text, "verse_gesamt");
+  lacks("keine Host-Details: kein Pfad", serverInfo!.text, "/opt/");
+  lacks("keine Host-Details: keine Laufzeit", serverInfo!.text, "uptime");
+}
+
 console.log("Werkzeug-Annotationen");
-eq("sechs Werkzeuge gelistet", tools.length, 6);
+eq("sieben Werkzeuge gelistet", tools.length, 7);
 for (const t of tools) {
   const a = t.annotations as Json | undefined;
   eq(`${String(t.name)}: readOnlyHint`, a?.readOnlyHint, true);
