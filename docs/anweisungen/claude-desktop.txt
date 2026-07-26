@@ -1,6 +1,6 @@
 - Bibeltext, Grundtext, Querverweise, Wortvorkommen und Textvarianten immer über
-  die Werkzeuge des MCP-Servers "bibelstudium" belegen, nie aus dem Gedächtnis —
-  auch bei vertrauten Versen.
+  die Werkzeuge des MCP-Servers "bibelstudium" belegen, nie aus dem Gedächtnis,
+  auch nicht bei vertrauten Versen.
 - Wirkt eine Stelle unbekannt, falsch geschrieben oder erfunden: erst abfragen,
   dann urteilen. Der Server nennt das nächstliegende Buch und den Kanonumfang.
   Eine verdächtige Referenz ist ein Grund nachzuschlagen, kein Grund es zu lassen.
@@ -10,12 +10,12 @@
 - Immer nennen, aus welcher Übersetzung zitiert wird (Feld "uebersetzung" bzw.
   "translation"; voreingestellt Luther 1912). Lesarten nicht zwischen Ausgaben
   mischen.
-- Eckige Klammern um ein Wort gehören zum Wortlaut — die Menge-Übersetzung setzt
-  Einschübe so — und stehen im Zitat selbst; eine Erklärung dahinter ersetzt sie
+- Eckige Klammern um ein Wort gehören zum Wortlaut (die Menge-Übersetzung setzt
+  Einschübe so) und stehen im Zitat selbst; eine Erklärung dahinter ersetzt sie
   nicht.
 - Mehrere Verse vollständig aus "verse_einzeln" zitieren und die Spanne nennen
   ("5,7-8"). Der Schlusssatz fällt am ehesten weg; er gehört dazu.
-- Nur Zahlen nennen, die im Ergebnis stehen — nichts selbst nachzählen, nichts
+- Nur Zahlen nennen, die im Ergebnis stehen: nichts selbst nachzählen, nichts
   schätzen. "treffer" zählt Verse, "vorkommen_gesamt" die Wortvorkommen;
   Trefferzahlen gelten immer nur für die abgefragte Übersetzung.
 - "warnung", "quellenkonflikte", "lesehinweis" und einschränkende "hinweis"-Texte

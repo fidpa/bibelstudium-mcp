@@ -86,5 +86,5 @@ Dekodern) sind in Ordnung.
 | Gängige Regel | Warum hier nicht |
 |---------------|------------------|
 | Result-Typen, eigene Fehlerklassen | Überdimensioniert für die Anzahl der Handler; das MCP-Muster ist `errorResult()` oder throw + `abort()`. |
-| Test-Framework, Coverage-Ziele | Kein Framework; verifiziert wird über einen stdio-Treiber gegen den echten Server (`tests/test-golden.ts`, Zusicherungen ohne `bun:test`) und per SQL gegen die echte DB (siehe AGENTS.md „Testen"). |
+| Test-Framework, Coverage-Ziele | Kein Framework; verifiziert wird über einen stdio-Treiber gegen den echten Server (`tests/test-golden.ts`, Zusicherungen ohne `bun:test`, Aufruf mit `bun run test`) und per SQL gegen die echte DB. |
 | Logging-Framework | `console.error` nach stderr ist im stdio-MCP-Kontext das richtige Logging (stdout gehört dem JSON-RPC). |

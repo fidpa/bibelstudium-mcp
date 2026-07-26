@@ -19,6 +19,17 @@ NOTES.md
 *_POST.md
 *.local
 
+# Interne Entwicklungsdokumentation: Recherchen, Messkataloge und Betriebsnotizen
+# aus dem Ursprungs-Repo. Enthält Betriebswissen (Container, Pfade, Hostnamen)
+# und Bezüge auf das private Repo. docs/ selbst ist öffentlich, docs/intern/
+# nicht — beim Anlegen neuer Dateien dort auf diesen Unterschied achten.
+/docs/intern/
+
+# Slash-Commands und Sitzungskram der lokalen Agenten-Umgebung. Enthalten
+# Betriebswissen zum Deployment (Container-Zugang, Hostnamen, lokale Pfade), das
+# in einem öffentlichen Repository nichts zu suchen hat.
+.claude/
+
 # Environment
 .env*
 

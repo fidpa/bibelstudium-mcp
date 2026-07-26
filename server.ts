@@ -838,7 +838,14 @@ function errorResult(msg: string) {
   return { content: [{ type: "text" as const, text: msg }], isError: true };
 }
 
-/** Strip leftover HTML tags (e.g. <i> on psalm superscriptions). */
+/**
+ * Strip leftover HTML tags. Precaution, not running business: `download.ts`
+ * already strips on insert, and `verses` holds no "<" at all in any of the four
+ * translations (measured 26.07.2026). Same for invisible characters — no soft
+ * hyphen (U+00AD), no NBSP, no ZWSP in any row — so nothing else is removed
+ * here; anything that would be removed has to stay in step with
+ * `rebuildVersesFts`, or search output and quotation drift apart.
+ */
 function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "");
 }
@@ -850,7 +857,8 @@ function stripHtml(text: string): string {
 // repo on 25.07.2026: asked for a verse carrying such brackets, a client that had
 // called the tool unwrapped them, turning an addition of the edition into plain
 // text. No sample word in the hint on purpose — a concrete example has once been
-// picked up as a label and pinned to the wrong case (see AGENTS.md).
+// picked up as a label and pinned to the wrong case (see the hint of
+// bible_compare).
 const BRACKET_WORD_RE = /\[(?!\d+\])[^\]]+\]/;
 const BRACKET_WORD_HINT =
   "Wörter in eckigen Klammern gehören zum Wortlaut der Übersetzung und sind " +
@@ -1004,8 +1012,32 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
 // positive integer", which names a condition the input satisfies (25.07.2026).
 const MAX_CHAPTER = 150; // Psalms has the most chapters (150)
 const MAX_VERSE = 200; // Longest chapter (Psalm 119) has 176 verses
+const MAX_VERSE_PARTS = 30; // comma-separated segments in `verses`
+const MAX_BOOK_LENGTH = 50; // longest German book name is ~20 chars
+const MAX_LEMMA_LENGTH = 50; // own field, own limit — not the book bound
+
+// Derived, not chosen: the longest legal `verses` string is MAX_VERSE_PARTS
+// segments of the form "176-176" plus the commas between them. A hand-picked
+// 200 used to sit here, colliding with MAX_VERSE by accident and cutting into
+// valid input: 30 segments of "100-176" (239 characters, every number legal)
+// were rejected (26.07.2026). Note that this bound can never be the only one
+// violated — any longer string necessarily breaks the segment or the value
+// bound as well. It exists so that an oversized input is turned away before
+// the first split, not as a rule of its own; there is no test case for it
+// alone, and none can be constructed.
+const MAX_VERSE_PART_LENGTH = 2 * String(MAX_VERSE).length + 1; // "176-176"
+const MAX_VERSES_LENGTH =
+  MAX_VERSE_PARTS * MAX_VERSE_PART_LENGTH + (MAX_VERSE_PARTS - 1);
+
 const chapterOutOfRange = `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}`;
 const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_VERSE}`;
+const bookTooLong = `Error: 'book' must be at most ${MAX_BOOK_LENGTH} characters (e.g. 'Jesaja', '1. Mose', 'Römer')`;
+// One message per condition. A single collective message names the form of
+// `verses`, and the form was in order in exactly the case that hit the bound.
+const versesNotAString = `Error: 'verses' must be a string like "4", "16-17" or "1-3,7"`;
+const versesTooLong = `Error: 'verses' must be at most ${MAX_VERSES_LENGTH} characters`;
+const versesTooManyParts = `Error: 'verses' must list at most ${MAX_VERSE_PARTS} comma-separated segments`;
+const versesOutOfBounds = `Error: every verse number in 'verses' must be between 1 and ${MAX_VERSE}`;
 
 // --- bible_lookup helpers --------------------------------------------------
 /**
@@ -1013,9 +1045,12 @@ const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_V
  * Returns an array of individual verse numbers.
  */
 function parseVerses(versesStr: string): number[] {
-  const MAX_PARTS = 30; // Limit comma-separated segments to prevent excessive DB queries
   const verses: number[] = [];
-  const parts = versesStr.split(",").map((p) => p.trim()).slice(0, MAX_PARTS);
+  // Second line only: the handler rejects an overlong list with a message
+  // before it gets here. This slice used to be the reporting layer and said
+  // nothing — "1,2,…,35" on Ps 119 came back as verses 1-30, isError false, no
+  // hint, and the answer looked complete (measured 26.07.2026).
+  const parts = versesStr.split(",").map((p) => p.trim()).slice(0, MAX_VERSE_PARTS);
 
   for (const part of parts) {
     if (part.includes("-")) {
@@ -1972,13 +2007,13 @@ const handleCallTool = async (request: CallToolRequest) => {
 
   const { book, translation } = args;
 
-  // Validate required inputs
-  const MAX_BOOK_LENGTH = 50; // Longest German book name is ~20 chars
-  if (!book || typeof book !== "string" || book.length > MAX_BOOK_LENGTH) {
-    return {
-      content: [{ type: "text" as const, text: "Error: 'book' is required and must be under 50 characters (e.g. 'Jesaja', '1. Mose')" }],
-      isError: true,
-    };
+  // Validate required inputs. Presence and length are separate checks so that
+  // each message names the condition that is actually violated.
+  if (!book || typeof book !== "string") {
+    return errorResult("Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer').");
+  }
+  if (book.length > MAX_BOOK_LENGTH) {
+    return errorResult(bookTooLong);
   }
 
   const chapter = toInt(args.chapter);
@@ -1990,7 +2025,6 @@ const handleCallTool = async (request: CallToolRequest) => {
   }
 
   // Accept verses as string or single number (lenient towards MCP clients).
-  const MAX_VERSES_LENGTH = 200;
   const verses =
     args.verses === undefined || args.verses === null
       ? ""
@@ -1999,11 +2033,26 @@ const handleCallTool = async (request: CallToolRequest) => {
         : typeof args.verses === "number" && Number.isInteger(args.verses)
           ? String(args.verses)
           : null;
-  if (verses === null || verses.length > MAX_VERSES_LENGTH) {
-    return {
-      content: [{ type: "text" as const, text: `Error: 'verses' must be a string like "4", "16-17" or "1-3,7" (max ${MAX_VERSES_LENGTH} characters)` }],
-      isError: true,
-    };
+  // Cheapest guard first: type, length, segment count, values.
+  if (verses === null) {
+    return errorResult(versesNotAString);
+  }
+  if (verses.length > MAX_VERSES_LENGTH) {
+    return errorResult(versesTooLong);
+  }
+  if (verses.split(",").length > MAX_VERSE_PARTS) {
+    return errorResult(versesTooManyParts);
+  }
+  // Ahead of both lookup paths, because they used to disagree: the fast path
+  // for a simple span did not check MAX_VERSE at all ("1-500" answered like
+  // valid input), while the parseVerses path dropped the offending segment
+  // silently ("1-500,2" answered with verse 2 alone). Same meaning, two
+  // results, decided by a comma (measured 26.07.2026).
+  if ([...verses.matchAll(/\d+/g)].some(([n]) => {
+    const value = parseInt(n, 10);
+    return value < 1 || value > MAX_VERSE;
+  })) {
+    return errorResult(versesOutOfBounds);
   }
 
   // Resolve book name to ID
@@ -2088,8 +2137,11 @@ function handleOriginal(args: {
 
   const { book } = args;
 
-  if (!book || typeof book !== "string" || book.length > 50) {
+  if (!book || typeof book !== "string") {
     return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  }
+  if (book.length > MAX_BOOK_LENGTH) {
+    return errorResult(bookTooLong);
   }
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
@@ -2203,8 +2255,11 @@ function handleCrossrefs(args: {
   const translation = resolved.code;
 
   const { book } = args;
-  if (!book || typeof book !== "string" || book.length > 50) {
+  if (!book || typeof book !== "string") {
     return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  }
+  if (book.length > MAX_BOOK_LENGTH) {
+    return errorResult(bookTooLong);
   }
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
@@ -2322,8 +2377,11 @@ function handleConcordance(args: {
     strongDigits = String(parseInt(s.slice(1), 10)); // normalize leading zeros
     suche = s;
   } else if (args.lemma !== undefined && args.lemma !== null && args.lemma !== "") {
-    if (typeof args.lemma !== "string" || args.lemma.length > 50) {
+    if (typeof args.lemma !== "string") {
       return errorResult("Error: 'lemma' must be a Greek or Hebrew word.");
+    }
+    if (args.lemma.length > MAX_LEMMA_LENGTH) {
+      return errorResult(`Error: 'lemma' must be at most ${MAX_LEMMA_LENGTH} characters`);
     }
     const lemma = args.lemma.trim();
     if (/[֐-׿]/.test(lemma)) {
@@ -2485,8 +2543,11 @@ function handleSearch(args: {
 
   let bookId: number | null = null;
   if (args.book !== undefined && args.book !== null && args.book !== "") {
-    if (typeof args.book !== "string" || args.book.length > 50) {
+    if (typeof args.book !== "string") {
       return errorResult("Error: 'book' must be a German book name.");
+    }
+    if (args.book.length > MAX_BOOK_LENGTH) {
+      return errorResult(bookTooLong);
     }
     bookId = resolveBook(args.book);
     if (bookId === null) {
@@ -2516,8 +2577,9 @@ function handleSearch(args: {
   // as findings and try to break the number down per verse, guessing the
   // per-verse counts (observed 25.07.2026). Count the highlight markers over
   // all matching verses so the second number is stated rather than inferred.
+  const scanSkipped = total > OCCURRENCE_SCAN_LIMIT;
   const scan =
-    total <= OCCURRENCE_SCAN_LIMIT && stmtSearchAll && stmtSearchAllBook
+    !scanSkipped && stmtSearchAll && stmtSearchAllBook
       ? bookId === null
         ? stmtSearchAll.all(match, translation, OCCURRENCE_SCAN_LIMIT)
         : stmtSearchAllBook.all(match, translation, bookId, OCCURRENCE_SCAN_LIMIT)
@@ -2579,6 +2641,23 @@ function handleSearch(args: {
       : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: " +
           "je Vers daran abzählen, nicht schätzen."
   );
+  // Above the scan limit both counted fields drop out, and nothing used to say
+  // so: the answer named `treffer` and kept asking the caller to count the
+  // markers per verse, while the two numbers that are otherwise stated were
+  // simply absent (measured 26.07.2026, "der" with 13 033 hits). By the
+  // measurement `verteilung` rests on, what is missing gets estimated and still
+  // reads as counted. All three numbers are per translation (`total` and the
+  // scan queries carry the same `translation`), which is why the way out names
+  // it alongside the narrower query.
+  if (scanSkipped) {
+    hinweise.push(
+      `Ab ${OCCURRENCE_SCAN_LIMIT} Treffern werden die Vorkommen nicht ausgezählt: ` +
+        "'vorkommen_gesamt' und 'verteilung' fehlen deshalb hier, weil nicht gezählt wurde, " +
+        "nicht weil es nichts zu zählen gäbe. Diese Zahlen nicht schätzen. Wer sie braucht, " +
+        `schränkt mit 'book' auf ein Buch ein oder verengt den Suchbegriff; gezählt wird ` +
+        `dann wie alle Zahlen hier für ${TRANSLATIONS[translation].name}.`
+    );
+  }
   if (verteilung.length > 0) {
     hinweise.push(
       `'verteilung' ist über alle ${total} Treffer ausgezählt, nicht über die gelisteten Verse: ` +
@@ -2607,8 +2686,11 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
   }
 
   const { book } = args;
-  if (!book || typeof book !== "string" || book.length > 50) {
+  if (!book || typeof book !== "string") {
     return errorResult("Error: 'book' is required (e.g. 'Römer', '1Joh').");
+  }
+  if (book.length > MAX_BOOK_LENGTH) {
+    return errorResult(bookTooLong);
   }
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {

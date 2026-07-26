@@ -182,7 +182,15 @@ Der Assistent ruft `bible_original` auf und bekommt jedes Wort einzeln aufgeschl
 
 Weitere typische Fragen: „Wo kommt ἀγάπη im Neuen Testament überall vor?" (`bible_concordance`) · „Zeig mir Johannes 3,16 in allen vier Übersetzungen" (Prompt `translation-compare`) · „Welche Verse sprechen von Gnade?" (`bible_search`) · „Welche Querverweise gibt es zu Römer 8,1?" (`bible_crossrefs`).
 
-Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leiten, siehe [AGENTS.md](AGENTS.md) § Testen.
+Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leiten:
+
+```bash
+{
+  echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}'
+  echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"bible_lookup","arguments":{"book":"Johannes","chapter":3,"verses":"16"}}}'
+} | bun run server.ts
+```
 
 ## Werkzeuge
 
@@ -268,8 +276,8 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 | [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop: schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
 | [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md) | Fehlerbilder beim Datenaufbau und Serverstart, jeweils mit Ursache und Behebung |
 | [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md) | Code-Stil-Regeln, Typecheck, bewusst nicht übernommene Konventionen |
+| [docs/UEBERSETZUNGEN.md](docs/UEBERSETZUNGEN.md) | Geprüfte Optionen für weitere Übersetzungen: Lizenzlage, freie Kandidaten, Kosten einer Aufnahme |
 | [mcpb/manifest.json](mcpb/manifest.json) | Manifest-Quelle des MCPB-Bundles für Claude Desktop; gebaut wird es mit `bun run build:mcpb` |
-| [AGENTS.md](AGENTS.md) | Arbeitsregeln im Repository: Befehle, Architektur, gemessene Fallstricke |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Mitwirken: Grundregeln, Prüfschritte, Pull-Request-Ablauf |
 | [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) | Vollständige Quellen- und Lizenztabelle aller Bibeldaten |
 | [SECURITY.md](SECURITY.md) | Sicherheitsmodell und Meldeweg für Schwachstellen |

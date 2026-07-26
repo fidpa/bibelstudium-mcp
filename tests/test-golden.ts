@@ -2,7 +2,7 @@
  * Regression check for server correctness.
  *
  * Talks to a FRESH `server.ts` over stdio, so it never measures the possibly
- * stale MCP instance of a running editor session (see AGENTS.md).
+ * stale MCP instance of a running editor session.
  *
  * Assertion-based rather than a stored snapshot: the expectations stay readable
  * as statements about the data ("Psalm 23:1 has six words", "the Comma is TR
@@ -135,6 +135,14 @@ const hint = (j: Json | null): string => (typeof j?.hinweis === "string" ? j.hin
 
 // --- cases ------------------------------------------------------------------
 
+// Input at and just past the derived bounds of `verses` (MAX_VERSE_PARTS = 30
+// segments, MAX_VERSE = 200, hence 30 × "176-176" + 29 commas = 239 characters).
+// Built here rather than pasted so the length stays evident.
+const VERSES_MAX_VALID = Array(30).fill("100-176").join(","); // 239 chars, all legal
+const VERSES_TOO_LONG = `${VERSES_MAX_VALID},1`; // 241 chars
+const VERSES_TOO_MANY = Array.from({ length: 35 }, (_, i) => String(i + 1)).join(",");
+const OVERLONG_NAME = "J".repeat(60);
+
 const CALLS = [
   // bounds — the message must name the real limit, not "positive integer"
   ["bible_original", { book: "Ps", chapter: 23, verse: 999 }],
@@ -156,6 +164,21 @@ const CALLS = [
   ["bible_crossrefs", { book: "Joh", chapter: 14, verse: 6, limit: 5 }],
   // server identity — the version must be the packaged one, not a second place
   ["bible_server_info", {}],
+  // `verses`: one case per error class, plus the largest valid input. Every
+  // message must name the condition that is actually violated, and none of the
+  // four bounds may shorten an answer in silence.
+  ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_MANY }],
+  ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500" }],
+  ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500,2" }],
+  ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_LONG }],
+  ["bible_lookup", { book: "Ps", chapter: 119, verses: { kein: "string" } }],
+  ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_MAX_VALID }],
+  // an overlong book name is a length problem, not a missing or unknown field
+  ["bible_crossrefs", { book: OVERLONG_NAME, chapter: 1, verse: 1 }],
+  ["bible_search", { query: "Gnade", book: OVERLONG_NAME }],
+  ["bible_concordance", { lemma: "α".repeat(60) }],
+  // above the scan limit the two counted fields drop out — say so
+  ["bible_search", { query: "der", limit: 2 }],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
 const { tools, results } = await callTools(CALLS);
@@ -175,7 +198,17 @@ const [
   searchLieb,
   xrefJoh146,
   serverInfo,
-] = results as ToolResult[] & { length: 16 };
+  versesTooMany,
+  versesSpanTooHigh,
+  versesSpanWithComma,
+  versesTooLong,
+  versesNotAString,
+  versesMaxValid,
+  xrefLongBook,
+  searchLongBook,
+  concordanceLongLemma,
+  searchOverLimit,
+] = results as ToolResult[] & { length: 26 };
 
 console.log("Grenzwertmeldungen");
 for (const [label, r] of [
@@ -310,6 +343,69 @@ has("lieb* in 1Joh: Trennung benannt", String(searchLieb!.json?.hinweis ?? ""), 
   eq("Joh 11,25-26: zwei Einzelverse", einzeln.length, 2);
   eq("Joh 11,25-26: erste Versnummer", einzeln[0]?.nr, 25);
   has("Joh 14,6: lesehinweis gesetzt", String(xrefJoh146!.json?.lesehinweis ?? ""), "vollständig übernehmen");
+}
+
+console.log("Verslisten-Grenzen");
+{
+  // The house error of this server is the silent cut: a bound bites, the answer
+  // gets shorter, nothing says so, and it still looks complete. "1,2,…,35" on
+  // Ps 119 came back as 1-30 without a word (26.07.2026).
+  eq(
+    "35 Segmente: abgewiesen statt gekürzt",
+    versesTooMany!.text,
+    "Error: 'verses' must list at most 30 comma-separated segments"
+  );
+  eq("35 Segmente: isError", versesTooMany!.isError, true);
+  // Same meaning, two paths: the fast path for a plain span skipped the bound
+  // entirely, the parseVerses path dropped the segment. Both must report now.
+  const outOfBounds = "Error: every verse number in 'verses' must be between 1 and 200";
+  eq("Spanne 1-500", versesSpanTooHigh!.text, outOfBounds);
+  eq("Spanne 1-500,2 (gleiche Meldung)", versesSpanWithComma!.text, outOfBounds);
+  eq(
+    "241 Zeichen: Längenmeldung nennt die Länge",
+    versesTooLong!.text,
+    "Error: 'verses' must be at most 239 characters"
+  );
+  eq(
+    "kein String: Formmeldung",
+    versesNotAString!.text,
+    `Error: 'verses' must be a string like "4", "16-17" or "1-3,7"`
+  );
+  // The counterpart, and the reason the character bound is derived rather than
+  // chosen: at 239 characters everything is legal and must pass. The old,
+  // hand-picked 200 rejected exactly this input.
+  eq("239 Zeichen gültig: kein Fehler", versesMaxValid!.isError, false);
+  eq("239 Zeichen gültig: volle Spanne", versesMaxValid!.json?.reference, "Psalter 119,100-176");
+}
+
+console.log("Längenmeldungen");
+{
+  // Named the wrong condition before: bible_crossrefs said 'book' is required
+  // while book was set, bible_search said it must be a German book name while
+  // it was one, only too long (26.07.2026).
+  const tooLong = "Error: 'book' must be at most 50 characters (e.g. 'Jesaja', '1. Mose', 'Römer')";
+  eq("bible_crossrefs: langer Buchname", xrefLongBook!.text, tooLong);
+  eq("bible_search: langer Buchname", searchLongBook!.text, tooLong);
+  eq(
+    "bible_concordance: langes lemma hat eigene Grenze",
+    concordanceLongLemma!.text,
+    "Error: 'lemma' must be at most 50 characters"
+  );
+}
+
+console.log("Scan-Grenze der Suche");
+{
+  const j = searchOverLimit!.json;
+  check("über 1000 Treffer", ((j?.treffer as number) ?? 0) > 1000);
+  check("vorkommen_gesamt entfällt", !("vorkommen_gesamt" in (j ?? {})));
+  check("verteilung entfällt", !("verteilung" in (j ?? {})));
+  // What is missing gets estimated and still reads as counted, so the omission
+  // has to be stated along with its reason and the way out.
+  has("Auslassung benannt", hint(j), "Ab 1000 Treffern werden die Vorkommen nicht ausgezählt");
+  has("Grund benannt", hint(j), "weil nicht gezählt wurde");
+  has("Ausweg benannt", hint(j), "auf ein Buch ein");
+  // The counted case must stay free of the note.
+  lacks("kleine Suche ohne den Hinweis", hint(searchLieb!.json), "Ab 1000 Treffern");
 }
 
 console.log(
