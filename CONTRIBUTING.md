@@ -22,15 +22,15 @@ Für dieses Projekt und alle Beteiligten gilt unser [Verhaltenskodex](CODE_OF_CO
 
 ## Grundregeln
 
-- **Belege statt Behauptungen.** Jede Aussage über den Bibeltext muss gegen die tatsächliche Datenbank (SQL-Abfrage) oder einen frischen stdio-Lauf des Servers geprüft sein — niemals aus dem Gedächtnis. Das gilt für Codekommentare, Dokumentation und Pull-Request-Beschreibungen gleichermaßen.
+- **Belege statt Behauptungen.** Jede Aussage über den Bibeltext muss gegen die tatsächliche Datenbank (SQL-Abfrage) oder einen frischen stdio-Lauf des Servers geprüft sein, niemals aus dem Gedächtnis. Das gilt für Codekommentare, Dokumentation und Pull-Request-Beschreibungen gleichermaßen.
 - **Tool-Namen und Ausgabefelder sind öffentliche Schnittstelle.** Ein Werkzeug umzubenennen oder ein Ausgabefeld zu ändern bzw. zu entfernen ist ein Breaking Change; Ergänzungen sind unproblematisch.
-- **Lizenzfragen sind nicht verhandelbar.** Neue Datenquellen brauchen eine geprüfte freie Lizenz, bevor sie eingebunden werden (und einen Eintrag in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)). Keine mitgelieferten Datendateien — Daten werden von Skripten geladen, mit Herkunftsnachweis.
+- **Lizenzfragen sind nicht verhandelbar.** Neue Datenquellen brauchen eine geprüfte freie Lizenz, bevor sie eingebunden werden (und einen Eintrag in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)). Keine mitgelieferten Datendateien: Daten werden von Skripten geladen, mit Herkunftsnachweis.
 - **Den Footprint halten.** Eine Laufzeit-Abhängigkeit (das MCP-SDK), kein Build-Schritt, Bun-nativ. Ein Pull Request, der eine Abhängigkeit hinzufügt, braucht einen sehr guten Grund.
 - **Code-Stil**: siehe [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md).
 
 ## Änderungen prüfen
 
-Zuerst der Typecheck — er braucht keine Datenbank und ist das, was die CI erzwingt:
+Zuerst der Typecheck. Er braucht keine Datenbank und ist das, was die CI erzwingt:
 
 ```bash
 bun run typecheck

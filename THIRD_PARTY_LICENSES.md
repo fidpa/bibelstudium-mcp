@@ -15,7 +15,7 @@ sqlite3 data/bible.db "SELECT * FROM provenance ORDER BY script"
 | Kürzel | Übersetzung | Lizenz |
 |--------|-------------|--------|
 | LUT | Luther 1912 | Public Domain |
-| SCH | Schlachter 1951 | **CC BY 4.0** — © Genfer Bibelgesellschaft (siehe unten) |
+| SCH | Schlachter 1951 | **CC BY 4.0**, © Genfer Bibelgesellschaft (siehe unten) |
 | ELB | Elberfelder 1871 | Public Domain |
 | MB | Menge | Public Domain (Hermann Menge † 1939) |
 
@@ -41,7 +41,7 @@ gespeichert (abgesehen von der Entfernung des HTML-Fußnoten-Markups).
 |--------|-------|--------|
 | [openscriptures/strongs](https://github.com/openscriptures/strongs) | Strong-Wörterbücher 1890 (Grundformen, Umschriften, Definitionen) | **CC BY-SA, Version nicht angegeben** (siehe Anmerkung unten) |
 | [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TBESG | Tyndale-Glossen + Abbott-Smith-Lexikoneinträge (griechisch) | CC BY 4.0 (Tyndale House, Cambridge) |
-| [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TBESH | Tyndale-Glossen (hebräisch) | CC BY 4.0 — das TBESH-Feld „Meaning" ist © Online Bible (Larry Pierce) und wird **bewusst nicht gespeichert** |
+| [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TBESH | Tyndale-Glossen (hebräisch) | CC BY 4.0, das TBESH-Feld „Meaning" ist © Online Bible (Larry Pierce) und wird **bewusst nicht gespeichert** |
 | [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TAGNT | Bezeugung jedes Wortes über acht griechische Editionen (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch) | CC BY 4.0 (Tyndale House, Cambridge) |
 | [OpenBible.info](https://www.openbible.info/labs/cross-references/) | Querverweise (Treasury of Scripture Knowledge, erweitert, mit Community-Stimmen) | CC BY 4.0 |
 
@@ -111,5 +111,5 @@ müssen.
 Datendateien nur aus dem eigenen Repository zu verbreiten („Refer others to
 github.com/STEPBible as the source of the data. Please do not redistribute it
 yourself."). Dieses Projekt kommt der Bitte nach, indem es **weder eine
-Datenbank noch Datendateien mitliefert** — jede Nutzerin und jeder Nutzer baut
+Datenbank noch Datendateien mitliefert**: Jede Nutzerin und jeder Nutzer baut
 die Datenbank lokal aus den Originalquellen auf.

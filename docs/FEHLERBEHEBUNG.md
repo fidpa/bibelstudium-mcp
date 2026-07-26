@@ -1,7 +1,7 @@
 # Fehlerbehebung
 
 Alle Fehlerbilder unten sind reproduziert, nicht vermutet. Die Meldungen des
-Servers gehen nach **stderr** (stdout gehört dem JSON-RPC-Protokoll) — im
+Servers gehen nach **stderr** (stdout gehört dem JSON-RPC-Protokoll), im
 MCP-Client stehen sie im Server-Log.
 
 ## Serverstart
@@ -21,7 +21,7 @@ mit `bun run download`.
 
 ### `Bible database is incomplete (missing tables: …)`
 
-**Ursache**: Die Datei existiert, enthält aber nicht die Grundtabellen — typisch
+**Ursache**: Die Datei existiert, enthält aber nicht die Grundtabellen, typisch
 nach einem abgebrochenen ersten Durchlauf oder wenn eine leere Datei angelegt
 wurde.
 
@@ -33,7 +33,7 @@ Lexika, Querverweise) bleiben erhalten.
 
 **Ursache**: Eine Datenbank aus einer Fassung vor der Mehr-Übersetzungs-Umstellung.
 
-**Behebung**: `bun run download` — die Migration greift automatisch und lädt
+**Behebung**: `bun run download`: Die Migration greift automatisch und lädt
 die Verse neu.
 
 ### Server startet, aber ein Werkzeug meldet fehlende Daten
@@ -53,7 +53,7 @@ Skript fehlt.
 Der Server ist verbunden und die Werkzeuge erscheinen, das Modell antwortet aber
 aus dem Gedächtnis statt nachzuschlagen. Gemessen am 25.07.2026 in Claude
 Desktop: Bei einer erfundenen Stelle („Schlag mir ‚Hesekiel-Zusatz 1,1' nach")
-blieb der Aufruf aus — je sicherer eine Referenz als nicht existent gilt, desto
+blieb der Aufruf aus, je sicherer eine Referenz als nicht existent gilt, desto
 weniger Anlass scheint zu bestehen, sie zu prüfen. Bei „Sirach 1,1", einem real
 existierenden, nur kanonfremden Buch, wurde von selbst aufgerufen. Auf
 ausdrückliche Aufforderung lief der Aufruf und lieferte das Richtige.
@@ -66,7 +66,7 @@ Claude Code: `CLAUDE.md` des konsumierenden Repos):
 ```text
 Bibelstellen: Wenn der MCP-Server "bibelstudium" verbunden ist, beantworte
 Fragen zu Bibeltext, Grundtext, Querverweisen oder Textvarianten ausschließlich
-über dessen Werkzeuge — nie aus dem Gedächtnis.
+über dessen Werkzeuge, nie aus dem Gedächtnis.
 
 Das gilt besonders, wenn eine Stelle unbekannt, falsch geschrieben oder
 erfunden wirkt: Frage den Server, BEVOR du sagst, dass es ein Buch oder eine
@@ -77,11 +77,11 @@ Gib Warnungen und Hinweise der Werkzeuge (warnung, quellenkonflikte, hinweis,
 lesehinweis) in der Antwort wieder, statt sie wegzulassen.
 
 Zitiere den Grundtext buchstabengetreu: Mehrheitstext und Textus Receptus
-liegen unakzentuiert vor — keine Akzente ergänzen, beim Hebräischen keine
+liegen unakzentuiert vor: keine Akzente ergänzen, beim Hebräischen keine
 Zeichen entfernen.
 ```
 
-Ob aufgerufen wird, entscheidet am Ende der Client — auch das bleibt ein Anreiz,
+Ob aufgerufen wird, entscheidet am Ende der Client, auch das bleibt ein Anreiz,
 keine Garantie.
 
 ## HTTP-Modus
@@ -149,14 +149,14 @@ nimmt dafür bewusst keine Abhängigkeit auf.
 
 **Behebung**: `sudo apt install unzip` (Debian/Ubuntu) bzw.
 `sudo dnf install unzip` (Fedora). Auf macOS ist `unzip` vorinstalliert. Die
-Prüfung läuft **vor** dem Download — es geht keine Übertragung verloren.
+Prüfung läuft **vor** dem Download: Es geht keine Übertragung verloren.
 
 ### `Retry 1/3 after 1000ms: …` während `download.ts`
 
 **Ursache**: Aussetzer oder Drosselung der bolls.life-API. Das Skript wiederholt
 dreimal mit exponentiell wachsender Wartezeit.
 
-**Behebung**: Keine — abwarten. Erst wenn alle drei Versuche scheitern, bricht
+**Behebung**: Keine, abwarten. Erst wenn alle drei Versuche scheitern, bricht
 das Skript ab und lässt die bestehende Datenbank unangetastet. Danach das Skript
 einfach erneut starten.
 
@@ -180,7 +180,7 @@ sind die Wiederholungen die wahrscheinliche Ursache (siehe voriger Punkt).
 ### Daten eines Downloads sind nach einem weiteren Lauf verschwunden
 
 **Ursache**: Zwei Download-Skripte liefen gleichzeitig. Jedes arbeitet auf einer
-eigenen Kopie der Datenbank und tauscht sie am Ende atomar aus — beim parallelen
+eigenen Kopie der Datenbank und tauscht sie am Ende atomar aus, beim parallelen
 Lauf gewinnt der letzte Austausch, die Ergänzungen des anderen sind verloren.
 
 **Behebung**: Skripte strikt nacheinander ausführen und den betroffenen Download
@@ -193,7 +193,7 @@ wurde.
 
 **Behebung**: Der Fehler ist mit dem atomaren Austausch (`atomic-db.ts`)
 konstruktiv ausgeschlossen, solange die Datenbank nicht direkt bearbeitet wird.
-Tritt er dennoch auf, den MCP-Client den Server neu starten lassen — er öffnet
+Tritt er dennoch auf, den MCP-Client den Server neu starten lassen, er öffnet
 die Datei dann frisch.
 
 ## Entwicklung
@@ -203,7 +203,7 @@ die Datei dann frisch.
 **Ursache**: Nicht das Repository, sondern das Dateisystem. `node_modules/.bin/tsc`
 ist ein Symlink; auf Ablagen ohne Symlink-Unterstützung (SSHFS- und manche
 Netzlaufwerke, FAT/exFAT-USB-Medien, synchronisierte Cloud-Ordner) lässt er sich
-nicht auflösen — obwohl `node_modules/typescript` installiert ist.
+nicht auflösen, obwohl `node_modules/typescript` installiert ist.
 
 **Behebung**: Das Repository auf ein lokales Dateisystem legen. Zur Kontrolle:
 
@@ -214,8 +214,8 @@ ls -la node_modules/.bin/tsc   # meldet „Operation nicht erlaubt"? → Dateisy
 ### Editor zeigt Fehler an korrektem Code
 
 Ohne `tsconfig.json` kann ein Editor weder `bun:sqlite` noch `import.meta.path`
-noch die `.ts`-Importendungen dieses Repositories auflösen. Die Datei liegt bei —
-sie muss nur vom Editor gefunden werden, also das **Repository-Wurzelverzeichnis**
+noch die `.ts`-Importendungen dieses Repositories auflösen. Die Datei liegt bei.
+Sie muss nur vom Editor gefunden werden, also das **Repository-Wurzelverzeichnis**
 öffnen, nicht einen Unterordner.
 
 ## Daten prüfen

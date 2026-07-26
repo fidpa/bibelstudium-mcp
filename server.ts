@@ -424,7 +424,7 @@ const EDITION_META: Record<
       "Mehrheitstext (Textus-Receptus-Familie, aber breiter bezeugt); enthält z. B. " +
       "kein Comma Johanneum (1Joh 5,7). Von der Mehrheitstext-Position (u. a. R. Liebi) " +
       "als zuverlässiger Grundtext vertreten. " +
-      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor) — " +
+      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
       "beim Zitieren nicht um Akzente oder Interpunktion ergänzen; akzentuiert steht " +
       "der Text nur im SBLGNT (texttyp 'sblgnt').",
   },
@@ -443,7 +443,7 @@ const EDITION_META: Record<
         "weiterveroeffentlicht, gibt sie unter CC BY-SA weiter.",
     },
     hinweis:
-      "Kritische (eklektische) Edition, Nestle-Aland-nah — nicht Mehrheitstext. " +
+      "Kritische (eklektische) Edition, Nestle-Aland-nah, nicht Mehrheitstext. " +
       "Bei Lesarten-Fragen den Texttyp beachten; die Morphologie ist davon unberührt.",
   },
   tr: {
@@ -456,11 +456,11 @@ const EDITION_META: Record<
       nennung: null,
     },
     hinweis:
-      "Textus Receptus — die einzige der drei Editionen mit dem Comma Johanneum " +
+      "Textus Receptus, die einzige der drei Editionen mit dem Comma Johanneum " +
       "(1Joh 5,7 Langform) und weiteren TR-Sonderlesarten. Zum direkten Lesarten-" +
       "vergleich; die Mehrheitstext-Position sieht den TR als enge Reformationsform " +
       "des Mehrheitstextes, nicht als Grundtext. " +
-      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor) — " +
+      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
       "beim Zitieren nicht um Akzente oder Interpunktion ergänzen.",
   },
   wlc: {
@@ -479,7 +479,7 @@ const EDITION_META: Record<
       "(die Qere-Lesart der Randmasora ist nicht enthalten). Für das AT die von der " +
       "masoretischen Position (u. a. R. Liebi) getragene Textbasis. " +
       "Das Feld 'wort' enthält Vokal- und Akzentzeichen (Teamim) sowie den " +
-      "OSHB-Morphemtrenner '/' zwischen Präfix und Wort (z. B. 'בְּ/רֵאשִׁ֖ית') — beim " +
+      "OSHB-Morphemtrenner '/' zwischen Präfix und Wort (z. B. 'בְּ/רֵאשִׁ֖ית'): beim " +
       "Zitieren weder Zeichen entfernen noch ergänzen.",
   },
 };
@@ -951,7 +951,7 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
   if (APOKRYPHEN.test(book)) {
     return errorResult(
       `"${book}" gehört zu den apokryphen/deuterokanonischen Schriften. Diese ` +
-        "Datenbank enthält ausschließlich die 66 Bücher des protestantischen Kanons — " +
+        "Datenbank enthält ausschließlich die 66 Bücher des protestantischen Kanons: " +
         "Sirach, Tobit, Judit, Weisheit, Baruch, die Makkabäerbücher und die Zusätze zu " +
         "Daniel und Ester sind nicht enthalten. Kein Tippfehler und kein ähnlich " +
         "klingendes Buch des Kanons meinen."
@@ -965,7 +965,7 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
   return errorResult(
     `"${book}" ist kein Buch dieser Bibel-Datenbank.` +
       (nahe !== null
-        ? ` Am nächsten kommt "${nahe}" — falls das gemeint war, damit erneut abfragen.`
+        ? ` Am nächsten kommt "${nahe}". Falls das gemeint war, damit erneut abfragen.`
         : "") +
       " Diese Datenbank enthält die 66 Bücher des protestantischen Kanons; apokryphe/" +
       "deuterokanonische Schriften fehlen. Erwartet wird der deutsche Buchname " +
@@ -1290,13 +1290,13 @@ function crossCheckVariant(
       const liesForm = liest(v.form).includes(t.ed) ? v.form : head;
       if (liestVariante && !genannt) {
         abgleich.push(
-          `${t.ed} liest hier "${liesForm}" — die TAGNT-Notiz führt dafür nur ` +
+          `${t.ed} liest hier "${liesForm}"; die TAGNT-Notiz führt dafür nur ` +
             `${[...v.zeugen].join("+") || "keine Edition"} als Zeugen. Für diese Edition gilt ` +
             "der Editionstext."
         );
       } else if (!liestVariante && genannt) {
         abgleich.push(
-          `${t.ed} liest hier "${liesForm}", nicht "${v.form}" — die TAGNT-Notiz nennt ` +
+          `${t.ed} liest hier "${liesForm}", nicht "${v.form}"; die TAGNT-Notiz nennt ` +
             `${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
         );
       }
@@ -1632,7 +1632,7 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
     const word = args.word ?? "";
     const ref = args.reference ?? "";
     text =
-      `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools — zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
+      `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools: zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
       `1. Bestimme das Urtext-Wort: ${ref ? `Rufe bible_original für ${ref} ab und identifiziere dort das Wort (Grundform + Strong-Nummer).` : `Ist „${word}" bereits eine Strong-Nummer oder ein griechisches/hebräisches Lemma, nutze es direkt. Ist es ein deutsches Wort, finde über bible_search eine typische Belegstelle und rufe für sie bible_original ab.`}\n` +
       `2. Rufe bible_concordance mit der Strong-Nummer ab: Gesamtzahl, Buchverteilung, Beugungsformen, Lexikon-Daten (Gloss, Definition, bei Griechisch Abbott-Smith).\n` +
       `3. Wähle 2–3 theologisch gewichtige Vorkommen und rufe für sie bible_lookup (Wortlaut) und bible_crossrefs (Parallelstellen) ab.\n` +
@@ -1640,18 +1640,18 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   } else if (name === "variant-check") {
     const ref = args.reference ?? "";
     text =
-      `Prüfe die Textüberlieferung von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools — keine Behauptungen ohne Tool-Beleg.\n\n` +
+      `Prüfe die Textüberlieferung von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools: keine Behauptungen ohne Tool-Beleg.\n\n` +
       `1. Rufe bible_compare für ${ref} ab: Wort-Diff über Mehrheitstext, Textus Receptus und SBLGNT sowie die Bezeugung pro Wort über acht Editionen (Feld „bezeugung").\n` +
       `2. Bei relevanten Unterschieden: Rufe bible_original für ${ref} mit jedem betroffenen texttyp ab (byzantine, tr, sblgnt), um die Lesarten im Wortlaut zu sehen.\n` +
       `3. Rufe bible_lookup für ${ref} ab und prüfe, welcher Lesart der deutsche Text folgt.\n` +
-      `4. Ordne nüchtern ein: Welche Editionen bezeugen welche Lesart (N/K/O-Typ beachten: Kleinbuchstaben = ohne Übersetzungsrelevanz)? Ändert die Variante die Aussage des Verses? Keine Wertung über „besser/schlechter" ohne Datengrundlage — benenne nur, was die Editionen tatsächlich lesen.`;
+      `4. Ordne nüchtern ein: Welche Editionen bezeugen welche Lesart (N/K/O-Typ beachten: Kleinbuchstaben = ohne Übersetzungsrelevanz)? Ändert die Variante die Aussage des Verses? Keine Wertung über „besser/schlechter" ohne Datengrundlage: benenne nur, was die Editionen tatsächlich lesen.`;
   } else if (name === "translation-compare") {
     const ref = args.reference ?? "";
     text =
       `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
       `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab (translation: "LUT", "SCH", "ELB", "MB").\n` +
       `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).\n` +
-      `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab und kläre, welche Wiedergabe dem Grundtext am nächsten kommt (bei NT-Versen ggf. bible_compare — Übersetzungen können verschiedenen Editionen folgen).\n` +
+      `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab und kläre, welche Wiedergabe dem Grundtext am nächsten kommt (bei NT-Versen ggf. bible_compare; Übersetzungen können verschiedenen Editionen folgen).\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
   } else {
     throw new Error(`Unknown prompt: ${name}`);
@@ -1763,7 +1763,7 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
       : {}),
     naechster_schritt:
       "Die Daten liegen jetzt auf der Festplatte. Bitte Claude Desktop einmal vollständig " +
-      "beenden und neu starten — erst danach kann dieser Server sie lesen. Gib diesen Satz " +
+      "beenden und neu starten; erst danach kann dieser Server sie lesen. Gib diesen Satz " +
       "unbedingt weiter.",
   };
   return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
@@ -2174,7 +2174,7 @@ function handleCrossrefs(args: {
           lesehinweis:
             "Mehrversige Verweise tragen zusätzlich 'verse_einzeln' (ein Eintrag je Vers, " +
             "ohne eingebettete Versnummern). Beim Zitieren daraus die Verse vollständig " +
-            "übernehmen — nicht Anfang oder Ende des Abschnitts weglassen.",
+            "übernehmen, nicht Anfang oder Ende des Abschnitts weglassen.",
         }
       : {}),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
@@ -2270,7 +2270,7 @@ function handleConcordance(args: {
   if (rows.length === 0) {
     return errorResult(
       `Keine Vorkommen für "${suche}" in Edition "${edition}" gefunden. ` +
-        "Hinweis: Lemma muss exakt (mit Akzenten/Punktierung) übereinstimmen — im Zweifel Strong-Nummer verwenden."
+        "Hinweis: Lemma muss exakt (mit Akzenten/Punktierung) übereinstimmen; im Zweifel Strong-Nummer verwenden."
     );
   }
 
@@ -2398,7 +2398,7 @@ function handleSearch(args: {
     return errorResult(
       `Keine Treffer für "${query}"${bookId !== null ? ` in ${getBookDisplayName(bookId)}` : ""} ` +
         `(${TRANSLATIONS[translation].name}). ` +
-        "Gesucht wird nach exakten Wortformen — Beugungen mitdenken oder Präfixsuche " +
+        "Gesucht wird nach exakten Wortformen: Beugungen mitdenken oder Präfixsuche " +
         'nutzen (z. B. "lieb*").'
     );
   }
@@ -2470,9 +2470,9 @@ function handleSearch(args: {
   hinweise.push(
     vorkommen !== null && vorkommen !== total
       ? `'treffer' zählt Verse (${total}), nicht Wortvorkommen: in manchen Versen passt der Suchbegriff mehrfach, ` +
-          `zusammen ${vorkommen} Vorkommen ('vorkommen_gesamt'). Die Fundstellen im Verstext sind mit ⟦…⟧ markiert — ` +
+          `zusammen ${vorkommen} Vorkommen ('vorkommen_gesamt'). Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: ` +
           "je Vers daran abzählen, nicht schätzen."
-      : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert — " +
+      : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: " +
           "je Vers daran abzählen, nicht schätzen."
   );
   if (verteilung.length > 0) {
@@ -2520,7 +2520,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
   }
   if (bookId < 40) {
     return errorResult(
-      "Der Editionsvergleich gilt nur fürs NT — fürs AT gibt es nur eine Edition (hebräischer WLC)."
+      "Der Editionsvergleich gilt nur fürs NT; fürs AT gibt es nur eine Edition (hebräischer WLC)."
     );
   }
 
@@ -2621,7 +2621,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
           ? {
               lesehinweis:
                 "Die TAGNT-Notizen (bedeutungsvariante/schreibvariante) nennen nur die Zeugen " +
-                "des eigenen Apparats — daraus folgt NICHT, dass alle übrigen Editionen die " +
+                "des eigenen Apparats; daraus folgt NICHT, dass alle übrigen Editionen die " +
                 "Kopfform lesen. 'in_dieser_db' zeigt pro Form, welche der hier geladenen " +
                 "Editionen sie tatsächlich lesen (aus original_words). Für die Frage 'was steht " +
                 "in dieser Edition' gilt 'in_dieser_db', nicht die TAGNT-Notiz; 'abgleich' nennt " +
@@ -2645,7 +2645,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
           warnung:
             "An dieser Stelle widerspricht die TAGNT-Bezeugung dem Editionstext. " +
             "'quellenkonflikte' nennt für jede betroffene Form, was die Edition " +
-            "tatsächlich liest — das gehört zur Antwort über diesen Vers, nicht in " +
+            "tatsächlich liest; das gehört zur Antwort über diesen Vers, nicht in " +
             "eine Fußnote. Maßgeblich ist der Editionstext, nicht die TAGNT-Notiz.",
           quellenkonflikte,
         }
@@ -2667,10 +2667,10 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
       "Vergleich ignoriert Akzente, Groß-/Kleinschreibung und Schlusssigma (byzantine/tr sind " +
       "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
       "Schreibvarianten. Welche Art vorliegt, steht in 'bezeugung' ('schreibvariante' bzw. " +
-      "'bedeutungsvariante', dazu 'typ') — nicht aus diesem Hinweis erschließen und die " +
+      "'bedeutungsvariante', dazu 'typ'). Nicht aus diesem Hinweis erschließen und die " +
       "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht. " +
       "Wortzahlen stehen im Ergebnis: je Edition in 'woerter', je Unterschied in Klammern " +
-      "hinter der Lesart — diese Zahlen übernehmen, nicht selbst nachzählen.",
+      "hinter der Lesart; diese Zahlen übernehmen, nicht selbst nachzählen.",
     // Aus `editions`, nicht aus einer festen Dreierliste: die Auswahl ist nach
     // dem tatsächlich geladenen Bestand gefiltert und kann zwei Editionen
     // umfassen. TAGNT nur, wenn eine Bezeugung in der Antwort steht.

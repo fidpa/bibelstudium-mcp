@@ -35,10 +35,10 @@ Nutzer zu laufen:
 - Alle Tool-Argumente werden validiert (`unknown` + Typprüfungen), bevor sie
   SQL berühren; jede Abfrage nutzt vorbereitete Statements mit gebundenen
   Parametern
-- Der Server stellt **keine Netzwerkanfragen** — das tun nur die
+- Der Server stellt **keine Netzwerkanfragen**: Das tun nur die
   Download-Skripte, ausschließlich an die dokumentierten Datenquellen (siehe
   [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)), und sie protokollieren
   jeden Abruf mit SHA-256-Prüfsumme in der Tabelle `provenance`
 - Setze den stdio-Server **keinen** nicht vertrauenswürdigen Eingaben aus und
   stelle ihn nicht ohne eigene Authentifizierung und Ratenbegrenzung als
-  öffentlichen Netzwerkdienst bereit — dafür ist er nicht ausgelegt
+  öffentlichen Netzwerkdienst bereit: Dafür ist er nicht ausgelegt
