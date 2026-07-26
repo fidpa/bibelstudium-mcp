@@ -6,6 +6,18 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.3] - 2026-07-26
+
+### Geändert (Infrastruktur)
+
+- **Releases entstehen jetzt aus einem `release.yml`-Workflow statt von Hand.** Ein `v*`-Tag baut beide Bundles (`linux-x64`, `darwin-arm64`) aus einem sauberen Checkout, legt die GitHub-Release als **Entwurf** mit dem passenden Changelog-Abschnitt an, hängt beide Bundles an und prüft, dass genau zwei Assets im Zustand `uploaded` liegen. Veröffentlicht wird weiterhin von Hand: die Release-Notes hier sind geschriebene Prosa und keine Changelog-Kopie, diese Entscheidung bleibt beim Betreiber.
+
+  Anlass war der Release 0.5.2 am 26.07.2026: der Tag lag auf GitHub, die Release fehlte, weil der Schritt von Hand übersprungen wurde — und mit ihr die beiden Bundles, ohne die eine Installation einen lokalen Build erfordert. Beides kann jetzt nicht mehr einzeln vergessen werden.
+
+  Drei Abbruchbedingungen, die über Bequemlichkeit hinausgehen: Der Tag muss zur `version` in `package.json` passen (ein `v0.6.0` auf `0.5.3` bricht ab — die Version an zweiter Stelle zu pflegen ist hier schon einmal schiefgegangen, siehe den Kommentar an `createServer()`). Ein fehlender Changelog-Abschnitt bricht ab, statt eine Release mit leeren Notes zu erzeugen. Und der Typecheck läuft auf dem getaggten Stand, den `lint.yml` bisher gar nicht berührte: der greift nur bei Branch-Pushes, ein Tag-Push allein wurde von keiner Prüfung angefasst.
+
+  Am Server ändert sich nichts: Diese Fassung ist inhaltlich identisch mit 0.5.2, nur die Versionsnummer und der Workflow sind neu. Das Bundle trägt weiterhin keine `data/bible.db` — deshalb kann ein Runner ohne Datenbank es überhaupt bauen.
+
 ## [0.5.2] - 2026-07-26
 
 ### Hinzugefügt

@@ -1,0 +1,106 @@
+name: release
+
+# Builds both platform bundles from a clean checkout on every v* tag and opens
+# the GitHub release as a DRAFT with the matching CHANGELOG section as notes.
+#
+# Draft on purpose: the release notes here are written prose, not a copy of the
+# CHANGELOG (compare v0.5.1). The workflow guarantees the two things that were
+# forgotten by hand on 26.07.2026 — that a release exists at all, and that both
+# bundles hang on it — while the wording stays a maintainer decision. Publish is
+# one click in the UI.
+#
+# The bundles do NOT carry data/bible.db (see scripts/build-mcpb.ts), so a
+# runner without the database can build them; only source and node_modules are
+# needed. The darwin bundle is cross-compiled on Linux, which is how it has been
+# built locally so far as well.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build bundles, open draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Tag matches package.json
+        run: |
+          # The version lives in package.json alone: serverInfo, the MCPB
+          # manifest and this release all read it from there. A tag that says
+          # something else would publish a release the code does not claim —
+          # which happened once already (see the comment at createServer()).
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG=$(jq -r .version package.json)
+          echo "tag=$VERSION package.json=$PKG"
+          [ "$VERSION" = "$PKG" ] \
+            || { echo "::error::tag $GITHUB_REF_NAME does not match package.json $PKG"; exit 1; }
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          # Everything between this version's heading and the next one. An empty
+          # result means the CHANGELOG was not finalised, which would otherwise
+          # produce a release with blank notes.
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="## [$VERSION]" '
+            index($0, v) == 1 { found = 1; next }
+            /^## \[/ && found { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::no CHANGELOG section '## [$VERSION]' found"
+            exit 1
+          fi
+          cat /tmp/release-notes.md
+
+      - name: Build bundles (linux-x64, darwin-arm64)
+        run: |
+          bun run build:mcpb bun-linux-x64
+          bun run build:mcpb bun-darwin-arm64
+          ls -l tmp/*.mcpb
+
+      - name: Open draft release with both bundles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            --verify-tag \
+            --draft \
+            "tmp/bibelstudium-mcp-$VERSION-linux-x64.mcpb" \
+            "tmp/bibelstudium-mcp-$VERSION-darwin-arm64.mcpb"
+
+      - name: Verify assets uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 'starting' means the upload is still in flight; only 'uploaded'
+          # is a file a user can actually download.
+          gh release view "$GITHUB_REF_NAME" --json assets \
+            -q '.assets[] | "\(.name) \(.state)"' | tee /tmp/assets.txt
+          if [ "$(wc -l < /tmp/assets.txt)" -ne 2 ]; then
+            echo "::error::expected 2 assets"
+            exit 1
+          fi
+          if grep -qv " uploaded$" /tmp/assets.txt; then
+            echo "::error::an asset is not in state 'uploaded'"
+            exit 1
+          fi
+          echo "Draft release ready: publish it in the UI once the notes read right."
