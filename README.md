@@ -122,7 +122,7 @@ MCP_HTTP_PORT=8931 bun run server.ts     # /mcp und /health, gebunden an 127.0.0
 
 Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor: Der Server bringt beides nicht mit.
 
-Zwei Unterschiede zum stdio-Betrieb: **`bible_setup` gibt es im HTTP-Modus nicht** (es lädt 145 MB von fremden Quellen und ersetzt die Datenbank, und das gehört der Betreiberseite, nicht einem beliebigen Aufrufer), und `/health` fragt bei jedem Aufruf die Datenbank, statt den Startzustand zu wiederholen: **503** mit Grund, wenn sie nicht antwortet, sonst 200. Die Datenbank baut auf einem Server also `bun run setup` auf, oder, wenn dort kein Bun liegt, das Binary selbst:
+Drei Unterschiede zum stdio-Betrieb. **`bible_setup` gibt es im HTTP-Modus nicht** (es lädt 145 MB von fremden Quellen und ersetzt die Datenbank, und das gehört der Betreiberseite, nicht einem beliebigen Aufrufer). `/health` fragt bei jedem Aufruf die Datenbank, statt den Startzustand zu wiederholen: **503** mit Grund, wenn sie nicht antwortet, sonst 200. Und der Server vermerkt auf stderr, in welcher Protokollfassung ein Aufrufer spricht, eine Zeile je Fassung und nicht je Anfrage: Das ist ein Zugriffsprotokoll ausdrücklich nicht, sondern die Vorwarnung für den Tag, an dem ein Client eine Revision spricht, die diese Fassung des Servers nicht bedient. Die Datenbank baut auf einem Server also `bun run setup` auf, oder, wenn dort kein Bun liegt, das Binary selbst:
 
 ```bash
 ./bibelstudium-server --setup             # dieselben acht Schritte, danach beendet sich der Prozess
@@ -274,6 +274,7 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 | Dokument | Inhalt |
 |----------|--------|
 | [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop: schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
+| [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md) | Warum der Code so aussieht: gemessene Befunde, verworfene Alternativen, Erfahrungen mit Clients und fremden Quellen |
 | [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md) | Fehlerbilder beim Datenaufbau und Serverstart, jeweils mit Ursache und Behebung |
 | [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md) | Code-Stil-Regeln, Typecheck, bewusst nicht übernommene Konventionen |
 | [docs/UEBERSETZUNGEN.md](docs/UEBERSETZUNGEN.md) | Geprüfte Optionen für weitere Übersetzungen: Lizenzlage, freie Kandidaten, Kosten einer Aufnahme |

@@ -63,6 +63,10 @@
       "description": "Wort-Diff eines NT-Verses über drei griechische Editionen, mit Bezeugung über acht."
     },
     {
+      "name": "bible_server_info",
+      "description": "Fassung des Servers und Bestand der geladenen Bibeldaten, für Rückfragen und Fehlerberichte."
+    },
+    {
       "name": "bible_setup",
       "description": "Lädt die Bibeldaten einmalig herunter, wenn noch keine vorhanden sind. Nur auf ausdrückliche Bestätigung."
     }

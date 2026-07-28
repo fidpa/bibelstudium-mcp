@@ -24,7 +24,8 @@ Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft (Geneva Bible
 Society). Die Übersetzung wird unter den Bedingungen der Creative-Commons-
 Namensnennung-Lizenz 4.0 bereitgestellt; Lizenzerklärung:
 <https://ebible.org/deu1951/copyright.htm>. Der Text wird unverändert
-gespeichert (abgesehen von der Entfernung des HTML-Fußnoten-Markups).
+gespeichert; die Quelle enthält kein Markup (geprüft am 28.07.2026 über alle
+31 101 Verse, zeichengenau gegen den statischen Export).
 
 ## Grundtexte & Morphologie
 

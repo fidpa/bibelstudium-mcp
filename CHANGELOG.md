@@ -6,6 +6,22 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.6] - 2026-07-29
+
+### Hinzugefügt
+
+- Der HTTP-Modus vermerkt auf stderr, in welcher Protokollfassung ein Aufrufer spricht: eine Zeile je Fassung, nicht je Anfrage, höchstens 20 Fassungen. Ein Zugriffsprotokoll ist das ausdrücklich nicht. Es ist die Vorwarnung für die MCP-Revision 2026-07-28, die `initialize` und die Sitzung abschafft und die dieser Server nicht bedient: Ein Client, der sie spricht, bekommt hier sonst still eine Antwort nach altem Verfahren. Die Fassung wird gegen das Format `JJJJ-MM-TT` geprüft, bevor sie ins Protokoll gelangt; alles andere erscheint als fester Platzhalter, und die Bezeichnung der Client-Software wird nicht erfasst.
+
+### Behoben (Dokumentation)
+
+- Das MCPB-Manifest führte `bible_server_info` nicht auf, obwohl der Server es seit 0.5.2 registriert. Die Liste dort ist handgepflegt; jetzt stimmen beide mit acht Einträgen überein.
+- Die Lizenzangabe zu Schlachter 1951 sprach von entferntem HTML-Fußnoten-Markup. Die Quelle enthält keines, geprüft am 28.07.2026 zeichengenau über alle 31 101 Verse gegen den statischen Export.
+- `README.md` nannte zwei Unterschiede zwischen HTTP- und stdio-Betrieb, es sind drei.
+
+### Hinzugefügt (Dokumentation)
+
+- Neu: `docs/ENTSCHEIDUNGEN.md` für Begründungen und Messungen, die an keiner einzelnen Codestelle stehen. Erste Einträge: das Protokoll-Log und der Befund, dass dieser Server Clients beider Ären als alten Server erkennbar bleibt, weil das 1.x-SDK mit dem Fehlercode -32000 antwortet und nicht mit dem modernen -32022.
+
 ## [0.5.5] - 2026-07-26
 
 ### Behoben

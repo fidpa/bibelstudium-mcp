@@ -2934,7 +2934,12 @@ function createServer(): Server {
 // MCP-Clients ohne Browser ist es folgenlos: die schicken keinen Origin. Kein
 // Widerspruch zur Origin-Prüfung unten — die entscheidet, WER antworten
 // bekommt, diese Kopfzeilen sagen dem Browser nur, was er damit tun darf.
-// Ohne 'expose' käme der Client nicht an die Sitzungs-ID heran.
+//
+// 'expose' nennt die Sitzungs-ID aus der Zeit vor dem zustandslosen Umbau.
+// Dieser Server vergibt keine und sendet die Kopfzeile nie, ein Browser bekommt
+// hier also nichts freigegeben, was es gibt. Die Zeile steht folgenlos und wird
+// mit dem Umstieg auf die Revision 2026-07-28 fällig, die das Feld ganz
+// streicht ("do not mint or echo session IDs").
 const CORS_HEADERS: Readonly<Record<string, string>> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
@@ -2975,6 +2980,141 @@ function withCors(response: Response): Response {
     statusText: response.statusText,
     headers,
   });
+}
+
+/**
+ * Why the endpoint records which protocol revision its callers speak.
+ *
+ * Revision 2026-07-28 removed `initialize` and the session: a modern client
+ * carries version, identity and capabilities in each request's `_meta` and
+ * mirrors the version into the `MCP-Protocol-Version` header. This server runs
+ * on the 1.x SDK and speaks only the handshake-based revisions, so per the
+ * spec's compatibility matrix a modern client either fails outright or, worse,
+ * has an era-ambiguous method served under legacy semantics: the stateless POST
+ * path accepts requests without a handshake, so nothing here would notice.
+ * Moving to the v2 SDK is a package split plus a rewrite of every handler
+ * registration, so the trigger should be a measured client, not a date. This is
+ * that measurement.
+ *
+ * One line per protocol version, not per request and not per client. The
+ * endpoint is public and authless: a line per request would be an access log
+ * nobody asked for and a free way to fill the journal. The set is capped for
+ * the same reason the session registry was removed — it grows on
+ * caller-supplied input, and an unbounded one is exactly the leak this server
+ * already had once.
+ *
+ * Nothing caller-supplied is written verbatim. The version is validated against
+ * the revision format rather than merely sanitised, and the client's self-
+ * reported name is not recorded at all. Both follow from the privacy notice
+ * this endpoint publishes, which promises operational events "ohne
+ * Personenbezug": a promise about free-form text from strangers is only ever
+ * kept by the goodwill of their software, whereas a value matched against
+ * `YYYY-MM-DD` before it reaches the journal is kept by construction. Both the
+ * `Mcp-Protocol-Version` header and `params.protocolVersion` are caller-
+ * controlled — an address or a name fits in either.
+ */
+const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+/**
+ * First revision carrying version and identity per request. Revision names are
+ * ISO dates, so a string compare orders them and `>=` is the era test.
+ */
+const FIRST_MODERN_REVISION = "2026-07-28";
+const MAX_PROTOCOL_SIGHTINGS = 20;
+const protocolSightings = new Set<string>();
+let modernLogged = false;
+
+/** Stands in for a version that is not a revision name, so no such value is logged. */
+const UNKNOWN_REVISION = "unbekannte Angabe";
+
+/**
+ * A protocol revision is named by its release date. Anything else is refused
+ * rather than cleaned up: this is the only value from the request that reaches
+ * the journal, so it is worth constraining to a shape that cannot carry a
+ * message, an identifier or a control character.
+ */
+function asRevision(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+async function noteProtocolVersion(request: Request): Promise<void> {
+  // The cheap path, taken by every request once a version has been seen: a
+  // header lookup and a set lookup, no body read.
+  const headerRevision = asRevision(request.headers.get("mcp-protocol-version"));
+
+  // Modern sightings collapse into a single line, legacy ones are keyed by
+  // version. The useful fact about a modern caller is that one exists, not
+  // which date it names, and keying them by version hands an authless caller
+  // both a line per invented future date and a way to crowd the real sighting
+  // out of the capped set. Measured 28.07.2026: twenty fake dates produced
+  // twenty warnings and then swallowed the genuine 2026-07-28 client.
+  const headerModern = headerRevision !== null && headerRevision >= FIRST_MODERN_REVISION;
+  if (headerModern && modernLogged) return;
+  if (!headerModern) {
+    if (headerRevision !== null && protocolSightings.has(headerRevision)) return;
+    if (protocolSightings.size >= MAX_PROTOCOL_SIGHTINGS) return;
+  }
+
+  let bodyRevision: string | null = null;
+  let modernMeta = false;
+  let discover = false;
+
+  // Read the body only for a version not yet recorded, so at most once per
+  // version. The header is absent exactly on a legacy `initialize`, and on
+  // clients older than 2025-06-18, which never defined it.
+  try {
+    const body = asRecord(await request.clone().json());
+    if (body !== null) {
+      discover = body["method"] === "server/discover";
+      const params = asRecord(body["params"]);
+      if (params !== null) {
+        // Legacy: `initialize` states the version in params.
+        bodyRevision = asRevision(params["protocolVersion"]);
+        // Modern: every request states it in _meta instead.
+        const meta = asRecord(params["_meta"]);
+        if (meta !== null && typeof meta[META_PROTOCOL_VERSION] === "string") {
+          modernMeta = true;
+          bodyRevision = asRevision(meta[META_PROTOCOL_VERSION]);
+        }
+      }
+    }
+  } catch {
+    // Not JSON, or a body this server will reject anyway. The header alone
+    // still identifies the era, and failing here must not fail the request.
+  }
+
+  const revision = bodyRevision ?? headerRevision;
+  // `server/discover` exists only in the modern era, so it identifies one even
+  // if a caller omits the version.
+  const modern = modernMeta || discover || (revision !== null && revision >= FIRST_MODERN_REVISION);
+  // A caller that names no valid revision still gets counted, but under a fixed
+  // label: its own string must not reach the journal.
+  const shown = revision ?? UNKNOWN_REVISION;
+
+  if (modern) {
+    if (modernLogged) return;
+    modernLogged = true;
+  } else {
+    if (protocolSightings.has(shown)) return;
+    if (protocolSightings.size >= MAX_PROTOCOL_SIGHTINGS) return;
+    protocolSightings.add(shown);
+    if (headerRevision !== null) protocolSightings.add(headerRevision);
+  }
+
+  if (modern) {
+    console.error(
+      `MCP-Protokoll: ${shown} (zustandslose Revision). ` +
+        "Dieser Server spricht sie nicht: er läuft auf dem 1.x-SDK und kennt nur " +
+        "das initialize-Verfahren. Umstieg auf das v2-SDK prüfen."
+    );
+  } else {
+    console.error(`MCP-Protokoll: ${shown} (initialize-Verfahren).`);
+  }
 }
 
 async function serveHttp(port: number): Promise<void> {
@@ -3056,6 +3196,11 @@ async function serveHttp(port: number): Promise<void> {
       if (request.method === "GET") {
         return withCors(new Response(null, { status: 200 }));
       }
+
+      // Records the protocol revision of the caller, at most one line per
+      // version seen. Never fails the request: a caller must not be able to
+      // break a lookup by sending a body this cannot read.
+      await noteProtocolVersion(request);
 
       // Stateless: one server plus transport per request, no session registry.
       // This server is pure request/response — it never pushes notifications and
