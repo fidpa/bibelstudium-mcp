@@ -67,6 +67,7 @@ async function callTools(
   resourceResults: ResourceResult[];
   resourceList: Json[];
   templateList: Json[];
+  promptList: Json[];
 }> {
   const proc = Bun.spawn(["bun", "run", SERVER], {
     stdin: "pipe",
@@ -100,8 +101,8 @@ async function callTools(
     })
   );
   // Ids are positional and must stay disjoint: 1 is tools/list, then the tool
-  // calls, then the prompts, then the resource reads, and the two resource
-  // listings last.
+  // calls, then the prompts, then the resource reads, and the three listings
+  // last.
   const resBase = 2 + calls.length + prompts.length;
   resources.forEach((uri, i) =>
     send({ jsonrpc: "2.0", id: resBase + i, method: "resources/read", params: { uri } })
@@ -112,9 +113,10 @@ async function callTools(
     id: resBase + resources.length + 1,
     method: "resources/templates/list",
   });
+  send({ jsonrpc: "2.0", id: resBase + resources.length + 2, method: "prompts/list" });
   await w.flush();
 
-  const expected = calls.length + prompts.length + resources.length + 3;
+  const expected = calls.length + prompts.length + resources.length + 4;
   const seen = new Map<number, Json>();
   const dec = new TextDecoder();
   const reader = proc.stdout.getReader();
@@ -205,6 +207,9 @@ async function callTools(
   const listedTemplates = seen.get(resBase + resources.length + 1) as {
     result?: { resourceTemplates?: Json[] };
   };
+  const listedPrompts = seen.get(resBase + resources.length + 2) as {
+    result?: { prompts?: Json[] };
+  };
 
   return {
     tools: listed.result?.tools ?? [],
@@ -213,6 +218,7 @@ async function callTools(
     resourceResults,
     resourceList: listedResources.result?.resources ?? [],
     templateList: listedTemplates.result?.resourceTemplates ?? [],
+    promptList: listedPrompts.result?.prompts ?? [],
   };
 }
 
@@ -350,7 +356,7 @@ const RESOURCE_CALLS = [
   "bible://kapitel/LUT/Hesekiel-Zusatz/999",
 ] as const satisfies ReadonlyArray<string>;
 
-const { tools, results, promptResults, resourceResults, resourceList, templateList } =
+const { tools, results, promptResults, resourceResults, resourceList, templateList, promptList } =
   await callTools(CALLS, PROMPT_CALLS, RESOURCE_CALLS);
 const [wordStudy, wordStudyNoArg, variantCheck, variantTooLong, translationCompare] =
   promptResults as PromptResult[] & { length: 5 };
@@ -692,6 +698,15 @@ console.log("Prompts");
   const codes = (info.uebersetzungen as Array<{ code: string }>).map((t) => t.code);
   const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
   const extras = (info.zusatzdaten ?? {}) as Record<string, boolean>;
+
+  // `title` is the display name in a client's prompt menu; without it the user
+  // reads the identifier. It is optional in the schema, so nothing breaks when
+  // a fourth prompt forgets it — this assertion is the only thing that notices.
+  eq("drei Prompts gelistet", promptList.length, 3);
+  for (const p of promptList) {
+    check(`${String(p.name)}: title gesetzt`, typeof p.title === "string" && p.title !== "");
+    check(`${String(p.name)}: name bleibt englisch`, /^[a-z-]+$/.test(String(p.name)));
+  }
 
   // A missing required argument used to produce an instruction with a hole in
   // it ("Wortstudie zu „"), and the prompt still came back as a success.

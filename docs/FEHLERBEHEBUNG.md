@@ -84,6 +84,39 @@ Zeichen entfernen.
 Ob aufgerufen wird, entscheidet am Ende der Client, auch das bleibt ein Anreiz,
 keine Garantie.
 
+### Eine Ressource lässt sich nicht anhängen
+
+Ressourcen erscheinen in Claude Code in der `@`-Vervollständigung neben den
+Dateien, referenziert als `@server:protocol://resource/path`. Zwei Dinge
+verhindern, dass der Inhalt beim Modell ankommt, beide gemessen am 02.08.2026 in
+einer Sitzung.
+
+**Der Servername darf keine Leerzeichen enthalten.** Als Connector heißt dieser
+Server `claude.ai Bibelstudium MCP`, das Präfix setzt der Client. Wegen der
+Leerzeichen setzt die Vervollständigung ein Anführungszeichen, das die
+dokumentierte Form nicht kennt; in vier Versuchen kam nur die getippte Zeile an,
+ohne Inhalt. Ausweg ist ein lokaler Eintrag desselben Endpunkts unter einem
+kurzen Namen:
+
+```bash
+claude mcp add --transport http bibelstudium https://mcp.bibelstudium-mcp.de/mcp
+```
+
+Danach kommt `@bibelstudium:bible://quellen` vollständig an. Ein frisch
+eingetragener Server wird erst nach einem Neustart der Sitzung wirksam; davor
+sieht der Versuch wie ein Fehlschlag aus.
+
+**Die URI-Vorlagen sind über `@` nicht erreichbar.** Sie werden angeboten, eine
+daraus gebildete URI wird aber nicht aufgelöst:
+`@bibelstudium:bible://kapitel/LUT/Psalter/23` kam nicht an, während
+`@bibelstudium:bible://quellen` unmittelbar davor ankam; ein Kontrollserver über
+stdio zeigte dasselbe Bild. Für Kapitel, Verse und Grundtext führt der Weg
+deshalb über die Werkzeuge (`bible_lookup`, `bible_original`). Abrufbar bleiben
+die Vorlagen trotzdem, über `resources/read` und über das Ressourcen-Werkzeug
+des Clients; nur die Geste mit `@` erreicht sie nicht.
+
+Für Claude Desktop und claude.ai ist beides nicht gemessen.
+
 ## HTTP-Modus
 
 Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne

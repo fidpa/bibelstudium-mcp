@@ -207,11 +207,13 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 
 ## Prompts
 
-| Prompt | Argumente | Ablauf |
-|--------|-----------|--------|
-| `word-study` | `word` (Pflicht), `reference` | Grundtext-Wort → Konkordanz → Schlüsselstellen → Bedeutungsspektrum |
-| `variant-check` | `reference` (Pflicht) | Editions-Diff → Bezeugung → Lesarten je Edition → nüchterne Einordnung |
-| `translation-compare` | `reference` (Pflicht) | Alle geladenen Übersetzungen nebeneinander, gegen den Grundtext geprüft |
+| Prompt | Anzeigename | Argumente | Ablauf |
+|--------|-------------|-----------|--------|
+| `word-study` | Wortstudie | `word` (Pflicht), `reference` | Grundtext-Wort → Konkordanz → Schlüsselstellen → Bedeutungsspektrum |
+| `variant-check` | Textvarianten prüfen | `reference` (Pflicht) | Editions-Diff → Bezeugung → Lesarten je Edition → nüchterne Einordnung |
+| `translation-compare` | Übersetzungen vergleichen | `reference` (Pflicht) | Alle geladenen Übersetzungen nebeneinander, gegen den Grundtext geprüft |
+
+Der Anzeigename steht im `title`-Feld und ist das, was ein Client im Auswahlmenü zeigt; angesprochen wird ein Prompt weiterhin über seinen Bezeichner in der ersten Spalte.
 
 ## Ressourcen
 
@@ -233,6 +235,8 @@ Der Bibeltext selbst kommt über URI-Vorlagen. Sonderzeichen im Buchnamen werden
 | `bible://grundtext/{edition}/{buch}/{kapitel}/{vers}` | Ein Vers Wort für Wort | `bible://grundtext/wlc/1%20Mose/1/1` |
 
 Jede Ressource, die Text ausliefert, trägt ihre `quellen` mit, genau wie eine Werkzeugantwort. Ohne aufgebaute Datenbank sind beide Listen leer und ein Abruf wird abgewiesen.
+
+In Claude Code werden Ressourcen mit `@` angehängt (`@bibelstudium:bible://quellen`). Dass eine angebotene Ressource dabei ohne Inhalt ankommt, hat zwei bekannte Ursachen, beide samt Ausweg in [`docs/FEHLERBEHEBUNG.md`](docs/FEHLERBEHEBUNG.md).
 
 ## Übersetzungen
 
@@ -289,7 +293,7 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 **Warum steht die Antwort zweimal drin?** Die sieben Lesewerkzeuge deklarieren ein `outputSchema` und liefern ihr Ergebnis zusätzlich als `structuredContent` (MCP-Revision 2025-06-18). Der Textblock bleibt dabei unverändert: Ein Client, der die Neuerung nicht kennt, sieht genau dasselbe wie vorher. Das kostet je Antwort 63 bis 80 Prozent mehr Zeichen, und dafür ist ein Feld wie `vorkommen_gesamt` oder `warnung` maschinell auffindbar, statt nur lesbar. Fehlerantworten bleiben reiner Text, sie tragen kein `structuredContent`.
 
-**Warum stehen bei den Ressourcen Vorlagen statt einer Liste?** Diese Datenbank führt 31 102 Verse in 1190 Kapiteln. Sie aufzuzählen hieße, bei jedem Sitzungsbeginn einen Katalog über die Leitung zu schicken; schon die 66 Bücher wären rund 13 000 zusätzliche Zeichen neben den 15 171 von `tools/list`. So kostet `resources/list` 939 Zeichen und `resources/templates/list` 947. Weil nicht belegt ist, ob ein Client die Vorlagen überhaupt anzeigt, nennt `bible_server_info` sie zusätzlich. Ein ganzes Buch gibt es aus demselben Grund nicht: Das größte misst 260 990 Zeichen (Menge, Jeremia) und läge jenseits dessen, was ein Client als Ergebnis annimmt. Aus derselben Rechnung steht der Grundtext je Vers und nicht je Kapitel: Das größte Kapitel hat 1285 Wörter, bei 161 Zeichen Grenzkosten je Wort wären das rund 208 000 Zeichen.
+**Warum stehen bei den Ressourcen Vorlagen statt einer Liste?** Diese Datenbank führt 31 102 Verse in 1190 Kapiteln. Sie aufzuzählen hieße, bei jedem Sitzungsbeginn einen Katalog über die Leitung zu schicken; schon die 66 Bücher wären rund 13 000 zusätzliche Zeichen neben den 15 171 von `tools/list`. So kostet `resources/list` 939 Zeichen und `resources/templates/list` 947. Claude Code zeigt die Vorlagen in der `@`-Vervollständigung an, hängt eine daraus gebildete URI aber nicht als Inhalt an, anders als eine feste (gemessen am 02.08.2026 über stdio gegen einen Kontrollserver und über HTTP gegen diesen Server); das Ressourcen-Werkzeug des Modells listet dort ohnehin nur die vier festen Einträge, und für Claude Desktop und claude.ai ist beides nicht belegt. Deshalb nennt `bible_server_info` die Vorlagen zusätzlich. Ein ganzes Buch gibt es aus demselben Grund nicht: Das größte misst 260 990 Zeichen (Menge, Jeremia) und läge jenseits dessen, was ein Client als Ergebnis annimmt. Aus derselben Rechnung steht der Grundtext je Vers und nicht je Kapitel: Das größte Kapitel hat 1285 Wörter, bei 161 Zeichen Grenzkosten je Wort wären das rund 208 000 Zeichen.
 
 **Warum trägt eine Text-Ressource `verse_einzeln` statt `text`?** Weil sie angehängt und daraus zitiert wird. Ein zusammengesetzter String mit eingebetteten Versnummern ist genau die Form, die bei `bible_crossrefs` gemessen an beiden Enden abgeschnitten wurde. Beides zu führen kostete das 2,57-Fache (Psalm 119, Luther: 13 562 → 34 876 Zeichen), `verse_einzeln` allein das 1,58-Fache. `bible_lookup` behält den zusammengesetzten Text: Dort zählte der Aufschlag doppelt, weil die Nutzlast zusätzlich als `structuredContent` mitfährt.
 

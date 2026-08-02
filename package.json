@@ -1,6 +1,6 @@
 {
   "name": "bibelstudium-mcp",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "description": "Local MCP server for word-precise Bible study: four freely licensed German translations, original-language morphology (Hebrew WLC; Greek Majority Text / SBLGNT / Textus Receptus), concordance, cross-references, full-text search, and edition comparison with eight-edition attestation.",
   "type": "module",
   "private": true,

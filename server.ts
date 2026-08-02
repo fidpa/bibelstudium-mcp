@@ -2228,9 +2228,16 @@ const handleListTools = async () => ({
 // English (like the tool names); the prompt bodies are German user-facing
 // content, matching the German output fields.
 
+// `title` is the display name a client shows in its prompt menu, and that menu
+// is read by the user, not the model — same reason the resources carry German
+// names. `name` stays English and unchanged: it is the identifier a caller
+// sends, and renaming it would be a breaking change. Prompt arguments have no
+// `title` in the SDK schema (name, description, required only), so their
+// wording stays in `description`.
 const PROMPTS = [
   {
     name: "word-study",
+    title: "Wortstudie",
     description:
       "Guided original-language word study: from a German word, lemma or Strong's number " +
       "to meaning spectrum, distribution and key passages.",
@@ -2249,6 +2256,7 @@ const PROMPTS = [
   },
   {
     name: "variant-check",
+    title: "Textvarianten prüfen",
     description:
       "Guided text-critical check of one NT verse: edition diff, eight-edition attestation, " +
       "sober assessment.",
@@ -2262,6 +2270,7 @@ const PROMPTS = [
   },
   {
     name: "translation-compare",
+    title: "Übersetzungen vergleichen",
     description:
       "Compare one passage across all loaded German translations and check notable " +
       "renderings against the original text.",

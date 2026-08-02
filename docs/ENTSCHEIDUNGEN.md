@@ -100,14 +100,45 @@ deklariert `createServer()` `resources: {}` ohne `subscribe` und ohne
 der `@`-Vervollständigung neben Dateien, referenziert als
 `@server:protocol://resource/path`.
 
+**Gemessen am 02.08.2026 in Claude Code, eine Sitzung, ein Beobachter:** Die
+`@`-Vervollständigung listet neben den vier festen Einträgen auch die drei
+Vorlagen, geschrieben als Präfix (`claude.ai Bibelstudium MCP:bible://kapitel/`),
+die Variablen stehen in der Beschreibung. Ein Kontrollserver mit genau einer
+festen Ressource und einer Vorlage zeigt dasselbe Bild; seine Vorlage steht
+ausschließlich in `resources/templates/list`, also ruft dieser Client beide
+Methoden ab. Angezeigt heißt aber nicht angehängt, und das ist die eigentliche
+Auskunft dieser Messung: Beim Kontrollserver kam `@spike-resources:spike://statisch`
+mit vollem Inhalt beim Modell an, `@spike-resources:spike://vorlage/testwert`
+unmittelbar danach nur als getippte Zeile, obwohl der Server beide liest. An
+diesem Server über HTTP dasselbe Bild, unter einem lokal vergebenen Namen ohne
+Leerzeichen: `@bibelstudium:bible://quellen` kam vollständig an,
+`@bibelstudium:bible://kapitel/LUT/Psalter/23` gar nicht. Die Geste, die in den
+Vorlagen steckt, ist über `@` also nicht erreichbar, auf beiden Transporten.
+
+Zweierlei kommt hinzu. Das Werkzeug, mit dem das Modell selbst Ressourcen
+auflistet, liefert bei beiden Servern nur `resources/list`; dort sieht es die
+Vorlagen ebenfalls nicht. Und der Name entscheidet mit: Als Connector heißt
+dieser Server `claude.ai Bibelstudium MCP`, das Präfix setzt der Client (die
+übrigen heißen `claude.ai Gmail`, `claude.ai Google Drive`,
+`claude.ai Google Calendar`). Wegen der Leerzeichen setzt die Vervollständigung
+ein öffnendes Anführungszeichen, das die dokumentierte Form nicht kennt
+(`@server:protocol://resource/path`), und so kam auch die feste URI
+`bible://quellen` in vier Versuchen nicht an. Unter dem kurzen Namen, gleicher
+Endpunkt, gleicher Transport, kam sie an. Wer die vier festen Ressourcen
+anhängen will, trägt den Endpunkt also lokal unter einem Namen ohne Leerzeichen
+ein, statt den Connector zu benutzen. Ein frisch eingetragener Server wird
+zudem erst nach einem Neustart der Sitzung wirksam; der erste Versuch lief
+deshalb ins Leere und sah aus wie ein Fehlschlag des Namens.
+
 **Nicht belegt:** wie Claude Desktop und claude.ai Ressourcen in der Oberfläche
-anbieten, und ob irgendein Client `resources/templates/list` anzeigt.
+anbieten.
 
 Daraus folgt ein Feld, kein Verzicht: `bible_server_info` nennt jetzt die vier
 URIs und die drei Vorlagen. Die vier festen Einträge stehen in `resources/list`
 und werden von einem Client mit Ressourcen-Anzeige gefunden; die Vorlagen, in
-denen die eigentliche Geste steckt, stehen nur in einer Methode, die seine
-Oberfläche womöglich nie abruft. `bible_server_info` ist der eine Kanal, der das
+denen die eigentliche Geste steckt, stehen in einer eigenen Methode, die die
+Oberfläche zwar abruft, das Ressourcen-Werkzeug des Modells aber nicht.
+`bible_server_info` ist der eine Kanal, der das
 Modell nachweislich erreicht, und genau dafür wurde es gebaut, weil
 `instructions` aus dem Handshake es nicht tut (26.07.2026). Gekostet hat das
 359 Zeichen in der Antwort, 673 im vollständigen `result` und 202 in

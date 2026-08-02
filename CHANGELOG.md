@@ -6,6 +6,16 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.10] - 2026-08-02
+
+### Hinzugefügt
+
+- Die drei Prompts tragen einen deutschen Anzeigenamen im Feld `title`: „Wortstudie", „Textvarianten prüfen", „Übersetzungen vergleichen". Ein Client zeigt ihn im Auswahlmenü, das der Nutzer liest; angesprochen werden die Prompts weiterhin über ihre unveränderten Bezeichner. `prompts/list` wächst dadurch von 972 auf 1060 Zeichen. Die Prompt-Argumente bekommen keinen Titel, das Protokoll sieht dort keinen vor.
+
+### Hinzugefügt (Dokumentation)
+
+- `docs/FEHLERBEHEBUNG.md` erklärt, warum sich eine Ressource nicht anhängen lässt. Enthält der Servername Leerzeichen, setzt die Vervollständigung in Claude Code ein Anführungszeichen, das die dokumentierte Form nicht kennt, und der Inhalt kommt nicht an; ein lokaler Eintrag desselben Endpunkts unter kurzem Namen behebt es. Die URI-Vorlagen sind über `@` gar nicht erreichbar, wohl aber über `resources/read`. Beides gemessen am 02.08.2026 in Claude Code, für Claude Desktop und claude.ai nicht.
+
 ## [0.5.9] - 2026-08-02
 
 ### Hinzugefügt
