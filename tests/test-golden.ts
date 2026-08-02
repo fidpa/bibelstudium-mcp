@@ -19,7 +19,18 @@ import packageJson from "../package.json";
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
 type Json = Record<string, unknown>;
-type ToolResult = { text: string; json: Json | null; isError: boolean };
+/**
+ * `json` is the text block parsed, `structured` the `structuredContent` field.
+ * Both are kept because the point is to compare them: they are built from one
+ * value in the server, and this test is the only place that notices if they
+ * ever stop matching.
+ */
+type ToolResult = {
+  text: string;
+  json: Json | null;
+  structured: Json | null;
+  isError: boolean;
+};
 /**
  * A `prompts/get` answer. Prompts have no `isError` channel, so a rejected
  * argument arrives as a JSON-RPC error rather than as a result — `error` holds
@@ -97,7 +108,11 @@ async function callTools(
   const listed = seen.get(1) as { result?: { tools?: Json[] } };
   const results = calls.map((_, i) => {
     const m = seen.get(2 + i) as {
-      result?: { content?: Array<{ text?: string }>; isError?: boolean };
+      result?: {
+        content?: Array<{ text?: string }>;
+        structuredContent?: Json;
+        isError?: boolean;
+      };
     };
     const text = m.result?.content?.[0]?.text ?? "";
     let json: Json | null = null;
@@ -106,7 +121,12 @@ async function callTools(
     } catch {
       json = null; // error results are plain text, not JSON
     }
-    return { text, json, isError: m.result?.isError === true };
+    return {
+      text,
+      json,
+      structured: m.result?.structuredContent ?? null,
+      isError: m.result?.isError === true,
+    };
   });
 
   const promptResults = prompts.map((_, i) => {
@@ -121,6 +141,90 @@ async function callTools(
   });
 
   return { tools: listed.result?.tools ?? [], results, promptResults };
+}
+
+// --- minimal JSON Schema validator ------------------------------------------
+
+function isRecord(value: unknown): value is Json {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `typeof` is not enough: null, arrays and integers each need their own case. */
+function matchesType(type: string, value: unknown): boolean {
+  switch (type) {
+    case "object": return isRecord(value);
+    case "array": return Array.isArray(value);
+    case "string": return typeof value === "string";
+    case "integer": return typeof value === "number" && Number.isInteger(value);
+    case "number": return typeof value === "number";
+    case "boolean": return typeof value === "boolean";
+    case "null": return value === null;
+    // An unknown keyword must fail rather than pass: silently accepting it would
+    // turn a typo in a schema into a permanently green test.
+    default: return false;
+  }
+}
+
+function describe(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+/**
+ * Checks a value against the subset of JSON Schema the output schemas use:
+ * `type` (single or a union list like ["string","null"]), `properties`,
+ * `required`, `items`, and `additionalProperties` as a schema.
+ *
+ * Deliberately not a general implementation. Everything beyond that subset would
+ * be untested code guarding tested code; ajv as a devDependency would be fine
+ * too (the runtime stays at one dependency either way), it would just be 95 %
+ * unused here.
+ *
+ * Returns the violations, empty when valid. Checked below against known-broken
+ * payloads: a validator that accepts everything is indistinguishable from a
+ * passing test.
+ */
+function schemaErrors(schema: Json, value: unknown, path = ""): string[] {
+  const out: string[] = [];
+  const where = path === "" ? "<root>" : path;
+  const types =
+    schema.type === undefined
+      ? []
+      : Array.isArray(schema.type)
+        ? (schema.type as string[])
+        : [String(schema.type)];
+
+  if (types.length > 0 && !types.some((t) => matchesType(t, value))) {
+    // Stop here: with the wrong type every nested message would be noise about
+    // the same single defect.
+    return [`${where}: erwartet ${types.join("|")}, war ${describe(value)}`];
+  }
+
+  if (isRecord(value)) {
+    for (const key of (schema.required as string[] | undefined) ?? []) {
+      if (!(key in value)) out.push(`${where}: Pflichtfeld '${key}' fehlt`);
+    }
+    const props = isRecord(schema.properties) ? schema.properties : {};
+    for (const [key, sub] of Object.entries(props)) {
+      if (key in value && isRecord(sub)) out.push(...schemaErrors(sub, value[key], `${path}/${key}`));
+    }
+    // Only meaningful as a schema (the dynamic-key maps such as `in_dieser_db`);
+    // `additionalProperties: false` is not used anywhere and stays unsupported.
+    if (isRecord(schema.additionalProperties)) {
+      for (const [key, sub] of Object.entries(value)) {
+        if (!(key in props)) {
+          out.push(...schemaErrors(schema.additionalProperties, sub, `${path}/${key}`));
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(value) && isRecord(schema.items)) {
+    value.forEach((item, i) => out.push(...schemaErrors(schema.items as Json, item, `${path}/${i}`)));
+  }
+
+  return out;
 }
 
 // --- assertions -------------------------------------------------------------
@@ -206,6 +310,14 @@ const CALLS = [
   ["bible_concordance", { lemma: "α".repeat(60) }],
   // above the scan limit the two counted fields drop out — say so
   ["bible_search", { query: "der", limit: 2 }],
+  // Conditional output fields, one case per field that is legitimately absent.
+  // These exist for the output schemas: every one of them would be a hard client
+  // error if it ended up in `required` (a client of the 1.x SDK rejects a
+  // successful result that does not match the declared schema).
+  ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }], // no TAGNT row: 9 NT verses have none
+  ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }], // sblgnt carries no Strong's
+  ["bible_concordance", { strong: "G26", limit: 200 }], // everything listed: no truncation hint
+  ["bible_lookup", { book: "Hiob", chapter: 32, verses: "1-4", translation: "MB" }], // Menge without brackets
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
 // Prompts name the loaded inventory and the fields of the answers they steer,
@@ -249,7 +361,11 @@ const [
   searchLongBook,
   concordanceLongLemma,
   searchOverLimit,
-] = results as ToolResult[] & { length: 26 };
+  cmpOhneBezeugung,
+  origSblgnt,
+  concordVollstaendig,
+  mengeOhneKlammer,
+] = results as ToolResult[] & { length: 30 };
 
 console.log("Grenzwertmeldungen");
 for (const [label, r] of [
@@ -447,6 +563,86 @@ console.log("Scan-Grenze der Suche");
   has("Ausweg benannt", hint(j), "auf ein Buch ein");
   // The counted case must stay free of the note.
   lacks("kleine Suche ohne den Hinweis", hint(searchLieb!.json), "Ab 1000 Treffern");
+}
+
+console.log("Bedingte Ausgabefelder");
+{
+  // Each of these fields is absent for a measured reason, and each would break a
+  // validating client if it were declared required.
+  check("Joh 7,53: ohne bezeugung", !("bezeugung" in (cmpOhneBezeugung!.json ?? {})));
+  eq("Joh 7,53: kein Fehler", cmpOhneBezeugung!.isError, false);
+  const sblgnt = (origSblgnt!.json?.woerter ?? []) as Array<Json>;
+  check("Joh 3,16 (sblgnt): Wörter vorhanden", sblgnt.length > 0);
+  check("Joh 3,16 (sblgnt): ohne Strong-Nummern", sblgnt.every((w) => !("strong" in w)));
+  check("G26 vollständig gelistet: ohne hinweis", !("hinweis" in (concordVollstaendig!.json ?? {})));
+  eq("Hiob 32,1-4 (MB): kein Klammerhinweis", hint(mengeOhneKlammer!.json), "");
+  eq("Hiob 32,1-4 (MB): kein Fehler", mengeOhneKlammer!.isError, false);
+}
+
+console.log("Strukturierte Ausgabe");
+{
+  const schemaOf = new Map(
+    tools.map((t) => [String(t.name), isRecord(t.outputSchema) ? t.outputSchema : undefined])
+  );
+
+  // The validator is checked before it is trusted, against the real answer of a
+  // real call rather than a fixture. Five ways a handler could drift from its
+  // schema; every one of them must be caught.
+  {
+    const schema = schemaOf.get("bible_search");
+    const proben: ReadonlyArray<readonly [string, (o: Json) => void]> = [
+      ["Pflichtfeld entfernt", (o) => { delete o.treffer; }],
+      ["Zahl als Zeichenkette", (o) => { o.treffer = String(o.treffer); }],
+      ["verschachteltes Pflichtfeld entfernt", (o) => {
+        delete (o.verteilung as Json[])[0]!.vorkommen;
+      }],
+      ["null-fähiges Pflichtfeld entfernt", (o) => {
+        delete (o.quellen as Json[])[0]!.nennung;
+      }],
+      ["Array-Element falscher Form", (o) => {
+        o.verse = (o.verse as Json[]).map((v) => String(v.stelle));
+      }],
+    ];
+    check("Validator: Schema für bible_search vorhanden", schema !== undefined);
+    check("Validator: gültige Antwort besteht", schema !== undefined && schemaErrors(schema, searchLieb!.json).length === 0);
+    for (const [name, kaputtmachen] of proben) {
+      const kaputt = JSON.parse(JSON.stringify(searchLieb!.json)) as Json;
+      kaputtmachen(kaputt);
+      check(
+        `Validator erkennt: ${name}`,
+        schema !== undefined && schemaErrors(schema, kaputt).length > 0
+      );
+    }
+  }
+
+  // Every case, not a hand-picked selection: a rarely taken return path that
+  // forgets structuredContent is a hard client error, not a missing field.
+  let geprueft = 0;
+  results.forEach((r, i) => {
+    const name = CALLS[i]![0];
+    if (r.isError) {
+      check(`${name} #${i}: Fehlerantwort ohne structuredContent`, r.structured === null);
+      return;
+    }
+    const schema = schemaOf.get(name);
+    if (schema === undefined) return; // tool not (yet) declaring an output schema
+    check(`${name} #${i}: structuredContent vorhanden`, r.structured !== null);
+    if (r.structured === null) return;
+    check(
+      `${name} #${i}: structuredContent gleich Textblock`,
+      JSON.stringify(r.structured) === JSON.stringify(r.json)
+    );
+    const fehler = schemaErrors(schema, r.structured);
+    check(`${name} #${i}: schemagültig`, fehler.length === 0, fehler.slice(0, 3).join("; "));
+    geprueft++;
+  });
+  check("mindestens ein Fall schemageprüft", geprueft > 0, `geprüft: ${geprueft}`);
+  // bible_setup is not listed here (the database exists), so all seven listed
+  // tools must declare one. A tool that quietly loses its schema would otherwise
+  // just drop out of the loop above and take its checks with it.
+  for (const t of tools) {
+    check(`${String(t.name)}: outputSchema deklariert`, isRecord(t.outputSchema));
+  }
 }
 
 console.log("Prompts");

@@ -202,6 +202,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
+| `bible_server_info` | Fassung dieses Servers und welche Bibeldaten er geladen hat. Liefert keinen Bibeltext |
 | `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur** über stdio und nur, solange die Datenbank fehlt; lädt erst nach ausdrücklicher Bestätigung |
 
 ## Prompts
@@ -240,7 +241,7 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Datei | Aufgabe |
 |-------|---------|
-| `server.ts` | MCP-Server: sechs Werkzeuge, drei Prompts, drei Morphologie-Dekoder, Editions-/Testament-Routing |
+| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, drei Morphologie-Dekoder, Editions-/Testament-Routing |
 | `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
 | `db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
 | `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
@@ -263,7 +264,9 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 **Warum ist der Byzantinische Mehrheitstext die NT-Voreinstellung?** Der Server dient wortgetreuer Arbeit, und die hier mitgelieferten deutschen Übersetzungen stehen in der Mehrheitstext-Tradition (Luther und Schlachter folgen der TR-/byzantinischen Linie). Der kritische SBLGNT ist über `texttyp: "sblgnt"` vollständig verfügbar, und `bible_compare` zeigt genau, wo die Editionen auseinandergehen, samt Bezeugung zur Beurteilung jeder Lesart.
 
-**Warum sind alle Werkzeuge als `readOnlyHint` markiert?** Jedes der sechs liest ausschließlich aus der lokalen SQLite-Datei, die read-only geöffnet wird: kein Schreibzugriff, keine Seiteneffekte, kein Netzwerk. Ohne Angabe würde die Spezifikation das Gegenteil annehmen (`readOnlyHint: false`, `openWorldHint: true`). `destructiveHint` und `idempotentHint` fehlen bewusst: Sie sind laut Schema nur bedeutsam, wenn ein Werkzeug schreibt.
+**Warum sind alle Werkzeuge als `readOnlyHint` markiert?** Jedes der sieben liest ausschließlich aus der lokalen SQLite-Datei, die read-only geöffnet wird: kein Schreibzugriff, keine Seiteneffekte, kein Netzwerk. Ohne Angabe würde die Spezifikation das Gegenteil annehmen (`readOnlyHint: false`, `openWorldHint: true`). `destructiveHint` und `idempotentHint` fehlen bewusst: Sie sind laut Schema nur bedeutsam, wenn ein Werkzeug schreibt.
+
+**Warum steht die Antwort zweimal drin?** Die sieben Lesewerkzeuge deklarieren ein `outputSchema` und liefern ihr Ergebnis zusätzlich als `structuredContent` (MCP-Revision 2025-06-18). Der Textblock bleibt dabei unverändert: Ein Client, der die Neuerung nicht kennt, sieht genau dasselbe wie vorher. Das kostet je Antwort 63 bis 80 Prozent mehr Zeichen, und dafür ist ein Feld wie `vorkommen_gesamt` oder `warnung` maschinell auffindbar, statt nur lesbar. Fehlerantworten bleiben reiner Text, sie tragen kein `structuredContent`.
 
 **Warum englische Tool-Namen bei deutscher Ausgabe?** MCP-Tool-Namen sind Entwickler-Oberfläche (englische Konvention); der Inhalt, den ein Mensch liest, ist deutsch, weil der ausgelieferte Bibeltext deutsch ist.
 

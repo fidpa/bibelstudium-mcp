@@ -845,6 +845,27 @@ function errorResult(msg: string) {
 }
 
 /**
+ * Successful result: the same payload twice, as the text block every client has
+ * always received and as `structuredContent` (protocol revision 2025-06-18).
+ *
+ * Built from one value on purpose. A client of the 1.x SDK throws
+ * `InvalidRequest` when a tool declaring an `outputSchema` returns a successful
+ * result without `structuredContent` (client/index.js:500), so a return path
+ * that forgets it is no longer a missing field but a hard client error. There is
+ * exactly one way to build such a result, and this is it — never assemble the
+ * pair by hand.
+ *
+ * Error results stay plain text via `errorResult`: the same client check exempts
+ * `isError`, and the messages are prose, not JSON.
+ */
+function jsonResult(response: Record<string, unknown>) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+    structuredContent: response,
+  };
+}
+
+/**
  * Strip leftover HTML tags. Precaution, not running business: `download.ts`
  * already strips on insert, and `verses` holds no "<" at all in any of the four
  * translations (measured 26.07.2026). Same for invisible characters — no soft
@@ -1373,6 +1394,359 @@ function crossCheckVariant(
 }
 
 
+// --- Output schemas — one per read tool ------------------------------------
+// Declared so a consuming program can find a field instead of parsing prose,
+// and so `structuredContent` has something to be checked against.
+//
+// Two rules hold for all of them, and both are load-bearing:
+//
+// 1. `required` lists ONLY fields present in every successful return path. For a
+//    client of the 1.x SDK a declared schema is stricter than none: a successful
+//    answer that does not match is rejected outright (client/index.js:500),
+//    where before it was merely an answer with a field missing. Every entry
+//    below therefore names the condition under which the field is absent, and
+//    tests/test-golden.ts carries one case per condition. Widening `required`
+//    without a matching case is how this turns into an outage.
+// 2. No `additionalProperties: false`, anywhere. Adding an output field has to
+//    stay a non-breaking change, which is the house rule for this interface.
+//
+// Field descriptions are used sparingly and only where a consumer has actually
+// been measured to go wrong (counts, caveats, source fidelity). Whether a
+// description inside an output schema reaches a model at all is NOT established
+// — unlike the one on the tool itself, which is (see bible_lookup).
+
+/** Identical in every answer, so it is declared once. `nennung: null` means the
+ *  licence requires no attribution; that is a statement, not a missing value. */
+const QUELLEN_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      werk: { type: "string" },
+      lizenz: { type: "string" },
+      nennung: { type: ["string", "null"] },
+    },
+    required: ["werk", "lizenz", "nennung"],
+  },
+};
+
+/** Conditional: `hinweis` (only when the text carries bracketed words — Menge
+ *  has 137 such verses, the other three translations none). */
+const LOOKUP_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    reference: { type: "string" },
+    translation: { type: "string" },
+    text: { type: "string" },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["reference", "translation", "text", "quellen"],
+};
+
+/** Conditional: `woerter[].strong` (absent for all 137 554 SBLGNT words and for
+ *  5951 WLC words; byzantine and tr carry it throughout). */
+const ORIGINAL_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    reference: { type: "string" },
+    texttyp: { type: "string" },
+    edition: { type: "string" },
+    sprache: { type: "string" },
+    hinweis: { type: "string" },
+    woerter: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          wort: {
+            type: "string",
+            description:
+              "Verbatim from the edition: byzantine/tr unaccented, sblgnt accented, wlc with " +
+              "cantillation marks and the OSHB morpheme separator. Quote as is; do not add " +
+              "accents and do not smooth characters away.",
+          },
+          grundform: { type: "string" },
+          morphologie: { type: "string" },
+          code: { type: "string" },
+          strong: { type: "string" },
+        },
+        required: ["wort", "grundform", "morphologie", "code"],
+      },
+    },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["reference", "texttyp", "edition", "sprache", "hinweis", "woerter", "quellen"],
+};
+
+/** Conditional: `verweise[].verse_einzeln` (only for a multi-verse target inside
+ *  one chapter), `lesehinweis` (only when some reference carries it), `hinweis`
+ *  (bracketed words). */
+const CROSSREFS_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    reference: { type: "string" },
+    verweise: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          stelle: { type: "string" },
+          votes: { type: "integer" },
+          text: { type: "string" },
+          verse_einzeln: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { nr: { type: "integer" }, text: { type: "string" } },
+              required: ["nr", "text"],
+            },
+            description:
+              "One entry per verse, without embedded verse numbers. Quote the verses in full " +
+              "from here; the joined `text` gets cut at both ends when consumers split it.",
+          },
+        },
+        required: ["stelle", "votes", "text"],
+      },
+    },
+    lesehinweis: { type: "string" },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["reference", "verweise", "quellen"],
+};
+
+/** Conditional: the six lexicon fields (`strong`, `umschrift`, `kurzbedeutung`,
+ *  `bedeutung`, `kjv_woerter`, `lexikon`; the last is Greek-only and all depend
+ *  on strong_defs being loaded and holding an entry), `hinweis` (only when the
+ *  occurrence list was capped by `limit`). */
+const CONCORDANCE_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    suche: { type: "string" },
+    grundform: { type: "string" },
+    strong: { type: "string" },
+    umschrift: { type: "string" },
+    kurzbedeutung: { type: "string" },
+    bedeutung: { type: "string" },
+    kjv_woerter: { type: "string" },
+    lexikon: { type: "string" },
+    texttyp: { type: "string" },
+    edition: { type: "string" },
+    gesamt: {
+      type: "integer",
+      description: "Occurrences of the word, exact. Counts are never capped by `limit`.",
+    },
+    verse: { type: "integer", description: "Distinct verses containing it, exact." },
+    buecher: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { buch: { type: "string" }, anzahl: { type: "integer" } },
+        required: ["buch", "anzahl"],
+      },
+      description: "Full distribution over all occurrences, not only the listed ones.",
+    },
+    vorkommen: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { stelle: { type: "string" }, wort: { type: "string" } },
+        required: ["stelle", "wort"],
+      },
+    },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: [
+    "suche", "grundform", "texttyp", "edition", "gesamt", "verse", "buecher", "vorkommen", "quellen",
+  ],
+};
+
+/** Conditional: `vorkommen_gesamt` (only when counted AND different from
+ *  `treffer`), `verteilung` (only when counted and more than one bucket). Both
+ *  drop out above OCCURRENCE_SCAN_LIMIT; `hinweis` says so in that case. */
+const SEARCH_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    suche: { type: "string" },
+    uebersetzung: { type: "string" },
+    treffer: {
+      type: "integer",
+      description:
+        "Number of matching VERSES, not of word occurrences: a verse can match several times.",
+    },
+    vorkommen_gesamt: {
+      type: "integer",
+      description:
+        "Number of word occurrences across all matching verses. Absent when the occurrences " +
+        "were not counted (see `hinweis`); do not estimate it in that case.",
+    },
+    verteilung: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          buch: { type: "string" },
+          kapitel: { type: "integer" },
+          treffer: { type: "integer" },
+          vorkommen: { type: "integer" },
+        },
+        required: ["treffer", "vorkommen"],
+      },
+      description:
+        "Counted over all hits, not over the listed verses. Carries `buch` for a whole-Bible " +
+        "search and `kapitel` when restricted to one book. Take these numbers; do not derive " +
+        "them from the result list.",
+    },
+    verse: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { stelle: { type: "string" }, text: { type: "string" } },
+        required: ["stelle", "text"],
+      },
+    },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["suche", "uebersetzung", "treffer", "verse", "hinweis", "quellen"],
+};
+
+/** Conditional: `warnung` + `quellenkonflikte` (only when the TAGNT attestation
+ *  contradicts the edition text), `bezeugung` (only when TAGNT knows the verse —
+ *  9 NT verses have no row at all), and inside it `lesehinweis`,
+ *  `bedeutungsvariante`, `schreibvariante`, `in_dieser_db`, `abgleich`.
+ *  `vergleiche[]` has two shapes, so only `paar` is required. */
+const COMPARE_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    reference: { type: "string" },
+    sprache: { type: "string" },
+    warnung: {
+      type: "string",
+      description:
+        "The TAGNT attestation contradicts the edition text here. Belongs in the answer about " +
+        "this verse, not in a footnote.",
+    },
+    quellenkonflikte: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Per affected form, what the edition actually reads. The edition text governs, not the " +
+        "TAGNT note.",
+    },
+    editionen: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          texttyp: { type: "string" },
+          edition: { type: "string" },
+          woerter: { type: "integer" },
+          text: { type: "string" },
+        },
+        required: ["texttyp", "edition", "woerter", "text"],
+      },
+    },
+    vergleiche: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          paar: { type: "string" },
+          ergebnis: { type: "string" },
+          unterschiede: { type: "array", items: { type: "string" } },
+        },
+        required: ["paar"],
+      },
+    },
+    bezeugung: {
+      type: "object",
+      properties: {
+        quelle: { type: "string" },
+        woerter_gesamt: { type: "integer" },
+        von_allen_acht_bezeugt: { type: "integer" },
+        lesehinweis: { type: "string" },
+        abweichend: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              wort: { type: "string" },
+              typ: { type: "string" },
+              editionen: { type: "string" },
+              bedeutungsvariante: { type: "string" },
+              schreibvariante: { type: "string" },
+              in_dieser_db: {
+                // Dynamic keys: one per attested word form.
+                type: "object",
+                additionalProperties: { type: "array", items: { type: "string" } },
+                description:
+                  "Which of the loaded editions actually reads which form. Governs over the " +
+                  "TAGNT note for the question what an edition reads.",
+              },
+              abgleich: {
+                type: "array",
+                items: { type: "string" },
+                description: "Where the TAGNT note and the edition text disagree.",
+              },
+            },
+            required: ["wort", "typ", "editionen"],
+          },
+        },
+      },
+      required: ["quelle", "woerter_gesamt", "von_allen_acht_bezeugt", "abweichend"],
+    },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["reference", "sprache", "editionen", "vergleiche", "hinweis", "quellen"],
+};
+
+/** Conditional: `daten_stand` (only once a download recorded provenance),
+ *  `hinweis` (only while the database is missing). */
+const SERVER_INFO_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    server: { type: "string" },
+    version: { type: "string" },
+    uebersetzungen: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { code: { type: "string" }, name: { type: "string" } },
+        required: ["code", "name"],
+      },
+    },
+    urtext_editionen: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { code: { type: "string" }, name: { type: "string" } },
+        required: ["code", "name"],
+      },
+    },
+    zusatzdaten: {
+      type: "object",
+      properties: {
+        strong_lexikon: { type: "boolean" },
+        strong_lexikon_vollstaendig: { type: "boolean" },
+        editionsbezeugung: { type: "boolean" },
+        querverweise: { type: "boolean" },
+        volltextsuche: { type: "boolean" },
+      },
+      required: [
+        "strong_lexikon", "strong_lexikon_vollstaendig", "editionsbezeugung",
+        "querverweise", "volltextsuche",
+      ],
+    },
+    daten_stand: { type: "string" },
+    hinweis: { type: "string" },
+  },
+  required: ["server", "version", "uebersetzungen", "urtext_editionen", "zusatzdaten"],
+};
+
 // All six tools only read: one local SQLite file opened read-only, no writes,
 // no side effects, no network. Both spec defaults are wrong here (readOnlyHint
 // defaults to false, openWorldHint to true), so both are stated. destructiveHint
@@ -1398,6 +1772,13 @@ const handleListTools = async () => ({
     // database is in place this tool has nothing to offer, and a visible "set up
     // the database" action invites a model to re-run downloads that already
     // succeeded. On an HTTP endpoint it must not appear at all — see HTTP_MODE.
+    //
+    // The one tool without an outputSchema, and that is a decision rather than an
+    // omission: it answers in two different shapes (the plan, and the result of a
+    // run), it is the only tool that writes, and no consumer needs its output as
+    // data. Declaring a schema would buy nothing and add a second shape to keep
+    // in step. It therefore also keeps returning its result directly instead of
+    // through jsonResult().
     ...(dataMissing !== null && !HTTP_MODE
       ? [
           {
@@ -1468,6 +1849,7 @@ const handleListTools = async () => ({
         },
         required: ["book", "chapter"],
       },
+      outputSchema: LOOKUP_OUTPUT,
     },
     {
       name: "bible_original",
@@ -1501,6 +1883,7 @@ const handleListTools = async () => ({
         },
         required: ["book", "chapter", "verse"],
       },
+      outputSchema: ORIGINAL_OUTPUT,
     },
     {
       name: "bible_crossrefs",
@@ -1533,6 +1916,7 @@ const handleListTools = async () => ({
         },
         required: ["book", "chapter", "verse"],
       },
+      outputSchema: CROSSREFS_OUTPUT,
     },
     {
       name: "bible_concordance",
@@ -1571,6 +1955,7 @@ const handleListTools = async () => ({
         },
         required: [],
       },
+      outputSchema: CONCORDANCE_OUTPUT,
     },
     {
       name: "bible_search",
@@ -1605,6 +1990,7 @@ const handleListTools = async () => ({
         },
         required: ["query"],
       },
+      outputSchema: SEARCH_OUTPUT,
     },
     {
       name: "bible_compare",
@@ -1630,6 +2016,7 @@ const handleListTools = async () => ({
         },
         required: ["book", "chapter", "verse"],
       },
+      outputSchema: COMPARE_OUTPUT,
     },
     // Deliberately about the server, not about scripture: the version reaches
     // clients in the initialize handshake, but no client shows it to the user
@@ -1654,6 +2041,7 @@ const handleListTools = async () => ({
         type: "object" as const,
         properties: {},
       },
+      outputSchema: SERVER_INFO_OUTPUT,
     },
   ],
 });
@@ -1973,7 +2361,7 @@ function handleServerInfo() {
     ...(dataFetchedAt !== null ? { daten_stand: dataFetchedAt } : {}),
     ...(dataMissing !== null ? { hinweis: dataMissing } : {}),
   };
-  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+  return jsonResult(result);
 }
 
 // --- MCP server — request dispatch (bible_lookup handled inline) -----------
@@ -2183,14 +2571,7 @@ const handleCallTool = async (request: CallToolRequest) => {
     quellen: quellen(translationQuelle(resolved.code)),
   };
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(response, null, 2),
-      },
-    ],
-  };
+  return jsonResult(response);
 };
 
 // --- Tool handlers ---------------------------------------------------------
@@ -2303,9 +2684,7 @@ function handleOriginal(args: {
     quellen: quellen(meta0.quelle),
   };
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
-  };
+  return jsonResult(response);
 }
 
 /**
@@ -2416,9 +2795,7 @@ function handleCrossrefs(args: {
     quellen: quellen(DATASET_QUELLEN.crossrefs, translationQuelle(translation)),
   };
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
-  };
+  return jsonResult(response);
 }
 
 /**
@@ -2580,9 +2957,7 @@ function handleConcordance(args: {
     usedStepLexicon ? DATASET_QUELLEN.lexikon_step : undefined
   );
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
-  };
+  return jsonResult(response);
 }
 
 /**
@@ -2745,9 +3120,7 @@ function handleSearch(args: {
   response.hinweis = hinweise.join(" ");
   response.quellen = quellen(translationQuelle(translation));
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
-  };
+  return jsonResult(response);
 }
 
 /**
@@ -2942,9 +3315,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     ),
   };
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
-  };
+  return jsonResult(response);
 }
 
 // --- MCP server — construction and tool registration -----------------------

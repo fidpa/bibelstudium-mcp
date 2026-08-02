@@ -6,6 +6,20 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.8] - 2026-08-02
+
+### Hinzugefügt
+
+- **Die sieben Lesewerkzeuge deklarieren ein `outputSchema` und liefern ihr Ergebnis zusätzlich als `structuredContent`** (MCP-Revision 2025-06-18). Ein Konsument findet damit ein Feld, statt Text zu zerlegen; wenige Felder tragen eine Beschreibung, und zwar genau die, bei denen Konsumenten nachweislich danebengegriffen haben (`treffer` gegen `vorkommen_gesamt`, `warnung`, `verse_einzeln`, die Quellentreue von `wort`). Der Textblock bleibt zeichengleich, ein Client ohne Kenntnis der Neuerung sieht dasselbe wie zuvor. Fehlerantworten bleiben reiner Text und tragen kein `structuredContent`.
+
+  Preis: `tools/list` wächst von 7201 auf 14969 Zeichen, eine Antwort um 63 bis 80 Prozent, weil die Nutzlast zweimal übertragen wird. `bible_setup` bleibt bewusst ohne Schema.
+
+  `required` nennt je Werkzeug nur Felder, die in jedem Erfolgsfall dastehen; für jedes bedingte Feld gibt es einen Testfall. Der Golden-Test prüft jetzt jede Antwort gegen ihr Schema und den Validator gegen fünf bekannt kaputte Antworten.
+
+### Behoben (Dokumentation)
+
+- Die Werkzeugtabelle in `README.md` führte `bible_server_info` nicht auf, und zwei Stellen sprachen weiter von „sechs Werkzeugen".
+
 ## [0.5.7] - 2026-08-02
 
 ### Geändert
