@@ -90,17 +90,37 @@ und `grundtextPayload` gerufen, beide nur aus `handleReadResource`. Geteilt sind
 allein `lookupPayload` und `originalPayload`, und die werfen nicht, sie liefern
 `null` beziehungsweise `{ error }`.
 
-### Wirkung
+### Wirkung, und der Preis bei den Ressourcen
 
-Der Code ist im Client sichtbar, nicht nur im Protokoll. Ein Abruf von
-`bible://kapitel/LUT/Gibtsnicht/1` über einen eingerichteten Connector lieferte
-am 02.08.2026 gegen 0.5.10 die Zeile
-`MCP error -32603: "Gibtsnicht" ist kein Buch dieser Bibel-Datenbank. …`, also
-Präfix samt Nummer als Text. Ob ein Client sein **Verhalten** nach dem Code
-richtet, ist dagegen **nicht belegt**: Der SDK-Client kennt keine codeabhängige
-Wiederholung (geprüft gegen `client/index.js` und `shared/protocol.js`), und was
-Claude Desktop oder claude.ai daraus machen, lässt sich von hier nicht messen.
-Der Gewinn ist Normtreue, kein gemessener Effekt, und so gehört er auch benannt.
+Der Code ist im Client sichtbar, nicht nur im Protokoll. Vor dem Ausrollen
+lieferte ein Abruf von `bible://kapitel/LUT/Gibtsnicht/1` über einen
+eingerichteten Connector die Zeile `MCP error -32603: "Gibtsnicht" ist kein Buch
+dieser Bibel-Datenbank. …`, also Präfix samt Nummer als Text.
+
+**Nach dem Ausrollen von 0.5.11 kommt diese Meldung in Claude Code nicht mehr
+an.** Derselbe Abruf gegen denselben Endpunkt antwortet jetzt mit einer Meldung
+des Clients: „Resource not found: … it may have been deleted or the URI is
+stale. Re-run ListMcpResourcesTool to refresh." Der Client deutet `-32602` bei
+`resources/read` offenbar als „nicht gefunden" und ersetzt den Servertext, samt
+einem Rat, der hier nicht hilft. Gemessen am 02.08.2026 an zwei Fehlerarten
+(unbekanntes Buch, zu wenige Segmente); ein gültiger Abruf funktioniert
+unverändert, Prompts und Werkzeuge sind nicht betroffen. Der einzige geänderte
+Faktor ist der Code, die Texte sind zeichengleich geblieben.
+
+Das kehrt die Bilanz für die Ressourcen um: Der Server ist normtreuer und seine
+sorgfältig gebauten Meldungen (Kanonumfang, nächstliegendes Buch, benannte
+Grenze) erreichen in diesem Client niemanden mehr. Drei Auswege, keiner bisher
+gewählt: bei `-32602` bleiben und den Verlust hinnehmen; für Ressourcen `-32002`
+versuchen, den Code der bedienten Revision, wobei erst zu messen wäre, ob dieser
+Client ihn durchreicht oder ebenso schluckt; oder für Ressourcen zu `-32603`
+zurück, was die Meldung wiederbrächte und den Normverstoß auch. Die Messung
+kostet einen weiteren Rollout, weil der Connector den ausgerollten Dienst
+spricht und nicht den Arbeitsbaum.
+
+Ob ein Client den Code darüber hinaus für **Wiederholungen** auswertet, ist
+weiterhin **nicht belegt**: Der SDK-Client kennt keine codeabhängige Wiederholung
+(geprüft gegen `client/index.js` und `shared/protocol.js`), und Claude Desktop
+sowie claude.ai sind von hier nicht messbar.
 
 ### Nicht geändert: `DELETE` antwortet weiter mit 200
 

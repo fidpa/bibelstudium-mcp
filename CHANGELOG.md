@@ -6,6 +6,14 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.12] - 2026-08-02
+
+### Geändert (Dokumentation)
+
+- **Der Preis der Fehlercode-Umstellung aus 0.5.11 ist gemessen und festgehalten.** Claude Code deutet `-32602` bei `resources/read` als „nicht gefunden" und ersetzt den Meldungstext des Servers durch eine eigene Zeile samt dem Rat, die Ressourcenliste neu zu laden. Unter `-32603` kam der Servertext wörtlich an. Gemessen am 02.08.2026 gegen den ausgerollten Endpunkt vor und nach dem Ausrollen, an zwei Fehlerarten, bei zeichengleichem Servertext.
+
+  Betroffen sind allein die Ressourcen und allein dieser Client: Prompts geben ihre Meldung weiterhin im Wortlaut aus, Werkzeuge liefern ihre Fehler ohnehin als Ergebnis mit `isError`. Wer den vollen Text braucht, stellt dieselbe Frage über `bible_lookup`. Für Claude Desktop und claude.ai ist es nicht gemessen. Am Code ändert sich nichts, der Fehlercode bleibt `-32602`; die drei Auswege stehen in `docs/ENTSCHEIDUNGEN.md`, die Nutzersicht in `docs/FEHLERBEHEBUNG.md`.
+
 ## [0.5.11] - 2026-08-02
 
 ### Behoben

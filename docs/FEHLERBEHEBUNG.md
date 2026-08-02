@@ -117,6 +117,51 @@ des Clients; nur die Geste mit `@` erreicht sie nicht.
 
 Für Claude Desktop und claude.ai ist beides nicht gemessen.
 
+### Ein fehlerhafter Ressourcen-Abruf meldet nur „Resource not found"
+
+Wird eine Ressource mit falscher URI abgerufen, zeigt Claude Code seit 0.5.11
+eine eigene Meldung statt der des Servers:
+
+```
+Resource not found: bible://kapitel/LUT/Gibtsnicht/1 — it may have been
+deleted or the URI is stale. Re-run ListMcpResourcesTool to refresh.
+```
+
+Der Rat führt hier in die Irre: Die Liste neu zu laden ändert nichts, wenn das
+Buch nicht existiert oder die URI zu wenige Segmente hat. Der Server sagt genau
+das, seine Antwort erreicht den Nutzer in diesem Client aber nicht mehr.
+
+**Ursache**: Seit 0.5.11 tragen Fehler des Aufrufers den Code `-32602`
+(Invalid params) statt `-32603` (Internal error), wie es die Spezifikation
+vorsieht. Bei `resources/read` deutet dieser Client den Code als „nicht
+gefunden" und ersetzt den Meldungstext. Gemessen am 02.08.2026 gegen denselben
+Endpunkt vor und nach dem Ausrollen: unter 0.5.10 kam
+`MCP error -32603: "Gibtsnicht" ist kein Buch dieser Bibel-Datenbank …` samt
+Kanonerklärung und nächstliegendem Buch an, unter 0.5.11 die generische Meldung
+oben, bei zeichengleichem Servertext. Zwei Fehlerarten geprüft (unbekanntes
+Buch, zu wenige Segmente), beide gleich; ein gültiger Abruf funktioniert
+unverändert.
+
+**Behebung**: Dieselbe Frage über das Werkzeug stellen. `bible_lookup` liefert
+den vollen Text, weil Werkzeugfehler als Ergebnis mit `isError` zurückkommen und
+nicht als JSON-RPC-Fehler:
+
+```text
+bible_lookup mit book="Gibtsnicht", chapter=1
+→ "Gibtsnicht" ist kein Buch dieser Bibel-Datenbank. Diese Datenbank enthält
+  die 66 Bücher des protestantischen Kanons; apokryphe/deuterokanonische
+  Schriften fehlen. Erwartet wird der deutsche Buchname (z. B. "Jesaja",
+  "1. Mose", "Römer") oder eine Abkürzung (z. B. "Jes", "1Mo", "Röm").
+```
+
+Liegt ein bekanntes Buch nahe genug, nennt die Meldung es zusätzlich
+(„Hesekiel-Zusatz" führt auf „Hesekiel"); bei einem Namen ohne Ähnlichkeit wie
+oben entfällt dieser Teil.
+
+Betroffen sind nur Ressourcen und nur dieser Client. Prompts geben ihre Meldung
+weiterhin im Wortlaut aus, Werkzeuge ohnehin. Für Claude Desktop und claude.ai
+ist es nicht gemessen.
+
 ## HTTP-Modus
 
 Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne

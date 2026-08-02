@@ -2569,6 +2569,16 @@ const handleListResourceTemplates = async () => ({
 // -32603 is wrong under every one of those readings, which is what this changed.
 // Neither code touches the reserved -32020..-32099 range, so the 28.07.2026
 // decision to stay recognisable as a pre-2026-07-28 server is unaffected.
+//
+// The measured price, and it is charged here and nowhere else: Claude Code reads
+// -32602 on `resources/read` as "not found" and replaces the message below with
+// its own ("Resource not found: … Re-run ListMcpResourcesTool to refresh"). Under
+// -32603 it passed the server's wording through verbatim. Measured 02.08.2026
+// against the deployed endpoint before and after, two kinds of bad URI, texts
+// character-identical throughout; prompts and tools are unaffected. So every
+// message in this section is still exact, and in that one client nobody reads it.
+// Whether -32002 would fare better is untested and costs a rollout to find out.
+// See docs/ENTSCHEIDUNGEN.md and docs/FEHLERBEHEBUNG.md.
 
 /**
  * Check arity and reject empty segments, then hand back a copy.
