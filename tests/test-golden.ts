@@ -20,12 +20,19 @@ const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
 type Json = Record<string, unknown>;
 type ToolResult = { text: string; json: Json | null; isError: boolean };
+/**
+ * A `prompts/get` answer. Prompts have no `isError` channel, so a rejected
+ * argument arrives as a JSON-RPC error rather than as a result — `error` holds
+ * its message, `text` the rendered prompt of a successful call.
+ */
+type PromptResult = { text: string; error: string };
 
 // --- minimal stdio MCP client ----------------------------------------------
 
 async function callTools(
-  calls: ReadonlyArray<readonly [string, Json]>
-): Promise<{ tools: Json[]; results: ToolResult[] }> {
+  calls: ReadonlyArray<readonly [string, Json]>,
+  prompts: ReadonlyArray<readonly [string, Json]> = []
+): Promise<{ tools: Json[]; results: ToolResult[]; promptResults: PromptResult[] }> {
   const proc = Bun.spawn(["bun", "run", SERVER], {
     stdin: "pipe",
     stdout: "pipe",
@@ -49,14 +56,23 @@ async function callTools(
   calls.forEach(([name, args], i) =>
     send({ jsonrpc: "2.0", id: 2 + i, method: "tools/call", params: { name, arguments: args } })
   );
+  prompts.forEach(([name, args], i) =>
+    send({
+      jsonrpc: "2.0",
+      id: 2 + calls.length + i,
+      method: "prompts/get",
+      params: { name, arguments: args },
+    })
+  );
   await w.flush();
 
+  const expected = calls.length + prompts.length + 1;
   const seen = new Map<number, Json>();
   const dec = new TextDecoder();
   const reader = proc.stdout.getReader();
   const deadline = Date.now() + 120_000;
   let buf = "";
-  while (seen.size < calls.length + 1 && Date.now() < deadline) {
+  while (seen.size < expected && Date.now() < deadline) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
@@ -71,9 +87,9 @@ async function callTools(
   }
   proc.kill();
 
-  if (seen.size < calls.length + 1) {
+  if (seen.size < expected) {
     throw new Error(
-      `Server antwortete nur auf ${seen.size} von ${calls.length + 1} Anfragen. ` +
+      `Server antwortete nur auf ${seen.size} von ${expected} Anfragen. ` +
         `Läuft 'bun install', und existiert data/bible.db?`
     );
   }
@@ -93,7 +109,18 @@ async function callTools(
     return { text, json, isError: m.result?.isError === true };
   });
 
-  return { tools: listed.result?.tools ?? [], results };
+  const promptResults = prompts.map((_, i) => {
+    const m = seen.get(2 + calls.length + i) as {
+      result?: { messages?: Array<{ content?: { text?: string } }> };
+      error?: { message?: string };
+    };
+    return {
+      text: m.result?.messages?.[0]?.content?.text ?? "",
+      error: m.error?.message ?? "",
+    };
+  });
+
+  return { tools: listed.result?.tools ?? [], results, promptResults };
 }
 
 // --- assertions -------------------------------------------------------------
@@ -181,7 +208,21 @@ const CALLS = [
   ["bible_search", { query: "der", limit: 2 }],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
-const { tools, results } = await callTools(CALLS);
+// Prompts name the loaded inventory and the fields of the answers they steer,
+// so they are checked against `bible_server_info` rather than against a fixed
+// wording: a hard-coded translation or edition list would go stale exactly on
+// the instance that lacks one of them.
+const PROMPT_CALLS = [
+  ["word-study", { word: "Liebe" }],
+  ["word-study", {}],
+  ["variant-check", { reference: "1. Johannes 5,7" }],
+  ["variant-check", { reference: OVERLONG_NAME.repeat(2) }],
+  ["translation-compare", { reference: "Römer 8,1" }],
+] as const satisfies ReadonlyArray<readonly [string, Json]>;
+
+const { tools, results, promptResults } = await callTools(CALLS, PROMPT_CALLS);
+const [wordStudy, wordStudyNoArg, variantCheck, variantTooLong, translationCompare] =
+  promptResults as PromptResult[] & { length: 5 };
 const [
   origVerse999,
   origChap999,
@@ -406,6 +447,67 @@ console.log("Scan-Grenze der Suche");
   has("Ausweg benannt", hint(j), "auf ein Buch ein");
   // The counted case must stay free of the note.
   lacks("kleine Suche ohne den Hinweis", hint(searchLieb!.json), "Ab 1000 Treffern");
+}
+
+console.log("Prompts");
+{
+  const info = serverInfo!.json ?? {};
+  const codes = (info.uebersetzungen as Array<{ code: string }>).map((t) => t.code);
+  const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
+  const extras = (info.zusatzdaten ?? {}) as Record<string, boolean>;
+
+  // A missing required argument used to produce an instruction with a hole in
+  // it ("Wortstudie zu „"), and the prompt still came back as a success.
+  eq("word-study ohne Argument: kein Prompt", wordStudyNoArg!.text, "");
+  eq(
+    "word-study ohne Argument: Meldung nennt das Feld",
+    wordStudyNoArg!.error,
+    "Missing required argument 'word'"
+  );
+  eq(
+    "variant-check: überlanges Argument nennt die Grenze",
+    variantTooLong!.error,
+    "Argument 'reference' must be at most 100 characters"
+  );
+
+  // Field names, not the concepts behind them: the answer speaks of
+  // 'kurzbedeutung', never of "Gloss".
+  has("word-study nennt 'gesamt'", wordStudy!.text, "'gesamt'");
+  has("word-study nennt 'buecher'", wordStudy!.text, "'buecher'");
+  lacks("word-study ohne Konzeptnamen", wordStudy!.text, "Gloss");
+
+  // Inventory is derived, so every prompt names what this database has and
+  // nothing else.
+  for (const code of codes) {
+    has(`translation-compare nennt ${code}`, translationCompare!.text, `"${code}"`);
+  }
+  const genannt = [...translationCompare!.text.matchAll(/"([A-Z]{2,4})"/g)].map((m) => m[1]!);
+  check(
+    "translation-compare nennt keine ungeladene Übersetzung",
+    genannt.every((c) => codes.includes(c)),
+    `genannt: ${genannt.join(", ")}; geladen: ${codes.join(", ")}`
+  );
+  for (const ed of ["byzantine", "tr", "sblgnt"]) {
+    eq(
+      `variant-check nennt ${ed} genau dann, wenn geladen`,
+      variantCheck!.text.includes(`texttyp "${ed}"`),
+      editions.includes(ed)
+    );
+  }
+  // NT only — the OT edition has no counterpart to compare against.
+  lacks("variant-check ohne wlc", variantCheck!.text, "wlc");
+  // The caveat fields are the ones measured to be skipped when they sit deep in
+  // the answer, so the prompt that steers text criticism must name them.
+  eq(
+    "variant-check nennt 'in_dieser_db' genau dann, wenn TAGNT geladen",
+    variantCheck!.text.includes("'in_dieser_db'"),
+    extras.editionsbezeugung === true
+  );
+  eq(
+    "variant-check nennt 'quellenkonflikte' genau dann, wenn TAGNT geladen",
+    variantCheck!.text.includes("'quellenkonflikte'"),
+    extras.editionsbezeugung === true
+  );
 }
 
 console.log(

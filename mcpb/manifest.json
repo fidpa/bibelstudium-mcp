@@ -75,19 +75,19 @@
     {
       "name": "word-study",
       "description": "Wortstudie: Vorkommen, Bedeutung und Verwendung eines Urtext-Wortes.",
-      "arguments": ["wort"],
+      "arguments": ["word", "reference"],
       "text": "Untersuche das Urtext-Wort systematisch mit bible_concordance."
     },
     {
       "name": "variant-check",
       "description": "Textvarianten einer Stelle über die griechischen Editionen prüfen.",
-      "arguments": ["stelle"],
+      "arguments": ["reference"],
       "text": "Vergleiche die Stelle mit bible_compare über die Editionen."
     },
     {
       "name": "translation-compare",
       "description": "Eine Stelle über die vier deutschen Übersetzungen vergleichen.",
-      "arguments": ["stelle"],
+      "arguments": ["reference"],
       "text": "Zeige die Stelle mit bible_lookup in allen vier Übersetzungen."
     }
   ],

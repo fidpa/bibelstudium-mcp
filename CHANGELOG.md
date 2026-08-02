@@ -6,6 +6,18 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.7] - 2026-08-02
+
+### Geändert
+
+- **Die drei Prompts nennen den geladenen Bestand statt einer festen Liste.** `translation-compare` führte „LUT, SCH, ELB, MB" wörtlich, `variant-check` drei Editionen und die TAGNT-Bezeugung; eine Instanz, der davon etwas fehlt, wurde damit zu Aufrufen aufgefordert, die fehlschlagen müssen. Übersetzungen und Editionen erscheinen jetzt mit Namen, nicht als bloße Kürzel.
+- **Die Prompts benennen die Felder, die die Antworten wirklich tragen.** `word-study` verwies auf „Gloss, Definition, Abbott-Smith", während die Antwort `kurzbedeutung`, `bedeutung` und `lexikon` führt, und trennt jetzt `gesamt` (Vorkommen) von `verse` (Verse). `variant-check` nennt `warnung`, `quellenkonflikte` und `in_dieser_db` ausdrücklich: die Vorbehalte, die sonst tief in der Antwort stehen bleiben.
+
+### Behoben
+
+- Ein fehlendes Pflichtargument erzeugte einen Prompt mit einer Lücke im Text und meldete Erfolg. `prompts/get` weist ihn jetzt unter Nennung des Feldes zurück, begrenzt Argumente auf 100 Zeichen und faltet Zeilenumbrüche.
+- Das MCPB-Manifest nannte die Prompt-Argumente `wort` und `stelle`; sie heißen `word` und `reference`.
+
 ## [0.5.6] - 2026-07-29
 
 ### Hinzugefügt

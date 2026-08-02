@@ -589,6 +589,12 @@ const EDITION_ALIASES: Record<string, string> = {
 const OT_EDITIONS = new Set(["wlc"]);
 const NT_EDITIONS = new Set(["byzantine", "sblgnt", "tr"]);
 
+// The NT editions in comparison order, and the only place that lists them:
+// `bible_compare` renders them in this order and the `variant-check` prompt
+// names those of them that are loaded. NT_EDITIONS above is the membership
+// test, this is the order — a second literal list would drift from it.
+const NT_EDITION_ORDER = ["byzantine", "tr", "sblgnt"] as const;
+
 /** Absent or empty input resolves to byzantine; an unknown alias to null. */
 function resolveEdition(input: unknown): string | null {
   if (input === undefined || input === null || input === "") return EDITION_ALIASES["byzantine"]!;
@@ -1708,35 +1714,105 @@ const handleListPrompts = async () => ({
   prompts: PROMPTS.map((p) => ({ ...p, arguments: [...p.arguments] })),
 });
 
+// A prompt argument is interpolated into a numbered instruction, so it gets the
+// same treatment as a tool argument: a required one that is absent must say so
+// rather than produce an instruction with a hole in it (`Wortstudie zu „"`),
+// and line breaks or control characters would break the list the value lands
+// in. 100 characters hold every legal value with room to spare — the longest
+// reference is around 20 ("1. Thessalonicher 5,23"), a Strong's number five.
+const MAX_PROMPT_ARG_LENGTH = 100;
+
+/**
+ * Read one prompt argument: fold whitespace and control characters, enforce the
+ * length bound, and refuse an absent required value. Throws, because a prompt
+ * result has no `isError` channel — the error belongs in the JSON-RPC response.
+ */
+function promptArg(args: Record<string, string>, name: string, required: boolean): string {
+  const raw = args[name];
+  const value =
+    typeof raw === "string" ? raw.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim() : "";
+  if (value === "") {
+    if (required) throw new Error(`Missing required argument '${name}'`);
+    return "";
+  }
+  if (value.length > MAX_PROMPT_ARG_LENGTH) {
+    throw new Error(`Argument '${name}' must be at most ${MAX_PROMPT_ARG_LENGTH} characters`);
+  }
+  return value;
+}
+
+/** "\"LUT\" (Luther 1912), \"SCH\" (…)" — codes alone identify nothing. */
+function loadedTranslationList(): string {
+  return [...availableTranslations]
+    .sort()
+    .map((code) => `"${code}" (${TRANSLATIONS[code as TranslationCode]?.name ?? code})`)
+    .join(", ");
+}
+
 const handleGetPrompt = async (request: GetPromptRequest) => {
   const name = request.params.name;
   const args = (request.params.arguments ?? {}) as Record<string, string>;
 
   let text: string;
   if (name === "word-study") {
-    const word = args.word ?? "";
-    const ref = args.reference ?? "";
+    const word = promptArg(args, "word", true);
+    const ref = promptArg(args, "reference", false);
+    // Every step names the fields the answer actually carries, not the concepts
+    // behind them: "Gloss, Definition, Abbott-Smith" used to stand here, while
+    // the response speaks of `kurzbedeutung`, `bedeutung` and `lexikon`. Same
+    // reason the bare edition keys got their names in `bible_server_info` —
+    // a consumer cannot resolve a term the payload never uses.
+    const lexikon = !hasStrongDefs
+      ? " Lexikondaten sind in dieser Datenbank nicht geladen; das Bedeutungsspektrum ergibt sich dann allein aus den Belegstellen."
+      : hasStepCols
+        ? " Die Lexikondaten stehen in 'kurzbedeutung', 'bedeutung', 'umschrift', 'kjv_woerter' und, nur bei Griechisch, im vollständigen Abbott-Smith-Artikel unter 'lexikon'."
+        : " Die Lexikondaten stehen in 'bedeutung', 'umschrift' und 'kjv_woerter'; 'kurzbedeutung' und 'lexikon' fehlen in dieser Datenbank.";
+    const startpunkt = ref
+      ? `Rufe bible_original für ${ref} ab und identifiziere dort das Wort (Grundform + Strong-Nummer).`
+      : `Ist „${word}" bereits eine Strong-Nummer oder ein griechisches/hebräisches Lemma, nutze es direkt. Ist es ein deutsches Wort, ${hasFts ? "finde über bible_search eine typische Belegstelle und rufe für sie bible_original ab" : "erfrage eine Belegstelle beim Nutzer und rufe für sie bible_original ab: die Volltextsuche ist in dieser Datenbank nicht geladen"}.`;
     text =
       `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools: zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
-      `1. Bestimme das Urtext-Wort: ${ref ? `Rufe bible_original für ${ref} ab und identifiziere dort das Wort (Grundform + Strong-Nummer).` : `Ist „${word}" bereits eine Strong-Nummer oder ein griechisches/hebräisches Lemma, nutze es direkt. Ist es ein deutsches Wort, finde über bible_search eine typische Belegstelle und rufe für sie bible_original ab.`}\n` +
-      `2. Rufe bible_concordance mit der Strong-Nummer ab: Gesamtzahl, Buchverteilung, Beugungsformen, Lexikon-Daten (Gloss, Definition, bei Griechisch Abbott-Smith).\n` +
-      `3. Wähle 2–3 theologisch gewichtige Vorkommen und rufe für sie bible_lookup (Wortlaut) und bible_crossrefs (Parallelstellen) ab.\n` +
+      `1. Bestimme das Urtext-Wort: ${startpunkt}\n` +
+      `2. Rufe bible_concordance mit der Strong-Nummer ab. Die Zahlen stehen in der Antwort und werden übernommen, nicht nachgezählt: 'gesamt' sind die Vorkommen, 'verse' die Verse, 'buecher' die vollständige Verteilung, auch wenn die Liste 'vorkommen' gekürzt ist (dann sagt es 'hinweis'). Alle Zahlen gelten je Edition.${lexikon}\n` +
+      `3. Wähle 2 bis 3 Vorkommen aus, und zwar nach der Verteilung in 'buecher' (verschiedene Bücher, auffällige Häufungen), nicht nach Bekanntheit. Rufe für sie bible_lookup ab${hasXrefs ? " und bible_crossrefs für die Parallelstellen" : ""}.\n` +
       `4. Fasse das Bedeutungsspektrum zusammen: Grundbedeutung, Bedeutungsnuancen nach Kontext, auffällige Verteilung. Belege jede Aussage mit einer konkret abgerufenen Stelle; kennzeichne offene Fragen als offen.`;
   } else if (name === "variant-check") {
-    const ref = args.reference ?? "";
+    const ref = promptArg(args, "reference", true);
+    // Derived from what is loaded, not from a fixed triple: an instance with
+    // only two NT editions would otherwise be told to call a third.
+    const geladen = NT_EDITION_ORDER.filter((e) => availableEditions.has(e));
+    const editionen =
+      geladen.map((e) => `texttyp "${e}" (${EDITION_META[e]!.label})`).join(", ") ||
+      "keine NT-Edition (in dieser Datenbank ist keine geladen, der Vergleich ist hier nicht möglich)";
+    // The attestation block is optional data: naming it unconditionally would
+    // send the model looking for a field that an instance without TAGNT never
+    // returns. Its caveat fields get named explicitly, because they are the
+    // ones measured to be skipped when they sit deep in the response.
+    const bezeugung = hasTagnt
+      ? ` Dazu kommt in 'bezeugung' die Bezeugung pro Wort über acht Editionen.\n` +
+        `2. Lies 'warnung' und 'quellenkonflikte' zuerst, falls sie dastehen: Dort widerspricht die TAGNT-Notiz dem Editionstext, und maßgeblich ist der Editionstext. In 'bezeugung.abweichend' gilt dasselbe je Wort: 'in_dieser_db' sagt, welche der geladenen Editionen eine Form tatsächlich liest, während die Notizen 'bedeutungsvariante'/'schreibvariante' nur die Zeugen des STEPBible-Apparats nennen. Aus einer Notiz folgt nicht, dass die übrigen Editionen anders lesen.\n`
+      : ` Die Editionsbezeugung (TAGNT) ist in dieser Datenbank nicht geladen; die Antwort trägt dann kein Feld 'bezeugung'.\n`;
     text =
-      `Prüfe die Textüberlieferung von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools: keine Behauptungen ohne Tool-Beleg.\n\n` +
-      `1. Rufe bible_compare für ${ref} ab: Wort-Diff über Mehrheitstext, Textus Receptus und SBLGNT sowie die Bezeugung pro Wort über acht Editionen (Feld „bezeugung").\n` +
-      `2. Bei relevanten Unterschieden: Rufe bible_original für ${ref} mit jedem betroffenen texttyp ab (byzantine, tr, sblgnt), um die Lesarten im Wortlaut zu sehen.\n` +
-      `3. Rufe bible_lookup für ${ref} ab und prüfe, welcher Lesart der deutsche Text folgt.\n` +
-      `4. Ordne nüchtern ein: Welche Editionen bezeugen welche Lesart (N/K/O-Typ beachten: Kleinbuchstaben = ohne Übersetzungsrelevanz)? Ändert die Variante die Aussage des Verses? Keine Wertung über „besser/schlechter" ohne Datengrundlage: benenne nur, was die Editionen tatsächlich lesen.`;
+      `Prüfe die Textüberlieferung von ${ref}. Der Editionsvergleich gilt nur fürs Neue Testament. Arbeite ausschließlich mit den Bibelstudium-Tools: keine Behauptungen ohne Tool-Beleg.\n\n` +
+      `1. Rufe bible_compare für ${ref} ab: Wort-Diff über die geladenen Editionen, hier ${editionen}.${bezeugung}` +
+      `${hasTagnt ? 3 : 2}. Bei relevanten Unterschieden: Rufe bible_original für ${ref} mit jedem betroffenen texttyp ab, um die Lesarten im Wortlaut zu sehen. Das Feld 'wort' ist quellentreu (byzantine und tr sind unakzentuiert gespeichert, sblgnt akzentuiert): so zitieren, wie es dasteht, keine Akzente ergänzen.\n` +
+      `${hasTagnt ? 4 : 3}. Rufe bible_lookup für ${ref} ab und prüfe, welcher Lesart der deutsche Text folgt.\n` +
+      `${hasTagnt ? 5 : 4}. Ordne nüchtern ein: Welche Editionen bezeugen welche Lesart? Im Feld 'typ' steht N für Nestle-Aland, K für die KJV/TR-Tradition, O für andere; ein Kleinbuchstabe heißt „ohne Übersetzungsrelevanz". Ändert die Variante die Aussage des Verses? Keine Wertung über „besser/schlechter" ohne Datengrundlage: benenne nur, was die Editionen tatsächlich lesen.`;
   } else if (name === "translation-compare") {
-    const ref = args.reference ?? "";
+    const ref = promptArg(args, "reference", true);
+    const liste = loadedTranslationList();
+    // Menge sets explanatory additions in square brackets (137 verses, and only
+    // there). Naming it up front rather than relying on the hint in the answer:
+    // the whole point of this prompt is a word-by-word comparison, which is
+    // exactly where an unwrapped addition reads as the edition's own wording.
+    const klammern = availableTranslations.has("MB")
+      ? " Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und bleiben beim Zitieren stehen; sie sind keine Einfügung dieses Servers."
+      : "";
     text =
       `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
-      `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab (translation: "LUT", "SCH", "ELB", "MB").\n` +
-      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).\n` +
-      `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab und kläre, welche Wiedergabe dem Grundtext am nächsten kommt (bei NT-Versen ggf. bible_compare; Übersetzungen können verschiedenen Editionen folgen).\n` +
+      `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab: ${liste || "keine (in dieser Datenbank ist keine Übersetzung geladen)"}.\n` +
+      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${klammern}\n` +
+      `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab (AT: hebräischer WLC; NT: nach texttyp) und kläre, welche Wiedergabe dem Grundtext am nächsten kommt. Bei NT-Versen zusätzlich bible_compare, denn die Übersetzungen können verschiedenen Editionen folgen.\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
   } else {
     throw new Error(`Unknown prompt: ${name}`);
@@ -2710,7 +2786,7 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     );
   }
 
-  const editions = ["byzantine", "tr", "sblgnt"].filter((e) => availableEditions.has(e));
+  const editions = NT_EDITION_ORDER.filter((e) => availableEditions.has(e));
   if (editions.length < 2) {
     return errorResult(
       `Mindestens zwei NT-Editionen nötig; geladen: ${editions.join(", ") || "keine"}. ` +
