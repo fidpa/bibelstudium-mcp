@@ -19,6 +19,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
   ListResourceTemplatesRequestSchema,
@@ -876,6 +877,28 @@ function jsonResult(response: Record<string, unknown>) {
     content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
     structuredContent: response,
   };
+}
+
+/**
+ * The third channel: a JSON-RPC error, for prompts and resources, which have no
+ * `isError` to put a refusal in. `protocol.js:397` passes a thrown error's
+ * `code` through when it is a safe integer and falls back to `InternalError`
+ * otherwise, so a bare `new Error` reports an internal fault for what is in fact
+ * a caller mistake. Everything thrown out of a handler goes through here.
+ *
+ * Deliberately NOT `McpError`: its constructor prefixes the text
+ * (`super("MCP error <code>: " + message)`, types.js:2031), that prefix travels
+ * on the wire, and the receiving 1.x client prefixes it a second time when it
+ * rebuilds the error (protocol.js:459). Measured 02.08.2026 against a probe
+ * server on this SDK: `McpError` puts `"MCP error -32602: <text>"` into
+ * `error.message`, this helper leaves `<text>` untouched. The messages here are
+ * shared character-for-character with the tools, so the prefix is not an option.
+ *
+ * `code` is typed as `ErrorCode`, not `number`, so a raw -32602 cannot creep
+ * into a later call site.
+ */
+function rpcError(code: ErrorCode, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 /**
@@ -2300,17 +2323,24 @@ const MAX_PROMPT_ARG_LENGTH = 100;
  * Read one prompt argument: fold whitespace and control characters, enforce the
  * length bound, and refuse an absent required value. Throws, because a prompt
  * result has no `isError` channel — the error belongs in the JSON-RPC response.
+ *
+ * `InvalidParams` is what the spec asks for by name here: "Missing required
+ * arguments: -32602", "Invalid prompt name: -32602" (server/prompts, a SHOULD in
+ * every revision this server speaks).
  */
 function promptArg(args: Record<string, string>, name: string, required: boolean): string {
   const raw = args[name];
   const value =
     typeof raw === "string" ? raw.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim() : "";
   if (value === "") {
-    if (required) throw new Error(`Missing required argument '${name}'`);
+    if (required) throw rpcError(ErrorCode.InvalidParams, `Missing required argument '${name}'`);
     return "";
   }
   if (value.length > MAX_PROMPT_ARG_LENGTH) {
-    throw new Error(`Argument '${name}' must be at most ${MAX_PROMPT_ARG_LENGTH} characters`);
+    throw rpcError(
+      ErrorCode.InvalidParams,
+      `Argument '${name}' must be at most ${MAX_PROMPT_ARG_LENGTH} characters`
+    );
   }
   return value;
 }
@@ -2389,7 +2419,7 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
       `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab (AT: hebräischer WLC; NT: nach texttyp) und kläre, welche Wiedergabe dem Grundtext am nächsten kommt. Bei NT-Versen zusätzlich bible_compare, denn die Übersetzungen können verschiedenen Editionen folgen.\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
   } else {
-    throw new Error(`Unknown prompt: ${name}`);
+    throw rpcError(ErrorCode.InvalidParams, `Unknown prompt: ${name}`);
   }
 
   const meta = PROMPTS.find((p) => p.name === name)!;
@@ -2495,10 +2525,16 @@ const RESOURCE_TEMPLATES = [
  * for the same reason the tool gate does: over stdio the caller started this
  * process and can run bible_setup, over HTTP the caller is a stranger for whom
  * naming that tool describes something that does not exist there.
+ *
+ * The one throw in this file that stays `InternalError`, and not by oversight:
+ * an instance without a database is a state of the server, not a mistake in the
+ * request. Every other refusal below is the caller's and says `InvalidParams`.
+ * Do not sweep this one along with them.
  */
 function requireData(): void {
   if (dataMissing === null) return;
-  throw new Error(
+  throw rpcError(
+    ErrorCode.InternalError,
     HTTP_MODE
       ? `${dataMissing} Dieser Endpunkt hat derzeit keine Bibeldaten. Das lässt sich ` +
           "nur serverseitig beheben; ein erneuter Abruf hilft nicht."
@@ -2521,6 +2557,18 @@ const handleListResourceTemplates = async () => ({
 // Six of those messages once named a condition the input satisfied because the
 // limit sat next to a separately worded text (25.07.2026); a resource path with
 // its own wording would repeat that, so there is none here.
+//
+// Every refusal in this section throws `InvalidParams`, and that needs a word,
+// because the spec revision this server speaks says something else. For
+// resources it lists "Resource not found: -32002, Internal errors: -32603"
+// (server/resources, a SHOULD). -32602 is chosen anyway: -32002 fits the two
+// not-found cases and none of the thirteen malformed-URI ones; the draft
+// revision retires it outright ("-32002 … replaced by -32602", and
+// implementations of that version MUST NOT emit it); and the SDK this server
+// runs on already answers a missing resource with -32602 (server/mcp.js:393).
+// -32603 is wrong under every one of those readings, which is what this changed.
+// Neither code touches the reserved -32020..-32099 range, so the 28.07.2026
+// decision to stay recognisable as a pre-2026-07-28 server is unaffected.
 
 /**
  * Check arity and reject empty segments, then hand back a copy.
@@ -2538,7 +2586,7 @@ const handleListResourceTemplates = async () => ({
  */
 function requireSegments(rest: readonly string[], count: number, form: string): string[] {
   if (rest.length !== count || rest.some((s) => s === "")) {
-    throw new Error(`Falsche Form der URI. Erwartet: "${form}".`);
+    throw rpcError(ErrorCode.InvalidParams, `Falsche Form der URI. Erwartet: "${form}".`);
   }
   return [...rest];
 }
@@ -2551,44 +2599,50 @@ function requireSegments(rest: readonly string[], count: number, form: string): 
  * tool named the chapter.
  */
 function requireBookLength(segment: string): void {
-  if (segment.length > MAX_BOOK_LENGTH) throw new Error(bookTooLong);
+  if (segment.length > MAX_BOOK_LENGTH) throw rpcError(ErrorCode.InvalidParams, bookTooLong);
 }
 
 function segmentBookId(segment: string): number {
   const bookId = resolveBook(segment);
-  if (bookId === null) throw new Error(bookNotFoundMessage(segment));
+  if (bookId === null) throw rpcError(ErrorCode.InvalidParams, bookNotFoundMessage(segment));
   return bookId;
 }
 
 function segmentChapter(segment: string): number {
   const chapter = toInt(segment);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    throw new Error(chapterOutOfRange);
+    throw rpcError(ErrorCode.InvalidParams, chapterOutOfRange);
   }
   return chapter;
 }
 
 function segmentVerse(segment: string): number {
   const verse = toInt(segment);
-  if (verse === null || verse < 1 || verse > MAX_VERSE) throw new Error(verseOutOfRange);
+  if (verse === null || verse < 1 || verse > MAX_VERSE) {
+    throw rpcError(ErrorCode.InvalidParams, verseOutOfRange);
+  }
   return verse;
 }
 
 /** Same four checks, same order and same messages as in `bible_lookup`. */
 function segmentVerses(segment: string): string {
-  if (segment.length > MAX_VERSES_LENGTH) throw new Error(versesTooLong);
-  if (segment.split(",").length > MAX_VERSE_PARTS) throw new Error(versesTooManyParts);
+  if (segment.length > MAX_VERSES_LENGTH) {
+    throw rpcError(ErrorCode.InvalidParams, versesTooLong);
+  }
+  if (segment.split(",").length > MAX_VERSE_PARTS) {
+    throw rpcError(ErrorCode.InvalidParams, versesTooManyParts);
+  }
   const ausserhalb = [...segment.matchAll(/\d+/g)].some(([n]) => {
     const value = parseInt(n, 10);
     return value < 1 || value > MAX_VERSE;
   });
-  if (ausserhalb) throw new Error(versesOutOfBounds);
+  if (ausserhalb) throw rpcError(ErrorCode.InvalidParams, versesOutOfBounds);
   return segment;
 }
 
 function segmentTranslation(segment: string): TranslationCode {
   const resolved = requireTranslation(segment);
-  if ("error" in resolved) throw new Error(resolved.error);
+  if ("error" in resolved) throw rpcError(ErrorCode.InvalidParams, resolved.error);
   return resolved.code;
 }
 
@@ -2695,7 +2749,8 @@ function versesPayload(
 
   const payload = lookupPayload(code, bookId, chapter, versesStr, "verse_einzeln");
   if (payload === null) {
-    throw new Error(
+    throw rpcError(
+      ErrorCode.InvalidParams,
       `Keine Verse für ${buch} ${chapter}${versesStr ? "," + versesStr : ""}. ` +
         "Kapitel- und Versnummern prüfen."
     );
@@ -2716,7 +2771,7 @@ function grundtextPayload(
   const bookId = segmentBookId(buch);
 
   const result = originalPayload(buch, bookId, chapter, verse, edition);
-  if ("error" in result) throw new Error(result.error);
+  if ("error" in result) throw rpcError(ErrorCode.InvalidParams, result.error);
   return result.payload;
 }
 
@@ -2726,10 +2781,14 @@ const handleReadResource = async (request: ReadResourceRequest) => {
   requireData();
 
   if (uri.length > MAX_URI_LENGTH) {
-    throw new Error(`Die URI darf höchstens ${MAX_URI_LENGTH} Zeichen lang sein.`);
+    throw rpcError(
+      ErrorCode.InvalidParams,
+      `Die URI darf höchstens ${MAX_URI_LENGTH} Zeichen lang sein.`
+    );
   }
   if (!uri.startsWith(URI_SCHEME)) {
-    throw new Error(
+    throw rpcError(
+      ErrorCode.InvalidParams,
       `Unbekannte URI "${uri}". Die Ressourcen dieses Servers beginnen mit "${URI_SCHEME}".`
     );
   }
@@ -2741,7 +2800,8 @@ const handleReadResource = async (request: ReadResourceRequest) => {
   try {
     segments = uri.slice(URI_SCHEME.length).split("/").map(decodeURIComponent);
   } catch {
-    throw new Error(
+    throw rpcError(
+      ErrorCode.InvalidParams,
       `Die URI "${uri}" enthält eine unvollständige Prozentkodierung. Sonderzeichen ` +
         'im Buchnamen als UTF-8 kodieren (z. B. "R%C3%B6mer").'
     );
@@ -2773,7 +2833,8 @@ const handleReadResource = async (request: ReadResourceRequest) => {
     const p = requireSegments(rest, 4, "bible://grundtext/{edition}/{buch}/{kapitel}/{vers}");
     payload = grundtextPayload(p[0]!, p[1]!, p[2]!, p[3]!);
   } else {
-    throw new Error(
+    throw rpcError(
+      ErrorCode.InvalidParams,
       `Unbekannte Ressource "${uri}". Bekannt sind ` +
         `${RESOURCES.map((r) => r.uri).join(", ")} sowie die Vorlagen ` +
         `${RESOURCE_TEMPLATES.map((t) => t.uriTemplate).join(", ")}.`
@@ -3049,7 +3110,12 @@ const handleCallTool = async (request: CallToolRequest) => {
     );
   }
   if (toolName !== "bible_lookup") {
-    throw new Error(`Unknown tool: ${toolName}`);
+    // InvalidParams, not InternalError: the spec's own example for this case is
+    // `{"code": -32602, "message": "Unknown tool: …"}` (server/tools), and the
+    // SDK's high-level McpServer throws exactly that (server/mcp.js:104). The
+    // six tools above answer input errors with `isError` instead — that channel
+    // needs a tool that exists, and this is the one case where none does.
+    throw rpcError(ErrorCode.InvalidParams, `Unknown tool: ${toolName}`);
   }
 
   const args = rawArgs as {

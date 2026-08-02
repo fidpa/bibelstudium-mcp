@@ -37,9 +37,15 @@ falsche Typen: `"3"` statt `3`, eine Zahl statt einer Zeichenkette) und
 - Heruntergeladene Strukturen prüfen, bevor sie in die DB gelangen
   (`Array.isArray`, Feldprüfungen wie in `download.ts`), und werfen statt still
   weiterlaufen: Der `abort()`-Pfad lässt die Live-DB unangetastet.
-- Ungültige Nutzereingabe → klare Fehlermeldung als Tool-Ergebnis
-  (`isError: true`); niemals eine Exception in die JSON-RPC-Schicht entkommen
-  lassen.
+- Ungültige Nutzereingabe an ein **Werkzeug** → klare Fehlermeldung als
+  Tool-Ergebnis (`isError: true`), niemals eine Exception. Nur so liest das
+  Modell die Meldung und kann sie beantworten.
+- **Prompts und Ressourcen** haben kein `isError`; dort ist der JSON-RPC-Fehler
+  der vorgesehene Weg, und zwar über `rpcError(ErrorCode.InvalidParams, …)`
+  aus `server.ts`, nicht über ein nacktes `throw new Error` (das meldet
+  `InternalError`) und nicht über `McpError` (das stellt der Meldung ein Präfix
+  voran). `InternalError` bleibt Zuständen des Servers vorbehalten, etwa einer
+  Instanz ohne Datenbank.
 
 ### 2. `??` statt `||` bei numerischen/booleschen Vorgabewerten
 
@@ -80,6 +86,123 @@ nennen den konkreten Reparaturbefehl.
 Neue Arrays/Objekte statt Änderungen an Ort und Stelle (`[...verses].sort()`,
 Spread). Kein Dogma: lokale Sammler in Schleifen (Zähler, `out.push(...)` in
 Dekodern) sind in Ordnung.
+
+## Kommentare
+
+Dieser Code ist ungewöhnlich dicht kommentiert: 935 von 4293 Zeilen in
+`server.ts` sind Kommentar, also 22 Prozent, dazu 15 Blöcke von mehr als zwölf
+Zeilen (gemessen 02.08.2026). Das ist Absicht. Ein großer Teil der
+Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen
+und dem MCP-SDK, und ohne die Begründung daneben sieht eine solche Stelle aus
+wie eine willkürliche Zeile, die der nächste Umbau geradezieht. Die folgenden
+Regeln sollen diese Dichte nicht senken, sondern sie tragfähig halten.
+
+### K1. Sprache: Deutsch
+
+Kommentare sind deutsch, wie die gesamte übrige Dokumentation dieses
+Repositories. Englisch bleiben, weil sie fremde Software oder fremde Leser
+adressieren: Bezeichner, Tool-Namen, die Tool-`description`s, das
+`instructions`-Feld des Handshakes, Commit-Nachrichten.
+
+Der Grund ist nicht Geschmack: Die längeren Blöcke hier sind Begründungsprosa,
+oft mit Messwerten und Abwägungen, und dieselbe Sache steht deutsch in
+`docs/ENTSCHEIDUNGEN.md`. Zwei Sprachen für denselben Gedanken kosten bei jeder
+Änderung eine Übersetzung.
+
+**Der Bestand ist noch überwiegend englisch** (gemessen 02.08.2026: 630 Zeilen
+eindeutig englisch, 84 deutsch, 88 gemischt). Die Umstellung ist ein eigener
+Auftrag und noch nicht erfolgt. Bis dahin gilt: Neue und ohnehin angefasste
+Kommentare deutsch, kein Umschreiben nebenbei.
+
+**Achtung bei der Umstellung:** Mit dem Wechsel fallen Kommentare unter die
+Em-Dash-Regel dieses Repositories. Der Halbgeviertstrich `–` mit Leerzeichen
+steht nur, wo wirklich ein Gedankenstrich hingehört; sonst Doppelpunkt, Punkt,
+Komma oder Semikolon. Ein aus dem Englischen mitgeschleppter Em-Dash `—` ist im
+deutschen Satz falsch.
+
+### K2. Warum, nicht was
+
+Was der Code tut, sagt der Code. Der Kommentar sagt, warum er es so tut, und
+zwar dann, wenn die Antwort nicht offensichtlich ist: eine Grenze, die aus einer
+Messung stammt; eine Reihenfolge, die einen Fehler verhindert; eine Bibliothek,
+die sich anders verhält als erwartet; eine Alternative, die verworfen wurde.
+
+Eine Zeile, die nur den Code nacherzählt (`// Buch auflösen` über
+`resolveBook(book)`), wird beim nächsten Umbau nicht mitgepflegt und ist dann
+falsch.
+
+### K3. Selbsttragend, ohne Verweis auf Ungeteiltes
+
+Wer das Repository von GitHub klont, muss jeden Kommentar verstehen. Nicht
+verweisen auf: `CLAUDE.md`, `.claude/`, `TODO.md`, `docs/intern/`, `data/`.
+Alles davon ist gitignored und im Klon nicht vorhanden; ein Verweis darauf ist
+ein toter Link, der schlimmer ist als kein Kommentar, weil er Vollständigkeit
+vortäuscht.
+
+Erlaubt und erwünscht: `docs/ENTSCHEIDUNGEN.md` und die übrigen versionierten
+Dateien unter `docs/`, externe URLs (Spezifikation, SDK-Quelle, Datenquellen),
+und Fundstellen im SDK mit Datei und Zeile (`protocol.js:397`). Letztere altern
+mit der SDK-Fassung: Wer sie schreibt, nennt die geprüfte Fassung mit.
+
+Gemessen am 02.08.2026 verweist keine `.ts`-Datei dieses Repos auf einen
+gitignorierten Pfad. Das ist der Zustand, der zu halten ist.
+
+### K4. Länge und der richtige Ort
+
+Die Länge entscheidet sich an der Reichweite, nicht am Geschmack:
+
+| Reichweite | Ort |
+|---|---|
+| Erklärt **diese** Stelle | Kommentar daneben. Immer und zuerst. |
+| Betrifft mehrere Stellen, eine Messreihe, eine verworfene Alternative | `docs/ENTSCHEIDUNGEN.md`, im Kommentar nur das Ergebnis plus Verweis |
+| Was sich für Nutzende je Fassung ändert | `CHANGELOG.md` |
+| Wie man den Server benutzt | `README.md` |
+
+Richtwert für den Kommentar: bis etwa zwölf Zeilen. Wird ein Block länger,
+steckt meist eine Herleitung darin, die nach `docs/ENTSCHEIDUNGEN.md` gehört,
+während an der Codestelle das Ergebnis genügt („X, weil Y; Messung und
+verworfene Alternativen siehe `docs/ENTSCHEIDUNGEN.md`"). Die fünfzehn Blöcke
+über zwölf Zeilen in `server.ts` sind der erste Ort, an dem bei der
+Übersetzungssitzung zu prüfen ist, ob gekürzt statt übersetzt werden sollte.
+
+### K5. Messwerte mit Datum
+
+Jede Zahl und jede Verhaltensbeobachtung im Kommentar ist gemessen und nennt das
+Datum: „gemessen 25.07.2026", „(26.07.2026)". Das ist hier bereits Konvention,
+30 Datumsangaben in `server.ts`. Der Grund: Aussagen über fremde Clients, fremde
+Quellen und das SDK verfallen, und ohne Datum lässt sich später nicht
+entscheiden, ob eine Aussage neu zu prüfen ist.
+
+Was nicht gemessen ist, wird als solches gekennzeichnet („nicht belegt",
+„Vorsichtsmaßnahme"). Eine Vermutung, die wie ein Befund klingt, ist der
+teuerste Kommentar überhaupt.
+
+### K6. Bannerkommentare gliedern die Datei
+
+`server.ts` ist in Abschnitte geteilt, jeder mit `// --- Titel ---` auf
+78 Spalten. Neue Deklarationen kommen in den passenden Abschnitt, nicht ans
+Dateiende. Die Reihenfolge der werkzeugspezifischen Helferblöcke entspricht der
+Reihenfolge der Handler weiter unten.
+
+### K7. Ein Kommentar, der nicht mehr stimmt, ist ein Fehler
+
+Wer Verhalten ändert, prüft die Kommentare an derselben Stelle **und** die, die
+dasselbe an anderer Stelle behaupten. Zwei Kommentare zu einem Sachverhalt sind
+schon einmal auseinandergelaufen (`createServer()` und die Tool-Registrierung).
+Wo sich das nicht vermeiden lässt, benennt jeder der beiden den anderen.
+
+### Prüfbefehle
+
+```bash
+# Verweise auf Ungeteiltes: muss 0 Treffer ergeben
+grep -rn "CLAUDE\.md\|\.claude/\|docs/intern\|TODO\.md" --include="*.ts" . | grep -v node_modules
+
+# Em-Dash in Kommentaren: nach der Umstellung auf Deutsch manuell prüfen
+grep -n "—" server.ts translations.ts db-path.ts scripts/*.ts
+
+# Datumslose Messaussagen: Treffer ohne Datum in der Nähe manuell ansehen
+grep -n "gemessen\|measured" server.ts
+```
 
 ## Bewusst nicht übernommen
 

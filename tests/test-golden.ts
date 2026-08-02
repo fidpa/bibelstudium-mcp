@@ -34,13 +34,15 @@ type ToolResult = {
   json: Json | null;
   structured: Json | null;
   isError: boolean;
+  error: string;
+  code: number;
 };
 /**
  * A `prompts/get` answer. Prompts have no `isError` channel, so a rejected
  * argument arrives as a JSON-RPC error rather than as a result — `error` holds
  * its message, `text` the rendered prompt of a successful call.
  */
-type PromptResult = { text: string; error: string };
+type PromptResult = { text: string; error: string; code: number };
 /**
  * A `resources/read` answer. Like prompts, resources have no `isError` channel;
  * `json` is the single `contents` entry parsed, `error` the JSON-RPC message of
@@ -52,14 +54,29 @@ type ResourceResult = {
   text: string;
   json: Json | null;
   error: string;
+  code: number;
 };
+
+/**
+ * The JSON-RPC error code of a refused call, 0 when the call succeeded.
+ *
+ * Read since 0.5.11, when the caller's own mistakes stopped reporting
+ * `InternalError`. The distinction the assertions below guard is which side is
+ * at fault: `-32602` for anything wrong in the request, `-32603` reserved for
+ * the server's own state (an instance without a database).
+ */
+const NO_ERROR = 0;
 
 // --- minimal stdio MCP client ----------------------------------------------
 
 async function callTools(
   calls: ReadonlyArray<readonly [string, Json]>,
   prompts: ReadonlyArray<readonly [string, Json]> = [],
-  resources: ReadonlyArray<string> = []
+  resources: ReadonlyArray<string> = [],
+  // Extra environment for the spawned server. Used once, at the end, to point
+  // BIBLE_DB_PATH at a file that does not exist: that is the only way to reach
+  // the one refusal which is the server's fault rather than the caller's.
+  env: Record<string, string> = {}
 ): Promise<{
   tools: Json[];
   results: ToolResult[];
@@ -73,6 +90,7 @@ async function callTools(
     stdin: "pipe",
     stdout: "pipe",
     stderr: "ignore",
+    env: { ...process.env, ...env },
   });
   const w = proc.stdin;
   const send = (m: unknown) => w.write(JSON.stringify(m) + "\n");
@@ -152,6 +170,7 @@ async function callTools(
         structuredContent?: Json;
         isError?: boolean;
       };
+      error?: { message?: string; code?: number };
     };
     const text = m.result?.content?.[0]?.text ?? "";
     let json: Json | null = null;
@@ -165,24 +184,27 @@ async function callTools(
       json,
       structured: m.result?.structuredContent ?? null,
       isError: m.result?.isError === true,
+      error: m.error?.message ?? "",
+      code: m.error?.code ?? NO_ERROR,
     };
   });
 
   const promptResults = prompts.map((_, i) => {
     const m = seen.get(2 + calls.length + i) as {
       result?: { messages?: Array<{ content?: { text?: string } }> };
-      error?: { message?: string };
+      error?: { message?: string; code?: number };
     };
     return {
       text: m.result?.messages?.[0]?.content?.text ?? "",
       error: m.error?.message ?? "",
+      code: m.error?.code ?? NO_ERROR,
     };
   });
 
   const resourceResults = resources.map((_, i) => {
     const m = seen.get(resBase + i) as {
       result?: { contents?: Array<{ uri?: string; mimeType?: string; text?: string }> };
-      error?: { message?: string };
+      error?: { message?: string; code?: number };
     };
     const entry = m.result?.contents?.[0];
     const text = entry?.text ?? "";
@@ -198,6 +220,7 @@ async function callTools(
       text,
       json,
       error: m.error?.message ?? "",
+      code: m.error?.code ?? NO_ERROR,
     };
   });
 
@@ -313,6 +336,9 @@ const CALLS = [
   ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }], // sblgnt carries no Strong's
   ["bible_concordance", { strong: "G26", limit: 200 }], // everything listed: no truncation hint
   ["bible_lookup", { book: "Hiob", chapter: 32, verses: "1-4", translation: "MB" }], // Menge without brackets
+  // The one tool call that is not a tool error but a JSON-RPC one: `isError`
+  // needs a tool to carry it, and here none exists.
+  ["bible_nichtvorhanden", {}],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
 // Prompts name the loaded inventory and the fields of the answers they steer,
@@ -412,7 +438,8 @@ const [
   origSblgnt,
   concordVollstaendig,
   mengeOhneKlammer,
-] = results as ToolResult[] & { length: 30 };
+  unbekanntesWerkzeug,
+] = results as ToolResult[] & { length: 31 };
 
 console.log("Grenzwertmeldungen");
 for (const [label, r] of [
@@ -671,8 +698,11 @@ console.log("Strukturierte Ausgabe");
       check(`${name} #${i}: Fehlerantwort ohne structuredContent`, r.structured === null);
       return;
     }
+    // No schema: either a tool that does not (yet) declare one, or the call to a
+    // tool that does not exist, whose refusal is a JSON-RPC error and therefore
+    // carries no result to validate. Both are checked elsewhere.
     const schema = schemaOf.get(name);
-    if (schema === undefined) return; // tool not (yet) declaring an output schema
+    if (schema === undefined) return;
     check(`${name} #${i}: structuredContent vorhanden`, r.structured !== null);
     if (r.structured === null) return;
     check(
@@ -710,6 +740,12 @@ console.log("Prompts");
 
   // A missing required argument used to produce an instruction with a hole in
   // it ("Wortstudie zu „"), and the prompt still came back as a success.
+  //
+  // Both messages are compared literally, and that is deliberate: it is what
+  // keeps a later switch to `McpError` from passing. That class prefixes the
+  // text with "MCP error <code>: " on the way out (types.js:2031), so the code
+  // would look right while every wording drifted. The codes themselves are
+  // asserted in the "Fehlercodes" section below.
   eq("word-study ohne Argument: kein Prompt", wordStudyNoArg!.text, "");
   eq(
     "word-study ohne Argument: Meldung nennt das Feld",
@@ -951,6 +987,87 @@ console.log("Ressourcen");
   for (const verboten of ["/home/", "/Users/", "process", "uptime", "hostname"]) {
     lacks(`keine Host-Angabe: ${verboten}`, allerText, verboten);
   }
+}
+
+// --- error codes -------------------------------------------------------------
+// Which side is at fault. Until 0.5.10 every refusal that left through the
+// JSON-RPC channel said `-32603 InternalError`, including the ones the caller
+// had caused; the spec asks for `-32602` for prompts by name and the SDK's own
+// McpServer answers an unknown tool and an unknown resource with it. Checked
+// over stdio only: the codes are produced in the shared handlers, not in a
+// transport, so HTTP would exercise the same lines.
+//
+// The message is asserted alongside the code wherever one already exists above.
+// That pairing is the guard against `McpError`, which would set the code
+// correctly and prefix the text with "MCP error -32602: " on the way out.
+{
+  console.log("Fehlercodes");
+  const INVALID_PARAMS = -32602;
+  for (const [label, r] of [
+    ["unbekannter Prompt", wordStudyNoArg],
+    ["überlanges Prompt-Argument", variantTooLong],
+  ] as const) {
+    eq(`${label}: InvalidParams`, r!.code, INVALID_PARAMS);
+  }
+  for (const [label, r] of [
+    ["fremdes Schema", resFremdesSchema],
+    ["unbekannte Ressource", resUnbekannt],
+    ["falsche URI-Form", resZuWenigSegmente],
+    ["unbekanntes Buch", resBuchFehlt],
+    ["Kapitel außerhalb", resKapitelGrenze],
+    ["unbekannte Übersetzung", resUebersetzungUnbekannt],
+  ] as const) {
+    eq(`Ressource, ${label}: InvalidParams`, r!.code, INVALID_PARAMS);
+  }
+  // A tool that does not exist has no `isError` channel to answer through.
+  eq("unbekanntes Werkzeug: InvalidParams", unbekanntesWerkzeug!.code, INVALID_PARAMS);
+  eq(
+    "unbekanntes Werkzeug: Meldung nennt den Namen",
+    unbekanntesWerkzeug!.error,
+    "Unknown tool: bible_nichtvorhanden"
+  );
+  // The counter-check that matters more than the six above: a bad argument to a
+  // tool that does exist stays a tool result. Turning these into JSON-RPC errors
+  // would hide them from the model, which is the whole reason they are prose.
+  for (const [label, r] of [
+    ["unbekanntes Buch", hesekiel],
+    ["Kapitel außerhalb", lookupChap999],
+    ["Versliste zu lang", versesTooLong],
+  ] as const) {
+    eq(`Werkzeug, ${label}: bleibt isError`, r!.isError, true);
+    eq(`Werkzeug, ${label}: kein JSON-RPC-Fehler`, r!.code, NO_ERROR);
+  }
+}
+
+// --- the server's own fault --------------------------------------------------
+// The single refusal that keeps `InternalError`, and the reason this runs a
+// second server: an instance without a database is a state of the server, not a
+// mistake in the request. It is also the case a later sweep over the throw sites
+// would most easily pull along with the rest, so it is pinned here.
+{
+  console.log("Instanz ohne Datenbank");
+  const INTERNAL_ERROR = -32603;
+  const ohneDb = await callTools(
+    [["bible_lookup", { book: "Johannes", chapter: 3, verses: "16" }]],
+    [],
+    ["bible://buecher"],
+    { BIBLE_DB_PATH: resolve(dirname(import.meta.dirname), "tmp/gibt-es-nicht.db") }
+  );
+  const [leerLookup] = ohneDb.results as ToolResult[] & { length: 1 };
+  const [leerRessource] = ohneDb.resourceResults as ResourceResult[] & { length: 1 };
+
+  eq("Ressource ohne Datenbank: InternalError", leerRessource!.code, INTERNAL_ERROR);
+  has(
+    "Ressource ohne Datenbank: nennt bible_setup (stdio)",
+    leerRessource!.error,
+    "bible_setup"
+  );
+  // The tool gate answers through `isError`, as it does with a database.
+  eq("Werkzeug ohne Datenbank: bleibt isError", leerLookup!.isError, true);
+  eq("Werkzeug ohne Datenbank: kein JSON-RPC-Fehler", leerLookup!.code, NO_ERROR);
+  // Both lists are empty, so nothing is advertised that cannot be read.
+  eq("resources/list ohne Datenbank: leer", ohneDb.resourceList.length, 0);
+  eq("resources/templates/list ohne Datenbank: leer", ohneDb.templateList.length, 0);
 }
 
 console.log(

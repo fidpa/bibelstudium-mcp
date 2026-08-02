@@ -18,6 +18,106 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-02: Ein Aufruferfehler ist kein interner Fehler, und `McpError` ist der falsche Weg dorthin
+
+Bis 0.5.10 verließ jede Ablehnung, die über den JSON-RPC-Kanal ging, den Server
+als `-32603 InternalError`: unbekanntes Werkzeug, unbekannter Prompt, fehlendes
+Prompt-Argument, jede fehlerhafte Ressourcen-URI. Gemessen am 02.08.2026 gegen
+frische Prozesse, stdio und HTTP, in beiden Transporten gleich. Die Ursache war
+kein Versehen an einer Stelle, sondern die Voreinstellung des SDK:
+`protocol.js:397` reicht das Feld `code` eines geworfenen Fehlers durch, wenn es
+eine ganze Zahl ist, und fällt sonst auf `InternalError` zurück. Ein nacktes
+`new Error` bekommt also den Code für „der Server hat einen Defekt", auch wenn
+die Anfrage der Grund war.
+
+### Was die Spezifikation sagt, und warum sie dreimal etwas anderes sagt
+
+- **Prompts:** „Invalid prompt name: `-32602`, Missing required arguments:
+  `-32602`, Internal errors: `-32603`" (server/prompts). Ein **SHOULD**, wörtlich
+  auf zwei unserer Fälle gemünzt. Das ist der härteste Punkt.
+- **Werkzeuge:** kein SHOULD, aber „Unknown tools" steht unter den
+  Protokollfehlern und das Beispiel lautet
+  `{"code": -32602, "message": "Unknown tool: invalid_tool_name"}`
+  (server/tools).
+- **Ressourcen:** „Resource not found: `-32002`, Internal errors: `-32603`"
+  (server/resources, SHOULD in 2025-06-18 **und** 2025-11-25). Die
+  Draft-Revision zieht das zurück: „`-32002` … replaced by `-32602`", und
+  Implementierungen jener Fassung **dürfen** `-32002` nicht mehr senden.
+
+Gewählt ist überall `-32602`. Für Ressourcen ist das eine Abwägung, keine
+Ableitung: `-32002` passt auf die zwei Fälle „nicht gefunden" und auf keinen der
+dreizehn Formfehler, es ist in der kommenden Revision untersagt, und das SDK,
+gegen das dieser Server läuft, antwortet auf eine unbekannte Ressource selbst
+mit `-32602` (`server/mcp.js:393`). Falsch war in jeder dieser Lesarten allein
+das bisherige `-32603`. Keiner der beiden Codes liegt im reservierten Bereich
+`-32020` bis `-32099`, die Festlegung vom 28.07.2026 bleibt also unberührt.
+
+### `McpError` hätte die Meldungstexte beschädigt
+
+Der naheliegende Handgriff wäre `throw new McpError(ErrorCode.InvalidParams, …)`
+gewesen, wie es `server/mcp.js` tut. Gemessen am 02.08.2026 gegen einen
+Probe-Server auf demselben SDK:
+
+| geworfen | am Draht |
+|---|---|
+| `new McpError(-32602, "Die Meldung.")` | `{"code":-32602,"message":"MCP error -32602: Die Meldung."}` |
+| `Object.assign(new Error("Die Meldung."), { code: -32602 })` | `{"code":-32602,"message":"Die Meldung."}` |
+
+Der Konstruktor setzt `super("MCP error <code>: " + message)`
+(`types.js:2031`), und der empfangende 1.x-Client stellt beim Wiederaufbau ein
+zweites Präfix voran (`protocol.js:459`). Diese Meldungen sind aber zeichengleich
+mit denen der Werkzeuge, absichtlich und getestet. Deshalb `rpcError()` in
+`server.ts`, nicht `McpError`. Die exakten Meldungsvergleiche im Golden-Test
+sind der Schutz davor, dass jemand später doch umstellt.
+
+### Was `-32603` behält
+
+`requireData()`. Eine Instanz ohne Datenbank ist ein Zustand des Servers, nicht
+ein Fehler des Aufrufers, und das ist die einzige verbliebene Stelle. Der
+Golden-Test startet dafür einen zweiten Server mit `BIBLE_DB_PATH` auf eine
+nicht vorhandene Datei; ohne diese Zusicherung wäre die Ausnahme genau das, was
+eine spätere Sammeländerung mitnimmt.
+
+Der Werkzeugpfad bleibt ebenfalls, wie er war: Ein unbekanntes Buch oder ein
+fehlendes Argument ist weiter ein Ergebnis mit `isError` und Prosa. Ein
+JSON-RPC-Fehler erreicht das Modell nicht als Aufgabe, sondern als Abbruch, und
+diese Meldungen sind dafür geschrieben, gelesen zu werden. Sechs Zusicherungen
+halten das fest.
+
+Nachgezählt wurde dabei, ob ein werfender Helfer auch im Werkzeugpfad hängt:
+Alle `segment*`-Helfer und `requireBookLength` werden nur aus `versesPayload`
+und `grundtextPayload` gerufen, beide nur aus `handleReadResource`. Geteilt sind
+allein `lookupPayload` und `originalPayload`, und die werfen nicht, sie liefern
+`null` beziehungsweise `{ error }`.
+
+### Wirkung
+
+Der Code ist im Client sichtbar, nicht nur im Protokoll. Ein Abruf von
+`bible://kapitel/LUT/Gibtsnicht/1` über einen eingerichteten Connector lieferte
+am 02.08.2026 gegen 0.5.10 die Zeile
+`MCP error -32603: "Gibtsnicht" ist kein Buch dieser Bibel-Datenbank. …`, also
+Präfix samt Nummer als Text. Ob ein Client sein **Verhalten** nach dem Code
+richtet, ist dagegen **nicht belegt**: Der SDK-Client kennt keine codeabhängige
+Wiederholung (geprüft gegen `client/index.js` und `shared/protocol.js`), und was
+Claude Desktop oder claude.ai daraus machen, lässt sich von hier nicht messen.
+Der Gewinn ist Normtreue, kein gemessener Effekt, und so gehört er auch benannt.
+
+### Nicht geändert: `DELETE` antwortet weiter mit 200
+
+Aus demselben Anlass geprüft. Das 200 stammt nicht aus diesem Repo, sondern aus
+dem Transport des SDK (`webStandardStreamableHttp.js:565 ff.`): Im zustandslosen
+Betrieb entfällt die Sitzungsprüfung, `close()` läuft, 200. Die Spezifikation
+führt 405 hier nur als **MAY** („The server MAY respond to this request with
+HTTP 405"), verlangt also nichts. Bei `GET` verlangt dieselbe Stelle ein MUST
+(`text/event-stream` oder 405), und dort steht dieser Server bewusst auf 200,
+weil das die gemessene Angleichung an claude.ai ist. Den weicheren Fall aus
+Formtreue umzubauen, während der härtere aus Vorsicht bleibt, wäre die
+inkonsistenteste der drei Kombinationen. Falls es später doch geschieht:
+`Allow: GET, POST, DELETE`, denn genau das meldet der Endpunkt heute schon auf
+ein `PUT`.
+
+---
+
 ## 2026-08-02: Ressourcen liegen in Vorlagen, weil die Liste sonst der Katalog wäre
 
 Die dritte MCP-Primitive ist die einzige, die dem **Nutzer** eine Geste gibt: ein

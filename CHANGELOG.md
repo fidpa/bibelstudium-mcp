@@ -6,6 +6,19 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.11] - 2026-08-02
+
+### Behoben
+
+- **Fehler des Aufrufers melden `-32602` (Invalid params) statt `-32603` (Internal error).** Betroffen sind 19 Stellen: unbekanntes Werkzeug, unbekannter Prompt, fehlendes oder zu langes Prompt-Argument und jede fehlerhafte Ressourcen-URI. Die Spezifikation nennt `-32602` für Prompts ausdrücklich; ein interner Fehler lag in keinem der Fälle vor.
+
+  **Kein Meldungstext ändert sich.** Wer auf den Wortlaut prüft, merkt nichts; wer auf `-32603` prüft, muss umstellen. Die Werkzeuge bleiben ebenfalls unverändert: Ein unbekanntes Buch ist weiter ein Ergebnis mit `isError` und Prosa. `-32603` bleibt der Instanz ohne Bibeldatenbank vorbehalten, das ist ein Zustand des Servers und kein Fehler der Anfrage. Der Golden-Test prüft 313 statt 291 Zusicherungen.
+
+### Geändert (Dokumentation)
+
+- `docs/TYPESCRIPT.md`: sieben Konventionen für Codekommentare, darunter Sprache (Deutsch, außer Bezeichnern und den englischen Tool-Beschreibungen), Länge und Abgrenzung zu `docs/ENTSCHEIDUNGEN.md`. Der Bestand ist noch überwiegend englisch, die Umstellung steht aus.
+- `docs/ENTSCHEIDUNGEN.md`: Begründung der Fehlercodes samt Messung, warum dafür nicht `McpError` verwendet wird, und warum `DELETE` weiter mit 200 antwortet.
+
 ## [0.5.10] - 2026-08-02
 
 ### Hinzugefügt
