@@ -21,9 +21,16 @@ import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { CallToolRequest, GetPromptRequest } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolRequest,
+  GetPromptRequest,
+  ReadResourceRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { Database } from "bun:sqlite";
 import packageJson from "./package.json";
 import { DB_PATH } from "./db-path.ts";
@@ -179,6 +186,12 @@ const stmtBookName = db.prepare<{ name: string }, [number]>(
 
 const stmtBookByName = db.prepare<{ book_id: number }, [string]>(
   "SELECT book_id FROM books WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY book_id LIMIT 1"
+);
+
+// The whole table, for the `bible://buecher` resource. `chapters` is carried in
+// the schema but was never read until now.
+const stmtBooks = db.prepare<{ book_id: number; name: string; chapters: number }, []>(
+  "SELECT book_id, name, chapters FROM books ORDER BY book_id"
 );
 
 // --- Original-language (morphology) support --------------------------------
@@ -1003,19 +1016,24 @@ function suggestBook(book: string): string | null {
 }
 
 /**
- * Uniform "book not found" error: names the nearest known book when there is
+ * Uniform "book not found" wording: names the nearest known book when there is
  * one, and states the canon scope. Without the scope note a miss on "Sirach"
  * looks like a typo rather than a book this DB does not carry (66 books,
  * protestant canon) — the caller cannot tell the two apart from "not found".
+ *
+ * The message and its packaging are separate because the same miss reaches the
+ * caller through two channels: tools return it as an `isError` result, resources
+ * have no such channel and must throw. One wording, two envelopes — a second
+ * formulation would drift, as the boundary messages already did (25.07.2026).
  */
-function bookNotFound(book: string): ReturnType<typeof errorResult> {
+function bookNotFoundMessage(book: string): string {
   if (APOKRYPHEN.test(book)) {
-    return errorResult(
+    return (
       `"${book}" gehört zu den apokryphen/deuterokanonischen Schriften. Diese ` +
-        "Datenbank enthält ausschließlich die 66 Bücher des protestantischen Kanons: " +
-        "Sirach, Tobit, Judit, Weisheit, Baruch, die Makkabäerbücher und die Zusätze zu " +
-        "Daniel und Ester sind nicht enthalten. Kein Tippfehler und kein ähnlich " +
-        "klingendes Buch des Kanons meinen."
+      "Datenbank enthält ausschließlich die 66 Bücher des protestantischen Kanons: " +
+      "Sirach, Tobit, Judit, Weisheit, Baruch, die Makkabäerbücher und die Zusätze zu " +
+      "Daniel und Ester sind nicht enthalten. Kein Tippfehler und kein ähnlich " +
+      "klingendes Buch des Kanons meinen."
     );
   }
   // Lead with the statement, not with "Error:". The apocrypha branch above
@@ -1023,15 +1041,19 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
   // not found" and was dropped as a failed call, suggestion and all
   // (25.07.2026, "Hesekiel-Zusatz"). Same lesson as `quellenkonflikte`.
   const nahe = suggestBook(book);
-  return errorResult(
+  return (
     `"${book}" ist kein Buch dieser Bibel-Datenbank.` +
-      (nahe !== null
-        ? ` Am nächsten kommt "${nahe}". Falls das gemeint war, damit erneut abfragen.`
-        : "") +
-      " Diese Datenbank enthält die 66 Bücher des protestantischen Kanons; apokryphe/" +
-      "deuterokanonische Schriften fehlen. Erwartet wird der deutsche Buchname " +
-      '(z. B. "Jesaja", "1. Mose", "Römer") oder eine Abkürzung (z. B. "Jes", "1Mo", "Röm").'
+    (nahe !== null
+      ? ` Am nächsten kommt "${nahe}". Falls das gemeint war, damit erneut abfragen.`
+      : "") +
+    " Diese Datenbank enthält die 66 Bücher des protestantischen Kanons; apokryphe/" +
+    "deuterokanonische Schriften fehlen. Erwartet wird der deutsche Buchname " +
+    '(z. B. "Jesaja", "1. Mose", "Römer") oder eine Abkürzung (z. B. "Jes", "1Mo", "Röm").'
   );
+}
+
+function bookNotFound(book: string): ReturnType<typeof errorResult> {
+  return errorResult(bookNotFoundMessage(book));
 }
 
 // Reference bounds. Shared so that the limit and the message that reports it
@@ -1186,6 +1208,151 @@ function requireTranslation(input: unknown): { code: TranslationCode } | { error
     };
   }
   return { code };
+}
+
+/**
+ * The verse payload shared by `bible_lookup` and the two text resources.
+ * Returns null when the reference resolves to no verse at all; the caller words
+ * that miss, because only it knows how the reference was spelled.
+ *
+ * `form` decides how the verses are carried, and that is the one difference
+ * between the two callers. The tool has always delivered a single `text` with
+ * the verse numbers folded in; a resource carries `verse_einzeln` instead,
+ * because it is attached to a conversation and quoted from, and a composite
+ * string is exactly what got cut at both ends in `bible_crossrefs` (25.07.2026,
+ * Joh 11,25-26). Carrying both would cost 2,57× (Psalm 119, Luther: 13 562 →
+ * 34 876 characters), `verse_einzeln` alone costs 1,58× — so it replaces `text`
+ * rather than joining it. In the tool the surcharge would count twice, since
+ * the payload also travels as `structuredContent`; that is why the tool keeps
+ * the composite string.
+ */
+function lookupPayload(
+  code: TranslationCode,
+  bookId: number,
+  chapter: number,
+  versesStr: string,
+  form: "text" | "verse_einzeln"
+): Record<string, unknown> | null {
+  const results = lookupVerses(code, bookId, chapter, versesStr);
+  if (results.length === 0) return null;
+
+  const verse_einzeln = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
+  const reference =
+    `${getBookDisplayName(bookId)} ${chapter},` +
+    formatVerseReference(verse_einzeln.map((r) => r.verse));
+  const hinweise = bracketHints(verse_einzeln.map((r) => r.text));
+
+  return {
+    reference,
+    translation: TRANSLATIONS[code].name,
+    ...(form === "text"
+      ? {
+          text: verse_einzeln
+            .map((r) => (verse_einzeln.length > 1 ? `${r.verse} ${r.text}` : r.text))
+            .join(" "),
+        }
+      : { verse_einzeln }),
+    ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
+    quellen: quellen(translationQuelle(code)),
+  };
+}
+
+// --- bible_original helpers ------------------------------------------------
+/**
+ * Edition routing, lookup and word payload for one verse, shared by the
+ * `bible_original` tool and the `bible://grundtext/…` resource.
+ *
+ * Starts after the argument check, because the two callers read their arguments
+ * from different places (a tool argument object, a URI segment) but must route
+ * and answer identically from there on. `bookLabel` appears only in the "no
+ * data" message and is the caller's spelling, so that message stays what it was.
+ */
+function originalPayload(
+  bookLabel: string,
+  bookId: number,
+  chapter: number,
+  verse: number,
+  texttyp: unknown
+): { payload: Record<string, unknown> } | { error: string } {
+  if (!stmtOriginal || availableEditions.size === 0) {
+    return {
+      error:
+        "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
+        "(und optional 'bun run download:sblgnt') ausführen.",
+    };
+  }
+
+  // Route by testament: OT (1–39) → Hebrew WLC; NT (40–66) → Greek text type.
+  const isOT = bookId < 40;
+  let edition: string;
+  let hinweisZusatz = "";
+  if (isOT) {
+    edition = "wlc";
+    const wanted = resolveEdition(texttyp);
+    if (texttyp && wanted !== "wlc") {
+      hinweisZusatz =
+        ` (Der Texttyp "${String(texttyp)}" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.)`;
+    }
+  } else {
+    const wanted = resolveEdition(texttyp);
+    if (wanted === null || !NT_EDITIONS.has(wanted)) {
+      return {
+        error:
+          `Error: Unbekannter oder fürs NT ungültiger texttyp "${String(texttyp)}". ` +
+          `Erlaubt fürs NT: "byzantine" (Mehrheitstext, Standard), "sblgnt" (kritisch), "tr" (Textus Receptus).`,
+      };
+    }
+    edition = wanted;
+  }
+
+  if (!availableEditions.has(edition)) {
+    return {
+      error:
+        `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}. ` +
+        (edition === "wlc" ? "Für das AT bitte 'bun run download:heb' ausführen." : ""),
+    };
+  }
+
+  const rows = stmtOriginal.all(edition, bookId, chapter, verse);
+  if (rows.length === 0) {
+    return {
+      error: `Keine Urtext-Daten für ${bookLabel} ${chapter},${verse} (Texttyp ${edition}).`,
+    };
+  }
+
+  const meta0 = EDITION_META[edition]!;
+  const decode =
+    meta0.decoder === "hebrew" ? decodeHebrew :
+    meta0.decoder === "morphgnt" ? decodeParse :
+    decodeRobinson;
+  const woerter = rows.map((r) => {
+    // SBLGNT stores POS separately (r.pos); the other decoders fold it into the
+    // morphology string, so prepend it here for a consistent output shape.
+    const morph =
+      meta0.decoder === "morphgnt"
+        ? [posLabel(r.pos), decodeParse(r.parse)].filter(Boolean).join(" ")
+        : decode(r.parse);
+    const w: Record<string, string> = {
+      wort: r.surface,
+      grundform: r.lemma || "—",
+      morphologie: morph || "—",
+      code: r.parse,
+    };
+    if (r.strong) w.strong = (r.lang === "grc" ? "G" : "H") + r.strong;
+    return w;
+  });
+
+  return {
+    payload: {
+      reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+      texttyp: edition,
+      edition: meta0.label,
+      sprache: meta0.sprache,
+      hinweis: meta0.hinweis + hinweisZusatz,
+      woerter,
+      quellen: quellen(meta0.quelle),
+    },
+  };
 }
 
 // --- bible_concordance helpers ---------------------------------------------
@@ -1741,10 +1908,20 @@ const SERVER_INFO_OUTPUT = {
         "querverweise", "volltextsuche",
       ],
     },
+    ressourcen: {
+      type: "object",
+      properties: {
+        statisch: { type: "array", items: { type: "string" } },
+        vorlagen: { type: "array", items: { type: "string" } },
+      },
+      required: ["statisch", "vorlagen"],
+    },
     daten_stand: { type: "string" },
     hinweis: { type: "string" },
   },
-  required: ["server", "version", "uebersetzungen", "urtext_editionen", "zusatzdaten"],
+  required: [
+    "server", "version", "uebersetzungen", "urtext_editionen", "zusatzdaten", "ressourcen",
+  ],
 };
 
 // All six tools only read: one local SQLite file opened read-only, no writes,
@@ -2213,6 +2390,398 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   };
 };
 
+// --- MCP server — resources ------------------------------------------------
+// The third primitive, and the only one the *user* reaches for: a tool or a
+// prompt is picked by the model, a resource is attached by hand. That is why the
+// names, descriptions and URI words here are German while tool and prompt
+// identifiers are English — the audience is different.
+//
+// The catalogue stays small on purpose. `resources/list` crosses the wire at
+// every session start, and this database holds 31 102 verses in 1190 chapters:
+// enumerating any part of that would dwarf `tools/list` (14 969 characters,
+// measured 02.08.2026). The parameterised space lives in URI templates, the
+// list carries four fixed entries that describe the inventory itself.
+
+const URI_SCHEME = "bible://";
+
+// Derived from the bounds the segments already carry, not chosen: the scheme,
+// four name-like segments (each bounded by MAX_BOOK_LENGTH, the widest such
+// bound in use), a verse list of MAX_VERSES_LENGTH, the separators, and a
+// factor of three because percent-encoding turns one non-ASCII character into
+// up to nine (three UTF-8 bytes at three characters each). Like
+// MAX_VERSES_LENGTH this can never be the only bound violated — it exists to
+// turn away an oversized URI before the first split, not as a rule of its own.
+const MAX_URI_LENGTH =
+  URI_SCHEME.length + 4 + (4 * MAX_BOOK_LENGTH + MAX_VERSES_LENGTH) * 3;
+
+const RESOURCES = [
+  {
+    uri: "bible://buecher",
+    name: "Bücher",
+    description:
+      "Die 66 Bücher mit Nummer, Name, Kapitelzahl und Testament. Die Namen und " +
+      "ihre Abkürzungen sind es, die in den URI-Vorlagen als {buch} stehen.",
+    mimeType: "application/json",
+  },
+  {
+    uri: "bible://uebersetzungen",
+    name: "Übersetzungen",
+    description:
+      "Die geladenen deutschen Übersetzungen mit Kürzel, Name, Lizenz und " +
+      "geforderter Namensnennung, dazu die Voreinstellung.",
+    mimeType: "application/json",
+  },
+  {
+    uri: "bible://editionen",
+    name: "Grundtext-Editionen",
+    description:
+      "Die geladenen Editionen des Grundtextes mit Sprache, Eigenheiten der " +
+      "Schreibung, Lizenz und Namensnennung, dazu die Zuordnung nach Testament.",
+    mimeType: "application/json",
+  },
+  {
+    uri: "bible://quellen",
+    name: "Quellen und Lizenzen",
+    description:
+      "Alle Quellen, aus denen diese Instanz tatsächlich Daten führt, mit Lizenz " +
+      "und der Nennung, die beim Weitergeben verlangt ist.",
+    mimeType: "application/json",
+  },
+] as const;
+
+const RESOURCE_TEMPLATES = [
+  {
+    uriTemplate: "bible://kapitel/{uebersetzung}/{buch}/{kapitel}",
+    name: "Kapitel",
+    description:
+      "Ein ganzes Kapitel in einer Übersetzung, Vers für Vers. {uebersetzung} " +
+      'nimmt Kürzel oder Namen ("LUT", "Schlachter"), {buch} den deutschen ' +
+      'Buchnamen oder eine Abkürzung ("Johannes", "1. Mose", "Röm").',
+    mimeType: "application/json",
+  },
+  {
+    uriTemplate: "bible://vers/{uebersetzung}/{buch}/{kapitel}/{verse}",
+    name: "Vers oder Versbereich",
+    description:
+      'Einzelne Verse einer Übersetzung. {verse} nimmt "16", einen Bereich ' +
+      '"16-17" oder eine Liste "1-3,7".',
+    mimeType: "application/json",
+  },
+  {
+    uriTemplate: "bible://grundtext/{edition}/{buch}/{kapitel}/{vers}",
+    name: "Grundtext eines Verses",
+    description:
+      "Ein Vers Wort für Wort mit Grundform, Strong-Nummer und aufgelöster " +
+      'Morphologie. {edition} nimmt "byzantine", "sblgnt", "tr" (Neues ' +
+      'Testament) oder "wlc" (Altes Testament).',
+    mimeType: "application/json",
+  },
+] as const;
+
+/**
+ * Why the lists are empty without data, and why reading throws.
+ *
+ * A resource result has no `isError` channel, so a refusal belongs in the
+ * JSON-RPC response — same as with prompts. And the wording splits by transport
+ * for the same reason the tool gate does: over stdio the caller started this
+ * process and can run bible_setup, over HTTP the caller is a stranger for whom
+ * naming that tool describes something that does not exist there.
+ */
+function requireData(): void {
+  if (dataMissing === null) return;
+  throw new Error(
+    HTTP_MODE
+      ? `${dataMissing} Dieser Endpunkt hat derzeit keine Bibeldaten. Das lässt sich ` +
+          "nur serverseitig beheben; ein erneuter Abruf hilft nicht."
+      : `${dataMissing} Dieser Server bringt die Bibeldaten nicht mit. Über das ` +
+          "Werkzeug bible_setup lassen sie sich einmalig laden; danach ist die " +
+          "Ressource abrufbar."
+  );
+}
+
+const handleListResources = async () => ({
+  resources: dataMissing !== null ? [] : RESOURCES.map((r) => ({ ...r })),
+});
+
+const handleListResourceTemplates = async () => ({
+  resourceTemplates: dataMissing !== null ? [] : RESOURCE_TEMPLATES.map((t) => ({ ...t })),
+});
+
+// --- Resources — URI segments ----------------------------------------------
+// Every segment check reuses the bound and the message the tools already use.
+// Six of those messages once named a condition the input satisfied because the
+// limit sat next to a separately worded text (25.07.2026); a resource path with
+// its own wording would repeat that, so there is none here.
+
+/**
+ * Check arity and reject empty segments, then hand back a copy.
+ *
+ * The empty check is not cosmetic: `resolveTranslation("")` answers with the
+ * default, so "bible://kapitel/…//23" would silently serve Luther for a
+ * translation the caller never named. Callers index the result with `!`, and
+ * this length check is what justifies it.
+ *
+ * No "Error:" prefix on the messages formulated here — the house rule is that a
+ * message opens with the statement, and a client of the 1.x SDK already prefixes
+ * a JSON-RPC error with "MCP error <code>: " (types.js:2031), so the word would
+ * appear twice. The messages inherited from the tools keep their prefix: there
+ * being character-identical to the tool is worth more than the house style.
+ */
+function requireSegments(rest: readonly string[], count: number, form: string): string[] {
+  if (rest.length !== count || rest.some((s) => s === "")) {
+    throw new Error(`Falsche Form der URI. Erwartet: "${form}".`);
+  }
+  return [...rest];
+}
+
+/**
+ * Length and resolution are separate because the tools check them at different
+ * points: `bible_lookup` bounds the book name first but resolves it only after
+ * chapter and verses, so a URI that violates two conditions must report the same
+ * one the tool would. Folded together, the resource named the book while the
+ * tool named the chapter.
+ */
+function requireBookLength(segment: string): void {
+  if (segment.length > MAX_BOOK_LENGTH) throw new Error(bookTooLong);
+}
+
+function segmentBookId(segment: string): number {
+  const bookId = resolveBook(segment);
+  if (bookId === null) throw new Error(bookNotFoundMessage(segment));
+  return bookId;
+}
+
+function segmentChapter(segment: string): number {
+  const chapter = toInt(segment);
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    throw new Error(chapterOutOfRange);
+  }
+  return chapter;
+}
+
+function segmentVerse(segment: string): number {
+  const verse = toInt(segment);
+  if (verse === null || verse < 1 || verse > MAX_VERSE) throw new Error(verseOutOfRange);
+  return verse;
+}
+
+/** Same four checks, same order and same messages as in `bible_lookup`. */
+function segmentVerses(segment: string): string {
+  if (segment.length > MAX_VERSES_LENGTH) throw new Error(versesTooLong);
+  if (segment.split(",").length > MAX_VERSE_PARTS) throw new Error(versesTooManyParts);
+  const ausserhalb = [...segment.matchAll(/\d+/g)].some(([n]) => {
+    const value = parseInt(n, 10);
+    return value < 1 || value > MAX_VERSE;
+  });
+  if (ausserhalb) throw new Error(versesOutOfBounds);
+  return segment;
+}
+
+function segmentTranslation(segment: string): TranslationCode {
+  const resolved = requireTranslation(segment);
+  if ("error" in resolved) throw new Error(resolved.error);
+  return resolved.code;
+}
+
+// --- Resources — payloads ---------------------------------------------------
+// Each of the four fixed resources reports what this instance actually carries,
+// never a fixed list: an installation without the Hebrew download would
+// otherwise advertise an edition it cannot serve. Same rule the prompts follow
+// since 0.5.7.
+
+function booksPayload(): Record<string, unknown> {
+  return {
+    buecher: stmtBooks.all().map((b) => ({
+      nummer: b.book_id,
+      name: b.name,
+      kapitel: b.chapters,
+      testament: b.book_id < 40 ? "AT" : "NT",
+    })),
+    hinweis:
+      "Die Nummern sind die Zählung dieser Datenbank: 1 bis 39 Altes Testament, " +
+      "40 bis 66 Neues Testament. Als {buch} in einer URI genügt auch eine " +
+      'Abkürzung ("Röm", "1Mo"); aufgelöst wird sie wie bei den Werkzeugen.',
+  };
+}
+
+/** The loaded translations in registry order, so the output is deterministic. */
+function loadedTranslationCodes(): TranslationCode[] {
+  return (Object.keys(TRANSLATIONS) as TranslationCode[]).filter((code) =>
+    availableTranslations.has(code)
+  );
+}
+
+function translationsPayload(): Record<string, unknown> {
+  return {
+    uebersetzungen: loadedTranslationCodes().map((code) => ({
+      kuerzel: code,
+      name: TRANSLATIONS[code].name,
+      lizenz: TRANSLATIONS[code].license,
+      nennung: TRANSLATIONS[code].attribution,
+    })),
+    voreinstellung: DEFAULT_TRANSLATION,
+    hinweis:
+      "Aufgeführt ist, was diese Instanz geladen hat. Steht bei 'nennung' null, " +
+      "verlangt die Lizenz keine Namensnennung.",
+  };
+}
+
+/**
+ * OT edition first, then the NT editions in comparison order. Every entry is a
+ * literal key of EDITION_META, which is what justifies the `!` on the lookups
+ * below; a new edition has to be added to both or the assertion loses its base.
+ */
+const EDITION_ORDER: readonly string[] = ["wlc", ...NT_EDITION_ORDER];
+
+function editionsPayload(): Record<string, unknown> {
+  return {
+    editionen: EDITION_ORDER.filter((e) => availableEditions.has(e)).map((e) => {
+      const meta = EDITION_META[e]!;
+      return {
+        kuerzel: e,
+        edition: meta.label,
+        sprache: meta.sprache,
+        hinweis: meta.hinweis,
+        lizenz: meta.quelle.lizenz,
+        nennung: meta.quelle.nennung,
+      };
+    }),
+    zuordnung:
+      "Altes Testament immer 'wlc'. Fürs Neue Testament entscheidet die Angabe " +
+      "in der URI, Voreinstellung ist 'byzantine'.",
+  };
+}
+
+function sourcesPayload(): Record<string, unknown> {
+  return {
+    quellen: quellen(
+      ...loadedTranslationCodes().map(translationQuelle),
+      ...EDITION_ORDER.filter((e) => availableEditions.has(e)).map((e) => EDITION_META[e]!.quelle),
+      hasXrefs ? DATASET_QUELLEN.crossrefs : undefined,
+      hasTagnt ? DATASET_QUELLEN.tagnt : undefined,
+      hasStrongDefs ? DATASET_QUELLEN.lexikon_strongs : undefined,
+      hasStepCols ? DATASET_QUELLEN.lexikon_step : undefined
+    ),
+    hinweis:
+      "Genannt ist nur, wovon diese Instanz Daten führt. Das Feld 'nennung' ist " +
+      "eine Lizenzbedingung, keine Herkunftsnotiz: wer den Text weitergibt, gibt " +
+      "sie vollständig mit weiter, samt Adresse. Steht dort null, verlangt die " +
+      "Lizenz keine Nennung.",
+  };
+}
+
+function versesPayload(
+  uebersetzung: string,
+  buch: string,
+  kapitel: string,
+  verse: string
+): Record<string, unknown> {
+  // Same order as bible_lookup: bound the name, then chapter, then the verse
+  // list, then resolve. See requireBookLength.
+  requireBookLength(buch);
+  const chapter = segmentChapter(kapitel);
+  const versesStr = segmentVerses(verse);
+  const bookId = segmentBookId(buch);
+  const code = segmentTranslation(uebersetzung);
+
+  const payload = lookupPayload(code, bookId, chapter, versesStr, "verse_einzeln");
+  if (payload === null) {
+    throw new Error(
+      `Keine Verse für ${buch} ${chapter}${versesStr ? "," + versesStr : ""}. ` +
+        "Kapitel- und Versnummern prüfen."
+    );
+  }
+  return payload;
+}
+
+function grundtextPayload(
+  edition: string,
+  buch: string,
+  kapitel: string,
+  vers: string
+): Record<string, unknown> {
+  // Same order as bible_original, for the same reason as above.
+  requireBookLength(buch);
+  const chapter = segmentChapter(kapitel);
+  const verse = segmentVerse(vers);
+  const bookId = segmentBookId(buch);
+
+  const result = originalPayload(buch, bookId, chapter, verse, edition);
+  if ("error" in result) throw new Error(result.error);
+  return result.payload;
+}
+
+// --- Resources — read -------------------------------------------------------
+const handleReadResource = async (request: ReadResourceRequest) => {
+  const uri = request.params.uri;
+  requireData();
+
+  if (uri.length > MAX_URI_LENGTH) {
+    throw new Error(`Die URI darf höchstens ${MAX_URI_LENGTH} Zeichen lang sein.`);
+  }
+  if (!uri.startsWith(URI_SCHEME)) {
+    throw new Error(
+      `Unbekannte URI "${uri}". Die Ressourcen dieses Servers beginnen mit "${URI_SCHEME}".`
+    );
+  }
+
+  // Parsed by hand, not through `new URL()`: that would read the first segment
+  // as an authority and lower-case it, so "bible://kapitel/SCH/…" would arrive
+  // with a translation code this server does not know.
+  let segments: string[];
+  try {
+    segments = uri.slice(URI_SCHEME.length).split("/").map(decodeURIComponent);
+  } catch {
+    throw new Error(
+      `Die URI "${uri}" enthält eine unvollständige Prozentkodierung. Sonderzeichen ` +
+        'im Buchnamen als UTF-8 kodieren (z. B. "R%C3%B6mer").'
+    );
+  }
+
+  const kind = segments[0] ?? "";
+  const rest = segments.slice(1);
+  let payload: Record<string, unknown>;
+
+  if (kind === "buecher") {
+    requireSegments(rest, 0, "bible://buecher");
+    payload = booksPayload();
+  } else if (kind === "uebersetzungen") {
+    requireSegments(rest, 0, "bible://uebersetzungen");
+    payload = translationsPayload();
+  } else if (kind === "editionen") {
+    requireSegments(rest, 0, "bible://editionen");
+    payload = editionsPayload();
+  } else if (kind === "quellen") {
+    requireSegments(rest, 0, "bible://quellen");
+    payload = sourcesPayload();
+  } else if (kind === "kapitel") {
+    const p = requireSegments(rest, 3, "bible://kapitel/{uebersetzung}/{buch}/{kapitel}");
+    payload = versesPayload(p[0]!, p[1]!, p[2]!, "");
+  } else if (kind === "vers") {
+    const p = requireSegments(rest, 4, "bible://vers/{uebersetzung}/{buch}/{kapitel}/{verse}");
+    payload = versesPayload(p[0]!, p[1]!, p[2]!, p[3]!);
+  } else if (kind === "grundtext") {
+    const p = requireSegments(rest, 4, "bible://grundtext/{edition}/{buch}/{kapitel}/{vers}");
+    payload = grundtextPayload(p[0]!, p[1]!, p[2]!, p[3]!);
+  } else {
+    throw new Error(
+      `Unbekannte Ressource "${uri}". Bekannt sind ` +
+        `${RESOURCES.map((r) => r.uri).join(", ")} sowie die Vorlagen ` +
+        `${RESOURCE_TEMPLATES.map((t) => t.uriTemplate).join(", ")}.`
+    );
+  }
+
+  return {
+    contents: [
+      {
+        uri,
+        mimeType: "application/json",
+        text: JSON.stringify(payload, null, 2),
+      },
+    ],
+  };
+};
+
 // --- bible_setup — build the database from inside the server ---------------
 /**
  * Guarded by an explicit confirmation flag rather than running on first use.
@@ -2358,6 +2927,18 @@ function handleServerInfo() {
       querverweise: hasXrefs,
       volltextsuche: hasFts,
     },
+    // Bestand heißt auch: was dieser Server anbietet, nicht nur was er geladen
+    // hat. Die vier festen Ressourcen stehen in `resources/list`, die drei
+    // Vorlagen nur in `resources/templates/list`, und ob ein Client die
+    // überhaupt abruft, ist nicht belegt. Diese Auskunft ist der Kanal, der das
+    // Modell nachweislich erreicht (deshalb gibt es sie überhaupt), also stehen
+    // die Vorlagen auch hier. Aus denselben Konstanten und mit derselben Sperre
+    // wie die Listen, damit beide nicht auseinanderlaufen: eine Instanz ohne
+    // Daten meldet hier nichts, was dort nicht abrufbar wäre.
+    ressourcen: {
+      statisch: dataMissing !== null ? [] : RESOURCES.map((r) => r.uri),
+      vorlagen: dataMissing !== null ? [] : RESOURCE_TEMPLATES.map((t) => t.uriTemplate),
+    },
     ...(dataFetchedAt !== null ? { daten_stand: dataFetchedAt } : {}),
     ...(dataMissing !== null ? { hinweis: dataMissing } : {}),
   };
@@ -2482,10 +3063,7 @@ const handleCallTool = async (request: CallToolRequest) => {
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    return {
-      content: [{ type: "text" as const, text: chapterOutOfRange }],
-      isError: true,
-    };
+    return errorResult(chapterOutOfRange);
   }
 
   // Accept verses as string or single number (lenient towards MCP clients).
@@ -2531,9 +3109,10 @@ const handleCallTool = async (request: CallToolRequest) => {
     return errorResult(resolved.error);
   }
 
-  // Look up verses
-  const results = lookupVerses(resolved.code, bookId, chapter, verses);
-  if (results.length === 0) {
+  // Look up verses. Payload shared with the text resources; `text` is the shape
+  // this tool has always returned (see lookupPayload).
+  const response = lookupPayload(resolved.code, bookId, chapter, verses, "text");
+  if (response === null) {
     return {
       content: [
         {
@@ -2544,32 +3123,6 @@ const handleCallTool = async (request: CallToolRequest) => {
       isError: true,
     };
   }
-
-  // Build response
-  const bookName = getBookDisplayName(bookId);
-  const translationName = TRANSLATIONS[resolved.code].name;
-
-  // Format verse reference
-  const verseNums = results.map((r) => r.verse);
-  const verseRef = formatVerseReference(verseNums);
-  const reference = `${bookName} ${chapter},${verseRef}`;
-
-  // Format text (strip any remaining HTML tags from the database)
-  const text = results
-    .map((r) => {
-      const clean = stripHtml(r.text);
-      return results.length > 1 ? `${r.verse} ${clean}` : clean;
-    })
-    .join(" ");
-
-  const hinweise = bracketHints([text]);
-  const response = {
-    reference,
-    translation: translationName,
-    text,
-    ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
-    quellen: quellen(translationQuelle(resolved.code)),
-  };
 
   return jsonResult(response);
 };
@@ -2585,13 +3138,6 @@ function handleOriginal(args: {
   verse?: unknown;
   texttyp?: unknown;
 }) {
-  if (!stmtOriginal || availableEditions.size === 0) {
-    return errorResult(
-      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
-        "(und optional 'bun run download:sblgnt') ausführen."
-    );
-  }
-
   const { book } = args;
 
   if (!book || typeof book !== "string") {
@@ -2614,77 +3160,12 @@ function handleOriginal(args: {
     return bookNotFound(book);
   }
 
-  // Route by testament: OT (1–39) → Hebrew WLC; NT (40–66) → Greek text type.
-  const isOT = bookId < 40;
-  let edition: string;
-  let hinweisZusatz = "";
-  if (isOT) {
-    edition = "wlc";
-    const wanted = resolveEdition(args.texttyp);
-    if (args.texttyp && wanted !== "wlc") {
-      hinweisZusatz =
-        ` (Der Texttyp "${args.texttyp}" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.)`;
-    }
-  } else {
-    const wanted = resolveEdition(args.texttyp);
-    if (wanted === null || !NT_EDITIONS.has(wanted)) {
-      return errorResult(
-        `Error: Unbekannter oder fürs NT ungültiger texttyp "${args.texttyp}". ` +
-          `Erlaubt fürs NT: "byzantine" (Mehrheitstext, Standard), "sblgnt" (kritisch), "tr" (Textus Receptus).`
-      );
-    }
-    edition = wanted;
+  const result = originalPayload(book, bookId, chapter, verse, args.texttyp);
+  if ("error" in result) {
+    return errorResult(result.error);
   }
 
-  if (!availableEditions.has(edition)) {
-    return errorResult(
-      `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}. ` +
-        (edition === "wlc"
-          ? "Für das AT bitte 'bun run download:heb' ausführen."
-          : "")
-    );
-  }
-
-  const rows = stmtOriginal.all(edition, bookId, chapter, verse);
-  if (rows.length === 0) {
-    return errorResult(
-      `Keine Urtext-Daten für ${book} ${chapter},${verse} (Texttyp ${edition}).`
-    );
-  }
-
-  const meta0 = EDITION_META[edition]!;
-  const decode =
-    meta0.decoder === "hebrew" ? decodeHebrew :
-    meta0.decoder === "morphgnt" ? decodeParse :
-    decodeRobinson;
-  const woerter = rows.map((r) => {
-    // SBLGNT stores POS separately (r.pos); the other decoders fold it into the
-    // morphology string, so prepend it here for a consistent output shape.
-    const morph =
-      meta0.decoder === "morphgnt"
-        ? [posLabel(r.pos), decodeParse(r.parse)].filter(Boolean).join(" ")
-        : decode(r.parse);
-    const w: Record<string, string> = {
-      wort: r.surface,
-      grundform: r.lemma || "—",
-      morphologie: morph || "—",
-      code: r.parse,
-    };
-    if (r.strong) w.strong = (r.lang === "grc" ? "G" : "H") + r.strong;
-    return w;
-  });
-
-  const response = {
-    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
-    texttyp: edition,
-    edition: meta0.label,
-    sprache: meta0.sprache,
-    hinweis: meta0.hinweis + hinweisZusatz,
-    woerter,
-    quellen: quellen(meta0.quelle),
-  };
-
-  return jsonResult(response);
+  return jsonResult(result.payload);
 }
 
 /**
@@ -3333,7 +3814,12 @@ function createServer(): Server {
     // (beides geprüft); build-mcpb.ts liest dieselbe Datei für das Manifest.
     { name: "bibelstudium-mcp", version: PACKAGE_VERSION },
     {
-      capabilities: { tools: {}, prompts: {} },
+      // Kein `subscribe` und kein `listChanged` bei den Ressourcen: Der Bestand
+      // steht für die Lebensdauer des Prozesses fest, und Subscriptions führt
+      // Anthropics Connector-Dokumentation ausdrücklich als nicht unterstützt.
+      // Eine angekündigte Fähigkeit, die niemand bedient, ist ein Versprechen
+      // an den Client, das der Server nicht hält.
+      capabilities: { tools: {}, prompts: {}, resources: {} },
       // Version auch hier, nicht nur in serverInfo: das initialize trägt sie
       // ohnehin, aber kein Client zeigt sie an, und ein Bug-Report ohne
       // Versionsangabe kostet eine Rückfrage.
@@ -3357,6 +3843,9 @@ function createServer(): Server {
   s.setRequestHandler(ListToolsRequestSchema, handleListTools);
   s.setRequestHandler(ListPromptsRequestSchema, handleListPrompts);
   s.setRequestHandler(GetPromptRequestSchema, handleGetPrompt);
+  s.setRequestHandler(ListResourcesRequestSchema, handleListResources);
+  s.setRequestHandler(ListResourceTemplatesRequestSchema, handleListResourceTemplates);
+  s.setRequestHandler(ReadResourceRequestSchema, handleReadResource);
   s.setRequestHandler(CallToolRequestSchema, handleCallTool);
   return s;
 }

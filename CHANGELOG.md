@@ -6,6 +6,20 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.9] - 2026-08-02
+
+### Hinzugefügt
+
+- **Ressourcen als dritte MCP-Primitive.** Vier feste Einträge (`bible://buecher`, `bible://uebersetzungen`, `bible://editionen`, `bible://quellen`) und drei URI-Vorlagen für Kapitel, Verse und Grundtext. Werkzeuge und Prompts wählt das Modell, eine Ressource hängt der Nutzer selbst an.
+
+  Der Bibeltext liegt in den Vorlagen, nicht in der Liste: `resources/list` kostet 939 Zeichen, `resources/templates/list` 947, gegen 15 171 für `tools/list`. Allein die 66 Bücher aufzuzählen wären rund 13 000 Zeichen mehr, und ein ganzes Buch wäre nicht auslieferbar (größtes: 260 990 Zeichen). Grundtext deshalb je Vers, nicht je Kapitel.
+
+  Text-Ressourcen tragen `verse_einzeln` statt eines zusammengesetzten `text`: eine angehängte Ressource wird zitiert, und eingebettete Versnummern wurden nachweislich mit abgeschnitten. Beide Felder kosteten das 2,57-Fache, `verse_einzeln` allein das 1,58-Fache (Psalm 119, Luther). Jede Ressource mit Text trägt ihre `quellen`.
+
+  Ohne Datenbank sind beide Listen leer und ein Abruf wird abgewiesen, über HTTP mit anderem Wortlaut als über stdio. `bible_lookup` und `bible_original` antworten unverändert; der Golden-Test prüft jetzt 284 statt 199 Zusicherungen.
+
+- **`bible_server_info` nennt die Ressourcen und Vorlagen.** Ob ein Client `resources/templates/list` überhaupt abruft, ist nicht belegt; diese Auskunft ist der Kanal, der das Modell nachweislich erreicht. Kosten: 359 Zeichen in der Antwort, 202 in `tools/list`. Aus denselben Konstanten wie die Listen, deshalb können beide nicht auseinanderlaufen.
+
 ## [0.5.8] - 2026-08-02
 
 ### Hinzugefügt

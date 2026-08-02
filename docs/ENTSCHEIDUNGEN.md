@@ -18,6 +18,202 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-02: Ressourcen liegen in Vorlagen, weil die Liste sonst der Katalog wäre
+
+Die dritte MCP-Primitive ist die einzige, die dem **Nutzer** eine Geste gibt: ein
+Kapitel anhängen, statt darauf zu hoffen, dass ein Werkzeugaufruf zustande kommt.
+Der Fehlgriff, den das adressiert, ist gemessen (25.07.2026, „Hesekiel-Zusatz
+1,1": kein Aufruf, Antwort aus dem Gedächtnis).
+
+### Was die Liste kostet
+
+`resources/list` geht bei jedem Sitzungsbeginn über die Leitung, und diese
+Datenbank führt 31 102 Verse in 1190 Kapiteln. Gemessen gegen einen frischen
+`bun run server.ts`, Zeichenzahl des `result`-Objekts:
+
+| Methode | vorher | jetzt |
+|---|---|---|
+| `tools/list` | 14 969 | 15 171 |
+| `prompts/list` | 972 | 972 |
+| `resources/list` | 44 (Fehler −32601) | 939 (vier Einträge) |
+| `resources/templates/list` | 44 (Fehler −32601) | 947 (drei Vorlagen) |
+
+`tools/list` wächst um 202 Zeichen, weil `bible_server_info` ein Feld mehr
+deklariert (siehe unten).
+
+Verworfen wurde ein Eintrag je Buch, damit ein Client ohne Vorlagen-Anzeige
+etwas sieht: 66 Einträge wären rund 13 000 Zeichen, fast eine Verdopplung
+gegenüber `tools/list`. Und die Buch-Ressource wäre gar nicht auslieferbar, das
+größte Buch misst **260 990 Zeichen** (Menge, Jeremia; zum Vergleich Elberfelder
+Psalter 258 059). Ebenso verworfen: eine handverlesene Auswahl „häufig
+gebrauchter" Kapitel. Welche das wären, ist eine editorische Wertung, und dieser
+Server trifft keine Auswahl im Text.
+
+### Größengrenzen, und wo sie herkommen
+
+Anthropics Connector-Dokumentation nennt zwei Grenzen, beide laut Überschrift
+für **Tool-Ergebnisse**: ~150 000 Zeichen für claude.ai und Desktop, 25 000
+Token für Claude Code (`MAX_MCP_OUTPUT_TOKENS`). Sie auf Ressourcen anzuwenden
+ist ein **Analogieschluss**, kein Beleg: eine Ressourcen-Grenze ist nirgends
+dokumentiert. Maßgeblich ist die strengere Zahl, und sie betrifft ausgerechnet
+den einzigen Client, für den die Ressourcen-Nutzung dokumentiert ist. 25 000
+Token sind für deutschen Text überschlägig 75 000 Zeichen (rund 3 Zeichen je
+Token, **geschätzt, nicht gemessen**).
+
+Daran gemessen: Die größte Kapitel-Ressource ist Elberfelder Psalm 119. Die
+Nutzlast misst 23 899 Zeichen, das vollständige `result` 25 789; die zweite Zahl
+ist die belastbare, denn sie ist es, die über die Leitung geht. Überschlägig
+8600 Token. Der Grundtext steht deshalb je Vers und
+nicht je Kapitel: Die Grenzkosten von `bible_original` betragen **161 Zeichen je
+Wort** (Offb 20,1 byzantinisch, 19 Wörter: 3977 Zeichen; Offb 20,4, 59 Wörter:
+10 434; fester Anteil 910), und das größte Grundtext-Kapitel hat 1285 Wörter
+(`tr`, Joh 6), also rund 208 000 Zeichen. Der größte Vers hat 59 Wörter.
+
+### `verse_einzeln` statt `text`, und warum das Werkzeug es nicht bekommt
+
+Eine angehängte Ressource wird zitiert, ein Werkzeugergebnis gelesen.
+`bible_lookup` setzt bei mehreren Versen die Nummer in den Fließtext („16 Also
+hat Gott die Welt geliebt, …"), und genau diese Form wurde bei `bible_crossrefs`
+an beiden Enden abgeschnitten (25.07.2026, Joh 11,25-26). Gerechnet an Psalm
+119, Luther, 176 Verse:
+
+| Fassung | Zeichen | Faktor |
+|---|---|---|
+| nur `text` | 13 562 | 1,00 |
+| `text` und `verse_einzeln` | 34 876 | 2,57 |
+| nur `verse_einzeln` | 21 494 | 1,58 |
+
+Beide Felder zu führen kostet mehr als das Doppelte, also ersetzt
+`verse_einzeln` den zusammengesetzten Text, statt ihn zu ergänzen. Im Werkzeug
+zählte derselbe Aufschlag zweimal, weil die Nutzlast seit 0.5.8 zusätzlich als
+`structuredContent` mitfährt (Psalm 119 heute 27 177 Zeichen im ganzen
+`result`); deshalb bleibt `bible_lookup` unverändert. Das ist entschieden, nicht
+übersehen.
+
+### Was Clients davon anbieten
+
+Belegt: Anthropics Connector-Dokumentation führt unter „Protocol features →
+Supported" Tools, Prompts **und** Resources sowie „Text and binary resources";
+unter „Not yet supported" stehen Resource-Subscriptions und Sampling. Deshalb
+deklariert `createServer()` `resources: {}` ohne `subscribe` und ohne
+`listChanged`. Claude Code dokumentiert die Benutzung: Ressourcen erscheinen in
+der `@`-Vervollständigung neben Dateien, referenziert als
+`@server:protocol://resource/path`.
+
+**Nicht belegt:** wie Claude Desktop und claude.ai Ressourcen in der Oberfläche
+anbieten, und ob irgendein Client `resources/templates/list` anzeigt.
+
+Daraus folgt ein Feld, kein Verzicht: `bible_server_info` nennt jetzt die vier
+URIs und die drei Vorlagen. Die vier festen Einträge stehen in `resources/list`
+und werden von einem Client mit Ressourcen-Anzeige gefunden; die Vorlagen, in
+denen die eigentliche Geste steckt, stehen nur in einer Methode, die seine
+Oberfläche womöglich nie abruft. `bible_server_info` ist der eine Kanal, der das
+Modell nachweislich erreicht, und genau dafür wurde es gebaut, weil
+`instructions` aus dem Handshake es nicht tut (26.07.2026). Gekostet hat das
+359 Zeichen in der Antwort, 673 im vollständigen `result` und 202 in
+`tools/list`. Gespeist wird das Feld aus denselben Konstanten und mit derselben
+Datenbank-Sperre wie die beiden Listen, damit eine Instanz ohne Daten hier
+nichts nennt, was dort nicht abrufbar ist; zwei Zusicherungen halten die
+Gleichheit fest. Das ist nicht die Gegenrichtung zur verworfenen Ressource
+`bible://server`: Dort ging es darum, die Fassung als Ressource auszuliefern,
+hier darum, die Ressourcen in der Auskunft zu nennen.
+
+Der Hilfeartikel zu lokalen MCP-Servern nennt nur Werkzeuge und Connectors. Das
+MCPB-Manifest bleibt deshalb ohne Hinweis auf die Anhänge-Geste; sein Text steht
+im Installationsdialog von Claude Desktop und darf dort nichts versprechen, was
+dieser Client womöglich nicht kann. Ein `resources`-Array kennt das
+MCPB-Schema ohnehin nicht („Resources are not included in the manifest because
+MCP resources are inherently dynamic").
+
+### Vier Zustände geprüft
+
+Neu formulierte Fehlermeldungen beginnen mit der Aussage, nicht mit „Error:",
+wie es die Hausregel verlangt; ein Client der 1.x-Reihe stellt einem
+JSON-RPC-Fehler ohnehin sein eigenes `MCP error <code>: ` voran
+(`types.js:2031`), das Wort stünde also doppelt. Die von den Werkzeugen
+geerbten Meldungen behalten ihr Präfix: dort dieselbe Zeichenkette zu liefern
+wiegt schwerer als der Hausstil. Und die Prüfreihenfolge folgt der des
+Werkzeugs (Namenslänge, Kapitel, Versliste, dann Auflösung), sonst gilt die
+Zusicherung „dieselbe Meldung" nur für einzeln verletzte Bedingungen.
+
+Gemessen gegen frische Prozesse: stdio mit Datenbank (alle Vorlagen lesbar),
+stdio ohne (beide Listen leer, der Abruf wirft und nennt `bible_setup`), HTTP mit
+Datenbank (dasselbe Ergebnis über den Endpunkt), HTTP ohne (Listen leer, der
+Abruf wirft und sagt „nur serverseitig zu beheben", ohne ein Werkzeug zu nennen,
+das dort nicht existiert). `/health` meldet in beiden Fällen ohne Datenbank 503.
+
+---
+
+## 2026-08-02: Zwei Prüfarten für die Schemata, weil keine allein reicht
+
+Seit 0.5.8 ist eine Erfolgsantwort ohne `structuredContent` kein unvollständiges
+Ergebnis mehr, sondern ein harter Fehler beim Client. Der Golden-Test deckt die
+Fälle in seiner `CALLS`-Liste ab; dazwischen liegt jeder selten genommene
+Rückgabepfad. `tests/schema-coverage.ts` (`bun run test:schemas`) prüft deshalb
+in die Breite: 420 Aufrufe, deterministisch gezogen (jeder 700. Luther-Vers
+durch alle Werkzeuge, alle vier Übersetzungen, alle drei NT-Editionen, dazu die
+neun NT-Verse ohne TAGNT-Zeile), jede Antwort gegen das `outputSchema` aus
+`tools/list`.
+
+Erster Lauf am 02.08.2026: 416 gültig, **0** Schemafehler, **0** Erfolgsantworten
+ohne `structuredContent`, **0** Abweichungen zwischen Textblock und Struktur.
+`required` ist damit auch dort nicht zu streng, wo es teuer wäre: Joh 7,53 steht
+im Mehrheitstext, hat aber keine TAGNT-Zeile und liefert korrekt eine Antwort
+ohne `bezeugung`.
+
+Der eigentliche Befund ist aber die Arbeitsteilung. Die Breite fand keinen
+einzigen Klammerhinweis von `bible_lookup`, und konnte es nicht: Klammern gibt es
+in 137 von 31 166 Menge-Versen. Ein Zufallslauf findet falsche Typen und
+vergessene Pfade, die benannte Liste findet das seltene Feld. Deshalb läuft der
+Breitentest **nicht** bei jedem Commit (rund eine Minute, braucht die Datenbank),
+sondern nach Änderungen an einem Schema oder einer Nutzlast, und die Ausgabe
+nennt je Werkzeug die gesehenen Felder: Was dort fehlt, braucht einen benannten
+Fall im Golden-Test.
+
+Beide teilen sich den Prüfer in `tests/schema-validator.ts`. Er kann nur die
+Teilmenge von JSON Schema, die hier vorkommt, und das ist Absicht: alles darüber
+wäre ungeprüfter Code, der geprüften Code bewacht. `ajv` läge als transitive
+SDK-Abhängigkeit bereit und wäre als devDependency vertretbar (die Laufzeit
+bliebe bei einer Abhängigkeit), nur zu 95 Prozent ungenutzt. Dass der Prüfer
+nicht alles durchwinkt, ist die eine Aussage, die er über sich selbst nicht
+treffen kann; sie steht als fünf bekannt kaputte Antworten in `test-golden.ts`.
+
+---
+
+## 2026-08-02: Was am laufenden 0.5.8 ankommt, gemessen an drei alten Fehlgriffen
+
+Erster Durchgang gegen den öffentlichen Endpunkt, nachdem die Schemata live
+waren. Drei Fragen, ausgewählt nach Fällen, die vorher nachweislich schiefgingen.
+
+**Was ankommt.** Die Nutzlast erreicht das Modell **einmal**, nicht zweimal: Der
+Client zeigt die Struktur und verwirft den Textblock (kompaktes JSON statt der
+eingerückten Fassung, die der Server als Text baut). Der Aufschlag von 63 bis 80
+Prozent bleibt damit auf der Leitung und belastet das Kontextfenster nicht. Zwei
+Clients, ein Durchgang je Frage.
+
+**Was richtig war.** Die Zahlentrennung (`treffer` 20 gegen `vorkommen_gesamt`
+22) samt einer abgeleiteten Zusatzangabe, die stimmte (Joh 10,12 trägt
+tatsächlich drei Vorkommen). Der Quellenkonflikt zu Mk 14,46 wurde wiedergegeben,
+einschließlich des Satzes, dass der Editionstext maßgeblich ist; genau der fehlte
+am 25.07.2026. Die zehn Querverweise zu Joh 11,25 kamen mit korrekten
+Stimmenzahlen und die drei mehrversigen Ziele vollständig aus `verse_einzeln`,
+ohne eingebettete Versnummern.
+
+**Was nicht belegt ist.** Dass die Schemata das bewirkt haben. Es gibt keinen
+Vergleichslauf gegen 0.5.7, und n = 1 je Frage. Belegt ist nur: nichts wurde
+schlechter, die kritischen Felder werden benutzt, die Doppelung kostet keinen
+Kontext.
+
+**Was übrig blieb, und wohin es ging.** Zwei Abweichungen, beide clientseitig und
+deshalb als Regeln in `docs/anweisungen/claude-desktop.txt`: Die `nennung` wurde
+auf „OpenBible.info" gekürzt, ohne die Adresse, die bei CC BY zur Bedingung
+gehört. Und die Variante ἐπέβαλον/ἐπέβαλαν bekam mit „alternative Aorist-Endung"
+eine grammatische Benennung, die in keinem Feld steht. Sie trifft hier zu, ist
+aber dasselbe Muster wie das falsche „bewegliche Ny" vom 25.07.2026: eine
+Erscheinung benennen, die die Daten nicht nennen.
+
+---
+
 ## 2026-08-02: Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist
 
 Die sieben Lesewerkzeuge deklarieren seit 0.5.8 ein `outputSchema` und liefern

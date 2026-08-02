@@ -202,7 +202,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
-| `bible_server_info` | Fassung dieses Servers und welche Bibeldaten er geladen hat. Liefert keinen Bibeltext |
+| `bible_server_info` | Fassung dieses Servers, welche Bibeldaten er geladen hat und welche Ressourcen er anbietet. Liefert keinen Bibeltext |
 | `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur** über stdio und nur, solange die Datenbank fehlt; lädt erst nach ausdrücklicher Bestätigung |
 
 ## Prompts
@@ -212,6 +212,27 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 | `word-study` | `word` (Pflicht), `reference` | Grundtext-Wort → Konkordanz → Schlüsselstellen → Bedeutungsspektrum |
 | `variant-check` | `reference` (Pflicht) | Editions-Diff → Bezeugung → Lesarten je Edition → nüchterne Einordnung |
 | `translation-compare` | `reference` (Pflicht) | Alle geladenen Übersetzungen nebeneinander, gegen den Grundtext geprüft |
+
+## Ressourcen
+
+Werkzeuge und Prompts wählt das Modell, eine Ressource hängt der Nutzer selbst an. Vier feste Einträge beschreiben den Bestand:
+
+| URI | Inhalt |
+|-----|--------|
+| `bible://buecher` | Die 66 Bücher mit Nummer, Name, Kapitelzahl, Testament |
+| `bible://uebersetzungen` | Geladene Übersetzungen mit Lizenz und geforderter Namensnennung |
+| `bible://editionen` | Geladene Grundtext-Editionen mit Sprache, Eigenheiten der Schreibung, Lizenz |
+| `bible://quellen` | Alle Quellen, aus denen diese Instanz tatsächlich Daten führt |
+
+Der Bibeltext selbst kommt über URI-Vorlagen. Sonderzeichen im Buchnamen werden prozentkodiert (`R%C3%B6mer`), Abkürzungen sind erlaubt:
+
+| Vorlage | Inhalt | Beispiel |
+|---------|--------|----------|
+| `bible://kapitel/{uebersetzung}/{buch}/{kapitel}` | Ganzes Kapitel, Vers für Vers | `bible://kapitel/LUT/Psalter/23` |
+| `bible://vers/{uebersetzung}/{buch}/{kapitel}/{verse}` | Einzelvers, Bereich oder Liste | `bible://vers/SCH/Johannes/3/16-17` |
+| `bible://grundtext/{edition}/{buch}/{kapitel}/{vers}` | Ein Vers Wort für Wort | `bible://grundtext/wlc/1%20Mose/1/1` |
+
+Jede Ressource, die Text ausliefert, trägt ihre `quellen` mit, genau wie eine Werkzeugantwort. Ohne aufgebaute Datenbank sind beide Listen leer und ein Abruf wird abgewiesen.
 
 ## Übersetzungen
 
@@ -241,7 +262,7 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Datei | Aufgabe |
 |-------|---------|
-| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, drei Morphologie-Dekoder, Editions-/Testament-Routing |
+| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, vier Ressourcen und drei URI-Vorlagen, drei Morphologie-Dekoder, Editions-/Testament-Routing |
 | `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
 | `db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
 | `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
@@ -267,6 +288,10 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 **Warum sind alle Werkzeuge als `readOnlyHint` markiert?** Jedes der sieben liest ausschließlich aus der lokalen SQLite-Datei, die read-only geöffnet wird: kein Schreibzugriff, keine Seiteneffekte, kein Netzwerk. Ohne Angabe würde die Spezifikation das Gegenteil annehmen (`readOnlyHint: false`, `openWorldHint: true`). `destructiveHint` und `idempotentHint` fehlen bewusst: Sie sind laut Schema nur bedeutsam, wenn ein Werkzeug schreibt.
 
 **Warum steht die Antwort zweimal drin?** Die sieben Lesewerkzeuge deklarieren ein `outputSchema` und liefern ihr Ergebnis zusätzlich als `structuredContent` (MCP-Revision 2025-06-18). Der Textblock bleibt dabei unverändert: Ein Client, der die Neuerung nicht kennt, sieht genau dasselbe wie vorher. Das kostet je Antwort 63 bis 80 Prozent mehr Zeichen, und dafür ist ein Feld wie `vorkommen_gesamt` oder `warnung` maschinell auffindbar, statt nur lesbar. Fehlerantworten bleiben reiner Text, sie tragen kein `structuredContent`.
+
+**Warum stehen bei den Ressourcen Vorlagen statt einer Liste?** Diese Datenbank führt 31 102 Verse in 1190 Kapiteln. Sie aufzuzählen hieße, bei jedem Sitzungsbeginn einen Katalog über die Leitung zu schicken; schon die 66 Bücher wären rund 13 000 zusätzliche Zeichen neben den 15 171 von `tools/list`. So kostet `resources/list` 939 Zeichen und `resources/templates/list` 947. Weil nicht belegt ist, ob ein Client die Vorlagen überhaupt anzeigt, nennt `bible_server_info` sie zusätzlich. Ein ganzes Buch gibt es aus demselben Grund nicht: Das größte misst 260 990 Zeichen (Menge, Jeremia) und läge jenseits dessen, was ein Client als Ergebnis annimmt. Aus derselben Rechnung steht der Grundtext je Vers und nicht je Kapitel: Das größte Kapitel hat 1285 Wörter, bei 161 Zeichen Grenzkosten je Wort wären das rund 208 000 Zeichen.
+
+**Warum trägt eine Text-Ressource `verse_einzeln` statt `text`?** Weil sie angehängt und daraus zitiert wird. Ein zusammengesetzter String mit eingebetteten Versnummern ist genau die Form, die bei `bible_crossrefs` gemessen an beiden Enden abgeschnitten wurde. Beides zu führen kostete das 2,57-Fache (Psalm 119, Luther: 13 562 → 34 876 Zeichen), `verse_einzeln` allein das 1,58-Fache. `bible_lookup` behält den zusammengesetzten Text: Dort zählte der Aufschlag doppelt, weil die Nutzlast zusätzlich als `structuredContent` mitfährt.
 
 **Warum englische Tool-Namen bei deutscher Ausgabe?** MCP-Tool-Namen sind Entwickler-Oberfläche (englische Konvention); der Inhalt, den ein Mensch liest, ist deutsch, weil der ausgelieferte Bibeltext deutsch ist.
 

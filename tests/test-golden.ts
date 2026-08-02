@@ -15,6 +15,10 @@
  */
 import { resolve, dirname } from "node:path";
 import packageJson from "../package.json";
+// Shared with `schema-coverage.ts`, which validates breadth where this file
+// validates named cases. The assertions below are what keeps the validator
+// honest, for both callers.
+import { isRecord, schemaErrors } from "./schema-validator.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
@@ -37,13 +41,33 @@ type ToolResult = {
  * its message, `text` the rendered prompt of a successful call.
  */
 type PromptResult = { text: string; error: string };
+/**
+ * A `resources/read` answer. Like prompts, resources have no `isError` channel;
+ * `json` is the single `contents` entry parsed, `error` the JSON-RPC message of
+ * a refused read.
+ */
+type ResourceResult = {
+  uri: string;
+  mimeType: string;
+  text: string;
+  json: Json | null;
+  error: string;
+};
 
 // --- minimal stdio MCP client ----------------------------------------------
 
 async function callTools(
   calls: ReadonlyArray<readonly [string, Json]>,
-  prompts: ReadonlyArray<readonly [string, Json]> = []
-): Promise<{ tools: Json[]; results: ToolResult[]; promptResults: PromptResult[] }> {
+  prompts: ReadonlyArray<readonly [string, Json]> = [],
+  resources: ReadonlyArray<string> = []
+): Promise<{
+  tools: Json[];
+  results: ToolResult[];
+  promptResults: PromptResult[];
+  resourceResults: ResourceResult[];
+  resourceList: Json[];
+  templateList: Json[];
+}> {
   const proc = Bun.spawn(["bun", "run", SERVER], {
     stdin: "pipe",
     stdout: "pipe",
@@ -75,9 +99,22 @@ async function callTools(
       params: { name, arguments: args },
     })
   );
+  // Ids are positional and must stay disjoint: 1 is tools/list, then the tool
+  // calls, then the prompts, then the resource reads, and the two resource
+  // listings last.
+  const resBase = 2 + calls.length + prompts.length;
+  resources.forEach((uri, i) =>
+    send({ jsonrpc: "2.0", id: resBase + i, method: "resources/read", params: { uri } })
+  );
+  send({ jsonrpc: "2.0", id: resBase + resources.length, method: "resources/list" });
+  send({
+    jsonrpc: "2.0",
+    id: resBase + resources.length + 1,
+    method: "resources/templates/list",
+  });
   await w.flush();
 
-  const expected = calls.length + prompts.length + 1;
+  const expected = calls.length + prompts.length + resources.length + 3;
   const seen = new Map<number, Json>();
   const dec = new TextDecoder();
   const reader = proc.stdout.getReader();
@@ -140,91 +177,43 @@ async function callTools(
     };
   });
 
-  return { tools: listed.result?.tools ?? [], results, promptResults };
-}
-
-// --- minimal JSON Schema validator ------------------------------------------
-
-function isRecord(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** `typeof` is not enough: null, arrays and integers each need their own case. */
-function matchesType(type: string, value: unknown): boolean {
-  switch (type) {
-    case "object": return isRecord(value);
-    case "array": return Array.isArray(value);
-    case "string": return typeof value === "string";
-    case "integer": return typeof value === "number" && Number.isInteger(value);
-    case "number": return typeof value === "number";
-    case "boolean": return typeof value === "boolean";
-    case "null": return value === null;
-    // An unknown keyword must fail rather than pass: silently accepting it would
-    // turn a typo in a schema into a permanently green test.
-    default: return false;
-  }
-}
-
-function describe(value: unknown): string {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  return typeof value;
-}
-
-/**
- * Checks a value against the subset of JSON Schema the output schemas use:
- * `type` (single or a union list like ["string","null"]), `properties`,
- * `required`, `items`, and `additionalProperties` as a schema.
- *
- * Deliberately not a general implementation. Everything beyond that subset would
- * be untested code guarding tested code; ajv as a devDependency would be fine
- * too (the runtime stays at one dependency either way), it would just be 95 %
- * unused here.
- *
- * Returns the violations, empty when valid. Checked below against known-broken
- * payloads: a validator that accepts everything is indistinguishable from a
- * passing test.
- */
-function schemaErrors(schema: Json, value: unknown, path = ""): string[] {
-  const out: string[] = [];
-  const where = path === "" ? "<root>" : path;
-  const types =
-    schema.type === undefined
-      ? []
-      : Array.isArray(schema.type)
-        ? (schema.type as string[])
-        : [String(schema.type)];
-
-  if (types.length > 0 && !types.some((t) => matchesType(t, value))) {
-    // Stop here: with the wrong type every nested message would be noise about
-    // the same single defect.
-    return [`${where}: erwartet ${types.join("|")}, war ${describe(value)}`];
-  }
-
-  if (isRecord(value)) {
-    for (const key of (schema.required as string[] | undefined) ?? []) {
-      if (!(key in value)) out.push(`${where}: Pflichtfeld '${key}' fehlt`);
+  const resourceResults = resources.map((_, i) => {
+    const m = seen.get(resBase + i) as {
+      result?: { contents?: Array<{ uri?: string; mimeType?: string; text?: string }> };
+      error?: { message?: string };
+    };
+    const entry = m.result?.contents?.[0];
+    const text = entry?.text ?? "";
+    let json: Json | null = null;
+    try {
+      json = JSON.parse(text) as Json;
+    } catch {
+      json = null;
     }
-    const props = isRecord(schema.properties) ? schema.properties : {};
-    for (const [key, sub] of Object.entries(props)) {
-      if (key in value && isRecord(sub)) out.push(...schemaErrors(sub, value[key], `${path}/${key}`));
-    }
-    // Only meaningful as a schema (the dynamic-key maps such as `in_dieser_db`);
-    // `additionalProperties: false` is not used anywhere and stays unsupported.
-    if (isRecord(schema.additionalProperties)) {
-      for (const [key, sub] of Object.entries(value)) {
-        if (!(key in props)) {
-          out.push(...schemaErrors(schema.additionalProperties, sub, `${path}/${key}`));
-        }
-      }
-    }
-  }
+    return {
+      uri: entry?.uri ?? "",
+      mimeType: entry?.mimeType ?? "",
+      text,
+      json,
+      error: m.error?.message ?? "",
+    };
+  });
 
-  if (Array.isArray(value) && isRecord(schema.items)) {
-    value.forEach((item, i) => out.push(...schemaErrors(schema.items as Json, item, `${path}/${i}`)));
-  }
+  const listedResources = seen.get(resBase + resources.length) as {
+    result?: { resources?: Json[] };
+  };
+  const listedTemplates = seen.get(resBase + resources.length + 1) as {
+    result?: { resourceTemplates?: Json[] };
+  };
 
-  return out;
+  return {
+    tools: listed.result?.tools ?? [],
+    results,
+    promptResults,
+    resourceResults,
+    resourceList: listedResources.result?.resources ?? [],
+    templateList: listedTemplates.result?.resourceTemplates ?? [],
+  };
 }
 
 // --- assertions -------------------------------------------------------------
@@ -332,9 +321,61 @@ const PROMPT_CALLS = [
   ["translation-compare", { reference: "Römer 8,1" }],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
-const { tools, results, promptResults } = await callTools(CALLS, PROMPT_CALLS);
+// Resources are read over the same fresh server. Positive cases first, then one
+// per way a URI can be wrong; the negative ones must carry the same message the
+// matching tool argument would produce, or the two wordings start to drift.
+const RESOURCE_CALLS = [
+  "bible://buecher",
+  "bible://uebersetzungen",
+  "bible://editionen",
+  "bible://quellen",
+  "bible://kapitel/LUT/Psalter/23",
+  "bible://vers/SCH/Johannes/3/16-17",
+  "bible://vers/LUT/Joh/3/16",
+  "bible://kapitel/LUT/1.%20Mose/1",
+  "bible://kapitel/LUT/R%C3%B6mer/8",
+  "bible://grundtext/wlc/1%20Mose/1/1",
+  "bible://grundtext/byzantine/Johannes/3/16",
+  // negatives
+  "spike://etwas",
+  "bible://unbekannt",
+  "bible://kapitel/LUT/Psalter",
+  "bible://kapitel/LUT/Hesekiel-Zusatz/1",
+  "bible://kapitel/LUT/Psalter/999",
+  `bible://vers/LUT/Psalter/119/${VERSES_TOO_MANY}`,
+  "bible://kapitel/XYZ/Psalter/23",
+  "bible://grundtext/wlc/Johannes/3/16",
+  // Two conditions violated at once: the message must name the one the tool
+  // names, or "same wording" holds only for single errors.
+  "bible://kapitel/LUT/Hesekiel-Zusatz/999",
+] as const satisfies ReadonlyArray<string>;
+
+const { tools, results, promptResults, resourceResults, resourceList, templateList } =
+  await callTools(CALLS, PROMPT_CALLS, RESOURCE_CALLS);
 const [wordStudy, wordStudyNoArg, variantCheck, variantTooLong, translationCompare] =
   promptResults as PromptResult[] & { length: 5 };
+const [
+  resBuecher,
+  resUebersetzungen,
+  resEditionen,
+  resQuellen,
+  resKapitel,
+  resVersBereich,
+  resVersEinzeln,
+  resKapitelPunkt,
+  resKapitelUmlaut,
+  resGrundtextAt,
+  resGrundtextNt,
+  resFremdesSchema,
+  resUnbekannt,
+  resZuWenigSegmente,
+  resBuchFehlt,
+  resKapitelGrenze,
+  resVerslisteZuLang,
+  resUebersetzungUnbekannt,
+  resEditionFalschesTestament,
+  resZweiVerletzt,
+] = resourceResults as ResourceResult[] & { length: 20 };
 const [
   origVerse999,
   origChap999,
@@ -704,6 +745,197 @@ console.log("Prompts");
     variantCheck!.text.includes("'quellenkonflikte'"),
     extras.editionsbezeugung === true
   );
+}
+
+console.log("Ressourcen");
+{
+  const info = serverInfo!.json ?? {};
+  const codes = (info.uebersetzungen as Array<{ code: string }>).map((t) => t.code);
+  const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
+
+  // The catalogue is the whole point of the design: templates carry the
+  // parameterised space so the list does not become a catalogue of 31 102
+  // verses. If either count changes, the cost of every session start changes.
+  eq("vier statische Ressourcen gelistet", resourceList.length, 4);
+  eq("drei Vorlagen gelistet", templateList.length, 3);
+  for (const r of resourceList) {
+    check(`${String(r.uri)}: Name gesetzt`, typeof r.name === "string" && r.name !== "");
+    check(
+      `${String(r.uri)}: Beschreibung gesetzt`,
+      typeof r.description === "string" && r.description !== ""
+    );
+    eq(`${String(r.uri)}: mimeType`, r.mimeType, "application/json");
+    check(`${String(r.uri)}: URI im Schema`, String(r.uri).startsWith("bible://"));
+  }
+  for (const t of templateList) {
+    const tpl = String(t.uriTemplate);
+    check(`${tpl}: enthält eine Variable`, /\{[a-z]+\}/.test(tpl));
+    check(
+      `${tpl}: Beschreibung gesetzt`,
+      typeof t.description === "string" && t.description !== ""
+    );
+    eq(`${tpl}: mimeType`, t.mimeType, "application/json");
+  }
+
+  // Round trip: everything the list advertises must actually be readable, and
+  // the answer must carry back the URI that was asked for.
+  const gelistet = [resBuecher, resUebersetzungen, resEditionen, resQuellen];
+  resourceList.forEach((r, i) => {
+    const gelesen = gelistet[i];
+    eq(`${String(r.uri)}: lesbar`, gelesen?.error, "");
+    eq(`${String(r.uri)}: URI zurückgegeben`, gelesen?.uri, r.uri);
+    eq(`${String(r.uri)}: mimeType der Antwort`, gelesen?.mimeType, "application/json");
+    check(`${String(r.uri)}: Inhalt ist JSON`, gelesen?.json !== null);
+  });
+
+  eq("bible://buecher: 66 Bücher", (resBuecher!.json?.buecher as Json[]).length, 66);
+  const buecher = resBuecher!.json?.buecher as Array<{ nummer: number; testament: string }>;
+  eq("bible://buecher: Buch 39 ist AT", buecher.find((b) => b.nummer === 39)?.testament, "AT");
+  eq("bible://buecher: Buch 40 ist NT", buecher.find((b) => b.nummer === 40)?.testament, "NT");
+
+  // Derived from the inventory, never a fixed list: an instance missing a
+  // download must not advertise what it cannot serve.
+  const gelisteteCodes = (
+    resUebersetzungen!.json?.uebersetzungen as Array<{ kuerzel: string }>
+  ).map((u) => u.kuerzel);
+  eq(
+    "bible://uebersetzungen nennt genau die geladenen",
+    [...gelisteteCodes].sort().join(","),
+    [...codes].sort().join(",")
+  );
+  const gelisteteEditionen = (
+    resEditionen!.json?.editionen as Array<{ kuerzel: string }>
+  ).map((e) => e.kuerzel);
+  eq(
+    "bible://editionen nennt genau die geladenen",
+    [...gelisteteEditionen].sort().join(","),
+    [...editions].sort().join(",")
+  );
+
+  // Attribution rides on the answer, so it has to be right per resource: a
+  // claimed attribution that does not apply is the same error as a missing one.
+  const quellenVonVers = resVersBereich!.json?.quellen as Array<{ nennung: string | null }>;
+  eq("Schlachter-Vers: genau eine Quelle", quellenVonVers.length, 1);
+  has("Schlachter-Vers: Nennung mit Adresse", quellenVonVers[0]?.nennung ?? "", "ebible.org");
+  const quellenVonLut = resVersEinzeln!.json?.quellen as Array<{ nennung: string | null }>;
+  eq("Luther-Vers: Nennung ist null", quellenVonLut[0]?.nennung, null);
+  const alleQuellen = resQuellen!.json?.quellen as Array<{ werk: string }>;
+  const werke = alleQuellen.map((q) => q.werk).join(" | ");
+  const namen = (info.uebersetzungen as Array<{ name: string }>).map((t) => t.name);
+  for (const name of namen) {
+    has(`bible://quellen nennt die Übersetzung ${name}`, werke, name);
+  }
+  // An edition that is not loaded must not appear: a claimed attribution that
+  // does not apply is the same error as an omitted one.
+  eq(
+    "bible://quellen nennt SBLGNT genau dann, wenn geladen",
+    werke.includes("SBL Greek New Testament"),
+    editions.includes("sblgnt")
+  );
+
+  // The composite string is what got cut at both ends in bible_crossrefs, so a
+  // resource carries the verses one by one and no concatenated `text`.
+  const verse = resKapitel!.json?.verse_einzeln as Array<{ verse: number; text: string }>;
+  eq("Psalm 23: sechs Verse", verse.length, 6);
+  eq("Psalm 23: erster Vers ist 1", verse[0]?.verse, 1);
+  check("Kapitel-Ressource ohne zusammengesetztes 'text'", !("text" in (resKapitel!.json ?? {})));
+  eq(
+    "Versbereich: zwei Verse",
+    (resVersBereich!.json?.verse_einzeln as Json[]).length,
+    2
+  );
+  eq(
+    "Einzelvers: ein Vers",
+    (resVersEinzeln!.json?.verse_einzeln as Json[]).length,
+    1
+  );
+
+  // Percent-encoded and abbreviated book names resolve through the same helper
+  // the tools use — a second resolution path is exactly what must not exist.
+  has("Buchname mit Punkt und %20", String(resKapitelPunkt!.json?.reference), "1 Mose 1,");
+  has("Buchname mit Umlaut", String(resKapitelUmlaut!.json?.reference), "Römer 8,");
+
+  // Original text routes by testament, same as the tool.
+  eq("Grundtext AT: Edition wlc", resGrundtextAt!.json?.texttyp, "wlc");
+  eq("Grundtext NT: Edition byzantine", resGrundtextNt!.json?.texttyp, "byzantine");
+  check(
+    "Grundtext liefert Wörter",
+    (resGrundtextAt!.json?.woerter as Json[]).length > 0
+  );
+
+  // Negatives. Each names the condition that is violated, and the two bounds
+  // shared with the tools must be reported in exactly the same words.
+  has("fremdes Schema abgewiesen", resFremdesSchema!.error, 'beginnen mit "bible://"');
+  has("unbekannte Ressource nennt die bekannten", resUnbekannt!.error, "bible://buecher");
+  has(
+    "fehlendes Segment nennt die erwartete Form",
+    resZuWenigSegmente!.error,
+    "bible://kapitel/{uebersetzung}/{buch}/{kapitel}"
+  );
+  has("unbekanntes Buch nennt das nächstliegende", resBuchFehlt!.error, '"Hesekiel"');
+  has(
+    "Kapitelgrenze zeichengleich mit dem Werkzeug",
+    resKapitelGrenze!.error,
+    "Error: 'chapter' must be an integer between 1 and 150"
+  );
+  has(
+    "Versliste zeichengleich mit dem Werkzeug",
+    resVerslisteZuLang!.error,
+    "Error: 'verses' must list at most 30 comma-separated segments"
+  );
+  has(
+    "unbekannte Übersetzung nennt die erlaubten",
+    resUebersetzungUnbekannt!.error,
+    'Unknown translation "XYZ"'
+  );
+  has(
+    "AT-Edition am NT-Buch abgewiesen",
+    resEditionFalschesTestament!.error,
+    "fürs NT ungültiger texttyp"
+  );
+  // Bad book and bad chapter together: the tool reports the chapter, so the
+  // resource must too. Compared against the tool's own answer, not a literal.
+  has(
+    "zwei verletzte Bedingungen: dieselbe wie beim Werkzeug",
+    resZweiVerletzt!.error,
+    lookupChap999!.text
+  );
+  // Newly worded messages open with the statement; a client prefixes its own
+  // "MCP error <code>: " anyway.
+  for (const [label, r] of [
+    ["Form", resZuWenigSegmente],
+    ["unbekannte Ressource", resUnbekannt],
+    ["fremdes Schema", resFremdesSchema],
+  ] as const) {
+    check(
+      `${label}: Meldung ohne "Error:"-Präfix`,
+      !r!.error.replace(/^MCP error -?\d+: /, "").startsWith("Error:"),
+      r!.error.slice(0, 80)
+    );
+  }
+
+  // The inventory answer names the resources, because whether a client ever
+  // asks for the templates is not established.
+  const gemeldet = (serverInfo!.json?.ressourcen ?? {}) as {
+    statisch?: string[];
+    vorlagen?: string[];
+  };
+  eq(
+    "bible_server_info nennt dieselben Ressourcen wie resources/list",
+    (gemeldet.statisch ?? []).join(","),
+    resourceList.map((r) => String(r.uri)).join(",")
+  );
+  eq(
+    "bible_server_info nennt dieselben Vorlagen wie resources/templates/list",
+    (gemeldet.vorlagen ?? []).join(","),
+    templateList.map((t) => String(t.uriTemplate)).join(",")
+  );
+
+  // The endpoint is public and unauthenticated: no resource reports host detail.
+  const allerText = resourceResults.map((r) => r.text).join("\n");
+  for (const verboten of ["/home/", "/Users/", "process", "uptime", "hostname"]) {
+    lacks(`keine Host-Angabe: ${verboten}`, allerText, verboten);
+  }
 }
 
 console.log(
