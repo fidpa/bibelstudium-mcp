@@ -1,25 +1,26 @@
 #!/usr/bin/env bun
 /**
- * Download the German Bible translations from the bolls.life API into the
- * local SQLite database (table `verses`, one row set per translation).
+ * Lädt die deutschen Bibelübersetzungen von der bolls.life-API in die lokale
+ * SQLite-Datenbank (Tabelle `verses`, ein Satz Zeilen je Übersetzung).
  *
- * Run:
- *   bun run download.ts          # all four translations (seconds)
- *   bun run download.ts LUT      # a single translation (LUT/SCH/ELB/MB)
+ * Aufruf:
+ *   bun run download.ts          # alle vier Übersetzungen (Sekunden)
+ *   bun run download.ts LUT      # eine einzelne (LUT/SCH/ELB/MB)
  *
- * Each translation is fetched as one static JSON export. The API documentation
- * asks explicitly not to walk `get-text` chapter by chapter ("Please do not do
- * that! It is not what these endpoints are for, and it may cause performance
- * issues") and points to these exports instead; the whole Bible arrives in a
- * single ~7 MB request rather than 1190 of them.
+ * Jede Übersetzung kommt als ein statischer JSON-Export. Die API-Dokumentation
+ * bittet ausdrücklich darum, `get-text` nicht kapitelweise abzugehen („Please
+ * do not do that! It is not what these endpoints are for, and it may cause
+ * performance issues") und nennt stattdessen diese Exporte; die ganze Bibel
+ * kommt so in einer einzigen Anfrage von rund 7 MB statt in 1190 Anfragen.
  *
- * All supported translations are freely licensed (see translations.ts and
- * THIRD_PARTY_LICENSES.md). Schlachter 1951 is CC BY 4.0 — © Genfer
- * Bibelgesellschaft, license statement: https://ebible.org/deu1951/copyright.htm
+ * Alle geführten Übersetzungen sind frei lizenziert (siehe translations.ts und
+ * THIRD_PARTY_LICENSES.md). Schlachter 1951 steht unter CC BY 4.0, © Genfer
+ * Bibelgesellschaft, Lizenzangabe: https://ebible.org/deu1951/copyright.htm
  *
- * Each translation is downloaded in its own atomic DB session (copy + rename),
- * so an aborted multi-translation run keeps everything already completed.
- * Strips HTML footnotes (<f>...</f> tags) from verse text.
+ * Jede Übersetzung wird in einer eigenen atomaren Datenbanksitzung geladen
+ * (kopieren und umbenennen); ein abgebrochener Lauf über mehrere Übersetzungen
+ * behält damit alles bereits Fertige. HTML-Fußnoten (<f>...</f>) werden aus dem
+ * Verstext entfernt.
  */
 
 import { dirname, resolve } from "path";
@@ -39,7 +40,7 @@ interface BollsBook {
   readonly chapters: number;
 }
 
-/** One row of a static translation export: the whole Bible in a flat list. */
+/** Eine Zeile eines statischen Übersetzungsexports: die ganze Bibel als flache Liste. */
 interface BollsVerse {
   readonly book: number;
   readonly chapter: number;
@@ -48,29 +49,31 @@ interface BollsVerse {
 }
 
 /**
- * Strip HTML tags from verse text.
- * bolls.life uses <f>&#2009;[123]</f> for footnotes and <i>...</i> for psalm superscriptions.
+ * Entfernt HTML-Auszeichnungen aus dem Verstext.
+ * bolls.life setzt <f>&#2009;[123]</f> für Fußnoten und <i>...</i> für
+ * Psalmüberschriften.
  */
 function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "").trim();
 }
 
 /**
- * Fix book names from the API that miss the space before their parenthesis:
- * "2. Mose(Exodus)" → "2. Mose (Exodus)". Luther 1912 (the default source for
- * display names) is unaffected, but a run started with another translation
- * writes the names instead, and those carry the flaw. Book names render in
- * every concordance, search and cross-reference response.
+ * Bessert Buchnamen der API aus, denen das Leerzeichen vor der Klammer fehlt:
+ * "2. Mose(Exodus)" → "2. Mose (Exodus)". Luther 1912, die vorgesehene Quelle
+ * der Anzeigenamen, ist nicht betroffen; ein mit einer anderen Übersetzung
+ * gestarteter Lauf schreibt aber die Namen, und die tragen den Fehler.
+ * Buchnamen erscheinen in jeder Antwort von Konkordanz, Suche und
+ * Querverweisen.
  */
 function normalizeBookName(name: string): string {
   return name.replace(/(\S)\(/g, "$1 (");
 }
 
 /**
- * Fetch and parse JSON, returning the raw body alongside the parsed value.
+ * Holt JSON und parst es; liefert den Rohtext neben dem geparsten Wert.
  *
- * The raw text feeds the provenance digest, so the checksum covers the bytes
- * actually received rather than a re-serialization of them.
+ * Der Rohtext geht in die Herkunftsprüfsumme, damit sie über die tatsächlich
+ * empfangenen Bytes läuft und nicht über eine erneute Serialisierung davon.
  */
 async function fetchJsonWithSource<T>(
   url: string,
@@ -82,9 +85,9 @@ async function fetchJsonWithSource<T>(
       if (!response.ok) {
         throw new Error(`API error ${response.status}: ${url}`);
       }
-      // Read and parse inside the try so JSON parse errors (truncated body,
-      // HTML error page) are retried like network errors instead of escaping
-      // unhandled.
+      // Lesen und Parsen innerhalb des try: So werden Parse-Fehler (abgeschnittene
+      // Antwort, HTML-Fehlerseite) wie Netzwerkfehler wiederholt, statt
+      // unbehandelt zu entkommen.
       const raw = await response.text();
       return { data: JSON.parse(raw) as T, raw };
     } catch (error) {
@@ -106,14 +109,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Fetch and validate the book list of one translation (Protestant canon only). */
+/** Holt und prüft die Bücherliste einer Übersetzung (nur der protestantische Kanon). */
 async function fetchBooks(code: TranslationCode): Promise<BollsBook[]> {
   const raw = await fetchJson<BollsBook[]>(`/get-books/${code}/`);
   if (!Array.isArray(raw)) {
     throw new Error(`Book list for ${code} is not an array — API changed?`);
   }
-  // Some translations may list deuterocanonical books with IDs > 66; the
-  // server's book_id convention covers the 66-book Protestant canon only.
+  // Manche Übersetzungen führen deuterokanonische Bücher mit Nummern über 66;
+  // die book_id-Konvention des Servers deckt allein die 66 Bücher des
+  // protestantischen Kanons ab.
   const books = raw.filter(
     (b) => typeof b.bookid === "number" && b.bookid >= 1 && b.bookid <= 66
   );
@@ -134,12 +138,12 @@ async function fetchBooks(code: TranslationCode): Promise<BollsBook[]> {
 }
 
 /**
- * Validate a static translation export and keep the canonical books.
+ * Prüft einen statischen Übersetzungsexport und behält die kanonischen Bücher.
  *
- * The export is one flat list for the whole Bible, so a malformed entry has no
- * surrounding request to name it: the index and the offending value go into the
- * message instead. Books beyond 66 are deuterocanonical and dropped, matching
- * the filter in fetchBooks().
+ * Der Export ist eine flache Liste für die ganze Bibel; einen fehlerhaften
+ * Eintrag benennt also keine umgebende Anfrage, und deshalb stehen sein Index
+ * und der beanstandete Wert in der Meldung. Bücher jenseits von 66 sind
+ * deuterokanonisch und fallen weg, wie schon beim Filter in fetchBooks().
  */
 function validateVerses(data: unknown, code: TranslationCode): BollsVerse[] {
   if (!Array.isArray(data)) {
@@ -172,7 +176,7 @@ function validateVerses(data: unknown, code: TranslationCode): BollsVerse[] {
   return out;
 }
 
-/** Download one translation in its own atomic DB session. */
+/** Lädt eine Übersetzung in einer eigenen atomaren Datenbanksitzung. */
 async function downloadTranslation(code: TranslationCode): Promise<void> {
   const meta = TRANSLATIONS[code];
   console.log(`\n=== ${meta.name} (${code}) ===`);
@@ -206,9 +210,9 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
     `);
     ensureVersesSchema(db);
 
-    // Display names come deterministically from the default translation
-    // (Luther 1912) regardless of download order; other runs only fill in
-    // when the table is still empty.
+    // Die Anzeigenamen stammen unabhängig von der Downloadreihenfolge immer aus
+    // der voreingestellten Übersetzung (Luther 1912); andere Läufe springen nur
+    // ein, solange die Tabelle noch leer ist.
     const booksEmpty =
       (db.query("SELECT COUNT(*) as n FROM books").get() as { n: number }).n === 0;
     if (code === DEFAULT_TRANSLATION || booksEmpty) {
@@ -229,14 +233,15 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
       console.log(`Book names and aliases written (source: ${meta.name})`);
     }
 
-    // Refill only this translation's rows.
+    // Nur die Zeilen dieser Übersetzung neu füllen.
     db.prepare("DELETE FROM verses WHERE translation = ?").run(code);
     const insertVerse = db.prepare(
       "INSERT INTO verses (translation, book_id, chapter, verse, text) VALUES (?, ?, ?, ?, ?)"
     );
 
-    // One transaction for the whole translation: the data is already in memory,
-    // so there is nothing to stream and no partial state worth keeping.
+    // Eine Transaktion für die ganze Übersetzung: Die Daten liegen bereits im
+    // Speicher, es gibt nichts zu streamen und keinen Zwischenstand, der sich zu
+    // behalten lohnte.
     db.transaction(() => {
       for (const v of verses) {
         insertVerse.run(code, v.book, v.chapter, v.verse, stripHtml(v.text));
@@ -263,23 +268,23 @@ async function downloadTranslation(code: TranslationCode): Promise<void> {
     if (count.n === 0) throw new Error(`No verses stored for ${code} — API changed?`);
     console.log(`Done! ${count.n} ${meta.name} verses in database.`);
 
-    // Rebuild the full-text index over all translations (also: build-fts.ts).
-    // Doing it per session keeps the index consistent even if a multi-
-    // translation run is aborted between sessions.
+    // Volltextindex über alle Übersetzungen neu bauen (auch build-fts.ts tut
+    // das). Je Sitzung ausgeführt, bleibt der Index selbst dann stimmig, wenn
+    // ein Lauf über mehrere Übersetzungen zwischen zwei Sitzungen abbricht.
     rebuildVersesFts(db);
     console.log("Full-text index (verses_fts) rebuilt.");
 
     writeProvenance(db, `download.ts#${code}`, [digest]);
     commit();
   } catch (err) {
-    abort(); // leave any existing live database untouched
+    abort(); // eine vorhandene laufende Datenbank bleibt unberührt
     throw err;
   }
 }
 
 export async function main(selection?: string): Promise<void> {
-  // The parameter exists for setup.ts, which calls this from inside the server
-  // where process.argv carries the client's arguments, not ours.
+  // Den Parameter gibt es für setup.ts: Es ruft diese Funktion aus dem Server
+  // heraus auf, wo in process.argv die Argumente des Clients stehen, nicht unsere.
   const arg = (selection ?? process.argv[2] ?? "all").trim();
   let codes: readonly TranslationCode[];
   if (arg.toLowerCase() === "all") {
@@ -305,8 +310,9 @@ export async function main(selection?: string): Promise<void> {
   console.log(`\nDatabase size: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

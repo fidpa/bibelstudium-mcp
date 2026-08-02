@@ -1,23 +1,25 @@
 #!/usr/bin/env bun
 /**
- * Download the Byzantine Majority Text (Robinson-Pierpont 2005) with
- * morphological parsing and Strong's numbers into the local SQLite database as
- * the *primary* edition in `original_words` (edition = 'byzantine').
+ * Lädt den byzantinischen Mehrheitstext (Robinson-Pierpont 2005) samt
+ * morphologischer Bestimmung und Strong-Nummern in die lokale SQLite-Datenbank,
+ * und zwar als *primäre* Edition in `original_words` (edition = 'byzantine').
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-byz.ts
  *
- * Text + morphology + Strong's : Robinson-Pierpont Byzantine Textform 2005,
- *   freely distributable (public domain), https://github.com/byztxt/byzantine-majority-text
- * Strong's → Greek lemma        : Open Scriptures Strong's Greek Dictionary, CC-BY-SA
- *   https://github.com/openscriptures/strongs
+ * Text, Morphologie und Strong-Nummern: Robinson-Pierpont Byzantine Textform
+ *   2005, frei verbreitbar (Public Domain),
+ *   https://github.com/byztxt/byzantine-majority-text
+ * Strong-Nummer → griechisches Lemma: Open Scriptures Strong's Greek
+ *   Dictionary, CC-BY-SA, https://github.com/openscriptures/strongs
  *
- * TEXT TYPE: This is the Majority Text (byzantine textform) that Roger Liebi and
- * the majority-text position hold to be the reliable base text — e.g. it does
- * NOT contain the Comma Johanneum (1Jn 5:7). It is the DEFAULT of bible_original;
- * the critical SBLGNT is kept as the secondary edition (download-morph.ts).
+ * TEXTTYP: Dies ist der Mehrheitstext (byzantinische Textform), den Roger Liebi
+ * und die Mehrheitstext-Position für den verlässlichen Grundtext halten; er
+ * enthält etwa das Comma Johanneum (1Joh 5,7) NICHT. Er ist die VOREINSTELLUNG
+ * von bible_original; das kritische SBLGNT liegt als sekundäre Edition daneben
+ * (download-morph.ts).
  *
- * ADDITIVE: touches only `original_words` (edition 'byzantine').
+ * ERGÄNZEND: fasst allein `original_words` an (edition 'byzantine').
  */
 
 import { dirname, resolve } from "path";
@@ -32,7 +34,7 @@ const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js";
 const DELAY_MS = 120;
 
-// Byzantine CSV filename (book abbreviation) → bolls.life book_id (40–66).
+// Dateiname der byzantinischen CSV (Buchabkürzung) → bolls.life-book_id (40 bis 66).
 const BOOKS: ReadonlyArray<readonly [string, number]> = [
   ["MAT", 40], ["MAR", 41], ["LUK", 42], ["JOH", 43], ["ACT", 44], ["ROM", 45],
   ["1CO", 46], ["2CO", 47], ["GAL", 48], ["EPH", 49], ["PHP", 50], ["COL", 51],
@@ -59,7 +61,7 @@ async function fetchText(url: string, retries = 3): Promise<string> {
   throw new Error(`Failed: ${url}`);
 }
 
-/** Build a Strong's-number → Greek lemma map from the Open Scriptures dictionary. */
+/** Baut aus dem Open-Scriptures-Wörterbuch eine Abbildung Strong-Nummer → griechisches Lemma. */
 function parseStrongsLemmas(js: string): Map<string, string> {
   const map = new Map<string, string>();
   const re = /"G(\d+)":\{[^}]*?"lemma":"([^"]+)"/g;
@@ -70,7 +72,7 @@ function parseStrongsLemmas(js: string): Map<string, string> {
   return map;
 }
 
-// Each verse token is: SURFACE  STRONG  {MORPH}
+// Ein Token je Vers hat die Form: WORTFORM  STRONG  {MORPH}
 const TOKEN_RE = /(\S+)\s+(\d+)\s+\{([^}]+)\}/g;
 
 export async function main(): Promise<void> {
@@ -106,14 +108,15 @@ export async function main(): Promise<void> {
 
     db.transaction(() => {
       for (const line of lines) {
-        // Robust split: chapter,verse,<text> — text itself has no commas,
-        // but only split on the first two to be safe.
+        // Robustes Zerlegen: kapitel,vers,<text>. Der Text selbst enthält keine
+        // Kommata; sicherheitshalber wird trotzdem nur an den ersten beiden
+        // getrennt.
         const c1 = line.indexOf(",");
         const c2 = line.indexOf(",", c1 + 1);
         if (c1 < 0 || c2 < 0) continue;
         const chapter = parseInt(line.slice(0, c1), 10);
         const verse = parseInt(line.slice(c1 + 1, c2), 10);
-        if (!Number.isInteger(chapter) || !Number.isInteger(verse)) continue; // header
+        if (!Number.isInteger(chapter) || !Number.isInteger(verse)) continue; // Kopfzeile
         const text = line.slice(c2 + 1);
 
         let wordIndex = 0;
@@ -153,8 +156,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

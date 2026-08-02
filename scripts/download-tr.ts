@@ -1,28 +1,30 @@
 #!/usr/bin/env bun
 /**
- * Download the Textus Receptus (Dr. Maurice A. Robinson's parsed TR edition,
- * Scrivener/Stephens tradition) with morphology and Strong's numbers into the
- * local SQLite database as the third Greek edition in `original_words`
- * (edition = 'tr').
+ * Lädt den Textus Receptus (die morphologisch bestimmte TR-Ausgabe von Dr.
+ * Maurice A. Robinson, Tradition Scrivener/Stephens) samt Morphologie und Strong-Nummern
+ * in die lokale SQLite-Datenbank, als dritte griechische Edition in
+ * `original_words` (edition = 'tr').
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-tr.ts
  *
- * Source: byztxt/greektext-textus-receptus (Public Domain),
- *   https://github.com/byztxt/greektext-textus-receptus  (.UTR, beta-code)
- * Strong's → lemma: Open Scriptures Strong's Greek Dictionary, CC-BY-SA.
+ * Quelle: byztxt/greektext-textus-receptus (Public Domain),
+ *   https://github.com/byztxt/greektext-textus-receptus  (.UTR, Beta-Code)
+ * Strong-Nummer → Lemma: Open Scriptures Strong's Greek Dictionary, CC-BY-SA.
  *
- * The .UTR text is beta-code (unaccented, transliterated Latin). It is converted
- * here to unaccented Unicode Greek — consistent with the (also unaccented)
- * Byzantine edition. Morphology codes are Robinson-style (same decoder as byz).
+ * Der .UTR-Text liegt in Beta-Code vor (unakzentuiert, lateinisch
+ * transliteriert). Er wird hier in unakzentuiertes griechisches Unicode
+ * überführt, passend zur ebenfalls unakzentuierten byzantinischen Edition. Die
+ * Morphologiecodes folgen Robinson (derselbe Dekoder wie bei byz).
  *
- * WHY THIS EDITION: The TR is the only Greek text type that contains the Comma
- * Johanneum (1Jn 5:7 long form) and other TR-only readings. It is provided for
- * direct variant comparison against the Majority Text (default) and the SBLGNT.
- * Note: the majority-text position (e.g. R. Liebi) regards the TR as a narrow
- * Reformation-era form of the Majority Text, not itself the base text.
+ * WARUM DIESE EDITION: Der TR ist der einzige griechische Texttyp, der das
+ * Comma Johanneum (1Joh 5,7 in der Langform) und weitere nur dort bezeugte
+ * Lesarten enthält. Er liegt bereit für den direkten Variantenvergleich gegen
+ * den Mehrheitstext (Voreinstellung) und das SBLGNT. Anzumerken ist: Die
+ * Mehrheitstext-Position (etwa R. Liebi) sieht im TR eine enge Ausprägung des
+ * Mehrheitstexts aus der Reformationszeit, nicht selbst den Grundtext.
  *
- * ADDITIVE: touches only `original_words` (edition 'tr').
+ * ERGÄNZEND: fasst allein `original_words` an (edition 'tr').
  */
 
 import { dirname, resolve } from "path";
@@ -37,7 +39,7 @@ const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js";
 const DELAY_MS = 120;
 
-// .UTR filename → bolls.life book_id (40–66).
+// .UTR-Dateiname → bolls.life-book_id (40 bis 66).
 const BOOKS: ReadonlyArray<readonly [string, number]> = [
   ["MT", 40], ["MR", 41], ["LU", 42], ["JOH", 43], ["AC", 44], ["RO", 45],
   ["1CO", 46], ["2CO", 47], ["GA", 48], ["EPH", 49], ["PHP", 50], ["COL", 51],
@@ -46,7 +48,8 @@ const BOOKS: ReadonlyArray<readonly [string, number]> = [
   ["3JO", 64], ["JUDE", 65], ["RE", 66],
 ];
 
-// byztxt beta-code → unaccented Unicode Greek. 'v' = final sigma, 's' = medial.
+// byztxt-Beta-Code → unakzentuiertes griechisches Unicode. 'v' = Schlusssigma,
+// 's' = medial.
 const BETA: Record<string, string> = {
   a: "α", b: "β", g: "γ", d: "δ", e: "ε", z: "ζ", h: "η", q: "θ", i: "ι",
   k: "κ", l: "λ", m: "μ", n: "ν", x: "ξ", o: "ο", p: "π", r: "ρ", s: "σ",
@@ -83,7 +86,7 @@ function parseStrongsLemmas(js: string): Map<string, string> {
   return map;
 }
 
-// Token: betaword  strong  [robinson-verb-code]  {MORPH}
+// Token: Beta-Wort  Strong  [Robinson-Verbcode]  {MORPH}
 const TOKEN_RE = /([a-zA-Z']+)\s+(\d+)(?:\s+\d+)*\s*\{([^}]+)\}/g;
 
 interface VerseAcc {
@@ -92,7 +95,7 @@ interface VerseAcc {
   text: string;
 }
 
-/** Split a .UTR file into verse blocks (verses may span multiple lines). */
+/** Zerlegt eine .UTR-Datei in Versblöcke (ein Vers kann über mehrere Zeilen gehen). */
 function splitVerses(raw: string): VerseAcc[] {
   const out: VerseAcc[] = [];
   let cur: VerseAcc | null = null;
@@ -179,8 +182,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

@@ -54,4 +54,14 @@ Häufige Fehlerbilder samt Ursache stehen in [docs/FEHLERBEHEBUNG.md](docs/FEHLE
 
 ## Sprache
 
-Die Dokumentation dieses Repositories ist deutsch, weil sich der Server an den deutschsprachigen Raum richtet. Englisch bleiben: Code, Bezeichner, Commit-Nachrichten, Tool-Namen und die Tool-Beschreibungen im MCP-Protokoll. Issues und Pull Requests darfst du auf Deutsch oder Englisch verfassen.
+Die Dokumentation dieses Repositories ist deutsch, weil sich der Server an den deutschsprachigen Raum richtet. **Die Codekommentare sind es ebenfalls**, seit sie am 03.08.2026 umgestellt wurden; Konventionen dazu in [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md) unter „Kommentare". Englisch bleiben: Bezeichner, Commit-Nachrichten, Tool-Namen, die Tool-Beschreibungen im MCP-Protokoll und wörtliche Zitate fremder Meldungen. Issues und Pull Requests darfst du auf Deutsch oder Englisch verfassen.
+
+## git blame
+
+Die Umstellung der Kommentare auf Deutsch hat fast jede Datei angefasst, ohne eine Zeile Code zu ändern. Damit sie in `git blame` nicht jede Zeile überschreibt:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Einmal je Klon gesetzt, danach übergeht `git blame` die dort gelisteten reinen Formatierungs-Commits.

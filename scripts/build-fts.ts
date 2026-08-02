@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 /**
- * (Re)build the FTS5 full-text index over the German verses (`verses_fts`)
- * in the existing local database. No network access — purely derived data.
+ * Baut den FTS5-Volltextindex über die deutschen Verse (`verses_fts`) in der
+ * vorhandenen lokalen Datenbank auf oder neu. Ohne Netzzugriff, rein
+ * abgeleitete Daten.
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run build-fts.ts
  *
- * download.ts rebuilds the index automatically after a fresh verse import;
- * this script exists to add or refresh the index on an existing DB.
+ * download.ts baut den Index nach einem frischen Versimport von selbst neu;
+ * dieses Skript ergänzt oder erneuert ihn auf einer bestehenden Datenbank.
  *
- * ADDITIVE: touches only `verses_fts`.
+ * ERGÄNZEND: fasst allein `verses_fts` an.
  */
 
 import { dirname, resolve } from "path";

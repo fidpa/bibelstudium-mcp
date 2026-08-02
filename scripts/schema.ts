@@ -1,15 +1,16 @@
 import type { Database } from "bun:sqlite";
 
 /**
- * Ensure `verses` exists with the multi-translation schema (filled by
- * download.ts).
+ * Stellt sicher, dass `verses` mit dem Schema für mehrere Übersetzungen
+ * existiert (gefüllt von download.ts).
  *
- * One row per translation and verse; `translation` is a code from
+ * Eine Zeile je Übersetzung und Vers; `translation` ist ein Kürzel aus
  * translations.ts (LUT/SCH/ELB/MB).
  *
- * One-time migration: an older single-translation table (without the
- * `translation` column, e.g. a database copied from a pre-1.0 layout) is
- * dropped together with its FTS index so download.ts can repopulate cleanly.
+ * Einmalige Migration: Eine ältere Tabelle für eine einzige Übersetzung (ohne
+ * die Spalte `translation`, etwa eine aus einem Layout vor 1.0 kopierte
+ * Datenbank) wird samt ihrem FTS-Index verworfen, damit download.ts sauber neu
+ * füllen kann.
  */
 export function ensureVersesSchema(db: Database): void {
   const cols = db
@@ -32,18 +33,21 @@ export function ensureVersesSchema(db: Database): void {
 }
 
 /**
- * Ensure `strong_defs` exists (filled by download-lexicon.ts).
+ * Stellt sicher, dass `strong_defs` existiert (gefüllt von
+ * download-lexicon.ts).
  *
- * One row per Strong's number ("G26" / "H7225" — prefixed, unique across both
- * testaments) with the pointed lemma, transliteration and the English
- * definitions from the Open Scriptures Strong's dictionaries (1890), plus the
- * modern STEPBible fields (CC BY 4.0):
- *   gloss   — Tyndale one-word gloss (Greek and Hebrew)
- *   meaning — full Abbott-Smith lexicon entry (Greek only; the Hebrew TBESH
- *             meaning field is © Online Bible and is deliberately not stored)
+ * Eine Zeile je Strong-Nummer ("G26" / "H7225": mit Präfix, über beide
+ * Testamente eindeutig) mit punktiertem Lemma, Transliteration und den
+ * englischen Definitionen aus den Strong-Wörterbüchern von Open Scriptures
+ * (1890), dazu die neueren STEPBible-Felder (CC BY 4.0):
+ *   gloss   – Tyndale-Ein-Wort-Glosse (Griechisch und Hebräisch)
+ *   meaning – vollständiger Abbott-Smith-Eintrag (nur Griechisch; das
+ *             hebräische TBESH-Bedeutungsfeld ist © Online Bible und wird
+ *             bewusst nicht gespeichert)
  *
- * One-time migration: older tables without the STEPBible columns get them
- * added in place (existing rows keep '' until download-lexicon.ts reruns).
+ * Einmalige Migration: Ältere Tabellen ohne die STEPBible-Spalten bekommen sie
+ * an Ort und Stelle ergänzt (vorhandene Zeilen behalten '', bis
+ * download-lexicon.ts erneut läuft).
  */
 export function ensureStrongDefsSchema(db: Database): void {
   db.exec(`
@@ -68,18 +72,21 @@ export function ensureStrongDefsSchema(db: Database): void {
 }
 
 /**
- * Ensure `tagnt_words` exists (filled by download-tagnt.ts).
+ * Stellt sicher, dass `tagnt_words` existiert (gefüllt von download-tagnt.ts).
  *
- * STEPBible TAGNT (Translators Amalgamated Greek NT, CC BY 4.0): one row per
- * amalgamated NT word with the attestation across eight editions.
+ * STEPBible TAGNT (Translators Amalgamated Greek NT, CC BY 4.0): eine Zeile je
+ * zusammengeführtem NT-Wort mit der Bezeugung über acht Editionen.
  *
- *   word_index — TAGNT word number within the verse (#NN, unique, file order)
- *   word_type  — N/K/O class, e.g. 'NKO', 'K', 'N(k)O'; N = Nestle-Aland,
- *                K = KJV/TR tradition, O = other editions; lower case = the
- *                difference does not affect translation
- *   editions   — '+'-joined attestation (NA28, NA27, Tyn, SBL, WH, Treg, TR,
- *                Byz), may carry word-order displacement markers like 'TR»1'
- *   meaning_variant / spelling_variant — significant variant notes (English)
+ *   word_index – TAGNT-Wortnummer innerhalb des Verses (#NN, eindeutig, in
+ *                Dateireihenfolge)
+ *   word_type  – Klasse N/K/O, etwa 'NKO', 'K', 'N(k)O'; N = Nestle-Aland,
+ *                K = KJV/TR-Tradition, O = weitere Editionen; Kleinschreibung
+ *                heißt, der Unterschied wirkt sich nicht auf die Übersetzung
+ *                aus
+ *   editions   – mit '+' verbundene Bezeugung (NA28, NA27, Tyn, SBL, WH, Treg,
+ *                TR, Byz), kann Marker für Wortstellung tragen wie 'TR»1'
+ *   meaning_variant / spelling_variant – Notizen zu erheblichen Varianten
+ *                (englisch)
  */
 export function ensureTagntSchema(db: Database): void {
   db.exec(`
@@ -102,11 +109,13 @@ export function ensureTagntSchema(db: Database): void {
 }
 
 /**
- * Ensure `provenance` exists (written by every download-*.ts via provenance.ts).
+ * Stellt sicher, dass `provenance` existiert (geschrieben von jedem
+ * download-*.ts über provenance.ts).
  *
- * One row per script and logical source: number of requests, a rolling
- * SHA-256 over all payloads (in fetch order) and the fetch timestamp. Makes
- * the DB self-documenting: which upstream state produced the current data.
+ * Eine Zeile je Skript und logischer Quelle: Anzahl der Anfragen, eine
+ * fortlaufende SHA-256 über alle Nutzlasten (in Abrufreihenfolge) und der
+ * Zeitpunkt des Abrufs. Damit dokumentiert sich die Datenbank selbst: Welcher
+ * Stand der Gegenstelle hat die vorliegenden Daten erzeugt?
  */
 export function ensureProvenanceSchema(db: Database): void {
   db.exec(`
@@ -122,13 +131,14 @@ export function ensureProvenanceSchema(db: Database): void {
 }
 
 /**
- * Rebuild the FTS5 full-text index over `verses` (drop + refill).
+ * Baut den FTS5-Volltextindex über `verses` neu (verwerfen und neu füllen).
  *
- * `translation` is UNINDEXED: it must not pollute the token index (search
- * filters per translation with `AND translation = ?` instead). Stored text is
- * HTML-stripped (the DB may contain <i> emphasis tags; inside FTS they would
- * split phrases with stray "i" tokens). remove_diacritics folds umlauts, so
- * "fuhrt" also finds "führt".
+ * `translation` ist UNINDEXED: Das Kürzel darf den Token-Index nicht
+ * verschmutzen, die Suche filtert stattdessen je Übersetzung mit
+ * `AND translation = ?`. Der abgelegte Text ist HTML-bereinigt, denn die
+ * Datenbank kann <i>-Hervorhebungen enthalten, und im FTS-Index zerrissen sie
+ * Phrasen mit verirrten „i"-Tokens. remove_diacritics faltet die Umlaute, so
+ * findet „fuhrt" auch „führt".
  */
 export function rebuildVersesFts(db: Database): void {
   db.exec("DROP TABLE IF EXISTS verses_fts");
@@ -162,11 +172,13 @@ export function rebuildVersesFts(db: Database): void {
 }
 
 /**
- * Ensure `cross_references` exists (filled by download-crossrefs.ts).
+ * Stellt sicher, dass `cross_references` existiert (gefüllt von
+ * download-crossrefs.ts).
  *
- * One row per directed reference from a single verse to a target verse or
- * range (end = start when the target is a single verse). `votes` is the
- * OpenBible.info community score — can be negative; consumers sort by it.
+ * Eine Zeile je gerichtetem Verweis von einem einzelnen Vers auf einen Zielvers
+ * oder einen Bereich (Ende = Anfang, wenn das Ziel ein einzelner Vers ist).
+ * `votes` ist die Gemeinschaftsbewertung von OpenBible.info; sie kann negativ
+ * sein, Konsumenten sortieren danach.
  */
 export function ensureCrossRefsSchema(db: Database): void {
   db.exec(`

@@ -1,27 +1,30 @@
 /**
- * Breadth check for the output schemas: many real answers, each validated
- * against the schema the server itself declares in `tools/list`.
+ * Breitenprüfung der Ausgabeschemata: viele echte Antworten, jede gegen das
+ * Schema geprüft, das der Server selbst in `tools/list` deklariert.
  *
- * Why this exists next to `test-golden.ts`. Since 0.5.8 a success answer that
- * misses `structuredContent`, or carries a field the schema does not allow, is
- * no longer an incomplete result — a client of the 1.x SDK throws instead of
- * showing it. The golden test covers the cases in its `CALLS` list, and that
- * list is the only thing standing between a rarely taken return path and a
- * client-side error nobody sees until a user hits it.
+ * Warum es das neben `test-golden.ts` gibt. Seit 0.5.8 ist eine
+ * Erfolgsantwort ohne `structuredContent`, oder mit einem Feld, das das Schema
+ * nicht zulässt, kein unvollständiges Ergebnis mehr: Ein Client des 1.x-SDK
+ * wirft, statt sie anzuzeigen. Der Golden-Test deckt die Fälle seiner
+ * `CALLS`-Liste ab, und diese Liste ist das Einzige, was zwischen einem selten
+ * genommenen Rückgabepfad und einem Fehler auf der Client-Seite steht, den
+ * niemand sieht, bis ein Nutzer hineinläuft.
  *
- * The two checks find different defects and do not replace each other. A sweep
- * of a few hundred calls finds wrong types and forgotten return paths; it never
- * finds the rare conditional field. Measured 02.08.2026: 419 answers validated
- * clean, and the bracket hint of `bible_lookup` (137 of 31 166 Menge verses)
- * appeared in none of them — `test-golden.ts` names that case explicitly.
+ * Die beiden Prüfungen finden Verschiedenes und ersetzen einander nicht. Ein
+ * Durchgang über einige hundert Aufrufe findet falsche Typen und vergessene
+ * Rückgabepfade; das seltene bedingte Feld findet er nie. Gemessen am
+ * 02.08.2026: 419 Antworten sauber geprüft, und der Klammerhinweis von
+ * `bible_lookup` (137 von 31 166 Menge-Versen) erschien in keiner einzigen.
+ * `test-golden.ts` benennt diesen Fall ausdrücklich.
  *
- * Not part of `bun run test`: it needs the built database, takes about a minute
- * and is a check to run by hand after touching a schema or a payload:
+ * Nicht Teil von `bun run test`: Die Prüfung braucht die gebaute Datenbank,
+ * dauert rund eine Minute und ist von Hand auszuführen, nachdem ein Schema oder
+ * eine Nutzlast angefasst wurde:
  *
  *   bun run test:schemas
  *
- * The sample is deterministic (fixed stride, no randomness), so two runs on the
- * same database compare directly.
+ * Die Stichprobe steht fest (feste Schrittweite, nichts Zufälliges); zwei Läufe
+ * auf derselben Datenbank sind deshalb unmittelbar vergleichbar.
  */
 import { Database } from "bun:sqlite";
 import { resolve, dirname } from "node:path";
@@ -29,7 +32,7 @@ import { DB_PATH } from "../db-path.ts";
 import { isRecord, schemaErrors, type Json } from "./schema-validator.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
-const STRIDE = 700; // every nth Luther verse — ~45 verses, ~430 calls, ~1 minute
+const STRIDE = 700; // jeder n-te Luther-Vers: rund 45 Verse, rund 430 Aufrufe, rund eine Minute
 
 const db = new Database(DB_PATH, { readonly: true });
 const books = new Map(
@@ -49,8 +52,8 @@ const sample = db.query(
     `WHERE rn % ${STRIDE} = 1`
 ).all() as Ref[];
 
-// The nine NT verses without a TAGNT row: `bezeugung` is absent there, and that
-// is exactly the kind of conditional field a stride sample would miss.
+// Die neun NT-Verse ohne TAGNT-Zeile: Dort fehlt `bezeugung`, und genau solch
+// ein bedingtes Feld übersähe eine Stichprobe mit fester Schrittweite.
 const ohneTagnt = db.query(
   "SELECT DISTINCT book_id, chapter, verse FROM original_words WHERE edition='byzantine' AND book_id>=40 " +
     "EXCEPT SELECT DISTINCT book_id, chapter, verse FROM tagnt_words"
@@ -64,7 +67,7 @@ for (const s of sample) {
   for (const translation of ["LUT", "SCH", "ELB", "MB"]) {
     calls.push(["bible_lookup", { book, chapter: s.chapter, verses: String(s.verse), translation }]);
   }
-  calls.push(["bible_lookup", { book, chapter: s.chapter }]); // whole chapter
+  calls.push(["bible_lookup", { book, chapter: s.chapter }]); // ganzes Kapitel
   calls.push(["bible_lookup", { book, chapter: s.chapter, verses: `${s.verse}-${s.verse + 2}` }]);
   calls.push(["bible_crossrefs", { book, chapter: s.chapter, verse: s.verse }]);
   if (s.book_id >= 40) {
@@ -80,14 +83,14 @@ for (const v of ohneTagnt) {
   const book = books.get(v.book_id)!;
   calls.push(["bible_compare", { book, chapter: v.chapter, verse: v.verse }]);
 }
-// Greek and Hebrew, lemma and Strong's, with and without a lexicon entry, above
-// and below the listing limit.
+// Griechisch und Hebräisch, Lemma und Strong-Nummer, mit und ohne
+// Lexikoneintrag, ober- und unterhalb der Auflistungsgrenze.
 for (const args of [
   { strong: "G26" }, { strong: "G26", limit: 200 }, { strong: "H430" },
   { strong: "G2316", limit: 5 }, { lemma: "ἀγάπη" }, { lemma: "λόγος", texttyp: "sblgnt" },
   { strong: "G5547", texttyp: "tr" }, { strong: "H7225" }, { strong: "G3056", limit: 1 },
 ] as Json[]) calls.push(["bible_concordance", args]);
-// Below and above OCCURRENCE_SCAN_LIMIT, restricted and unrestricted, no hit.
+// Unter und über OCCURRENCE_SCAN_LIMIT, eingeschränkt und uneingeschränkt, ohne Treffer.
 for (const args of [
   { query: "Hirte" }, { query: "der", limit: 2 }, { query: "Gnade", book: "Römer" },
   { query: '"Gnade um Gnade"' }, { query: "lieb*", translation: "MB" },
@@ -95,7 +98,7 @@ for (const args of [
   { query: "Hirte", book: "Johannes", limit: 50 },
 ] as Json[]) calls.push(["bible_search", args]);
 
-// --- talk to a fresh server over stdio --------------------------------------
+// --- mit einem frischen Server über stdio sprechen --------------------------
 
 const proc = Bun.spawn(["bun", "run", SERVER], { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
 const send = (m: unknown) => proc.stdin.write(JSON.stringify(m) + "\n");
@@ -138,7 +141,7 @@ if (seen.size < calls.length + 1) {
   process.exit(1);
 }
 
-// --- validate ----------------------------------------------------------------
+// --- prüfen ------------------------------------------------------------------
 
 const tools = ((seen.get(1) as { result?: { tools?: Json[] } }).result?.tools ?? []);
 const schemas = new Map<string, Json>();
@@ -157,8 +160,9 @@ for (let i = 0; i < calls.length; i++) {
   if (!result) continue;
   const wo = `${name} ${JSON.stringify(args)}`;
   if (result.isError === true) {
-    // Error results stay plain text on purpose, and a client of the 1.x SDK
-    // exempts them from validation. They must not carry structure either.
+    // Fehlerergebnisse bleiben absichtlich reiner Text, und ein Client des
+    // 1.x-SDK nimmt sie von der Prüfung aus. Struktur dürfen sie ebenfalls nicht
+    // tragen.
     if (result.structuredContent !== undefined) befunde.push(`${wo}: isError, trägt aber structuredContent`);
     fehlerantworten++;
     continue;
@@ -195,8 +199,9 @@ console.log(
     `Text ungleich Struktur: ${ungleich} | Fehlerantworten: ${fehlerantworten} | ohne Schema: ${ohneSchema}`
 );
 
-// What the sweep actually touched. A field that never shows up here is not
-// covered by this check and needs a named case in `test-golden.ts`.
+// Was der Durchgang tatsächlich berührt hat. Ein Feld, das hier nie auftaucht,
+// deckt diese Prüfung nicht ab und braucht einen benannten Fall in
+// `test-golden.ts`.
 console.log("\nGesehene Felder je Werkzeug:");
 for (const [name, gesehen] of [...felder].sort()) {
   console.log(`  ${name}: ${[...gesehen].sort().join(", ")}`);

@@ -1,33 +1,34 @@
 /**
- * Regression check for server correctness.
+ * Regressionsprüfung der Serverkorrektheit.
  *
- * Talks to a FRESH `server.ts` over stdio, so it never measures the possibly
- * stale MCP instance of a running editor session.
+ * Spricht über stdio mit einem FRISCHEN `server.ts` und misst damit nie die
+ * womöglich veraltete MCP-Instanz einer laufenden Editorsitzung.
  *
- * Assertion-based rather than a stored snapshot: the expectations stay readable
- * as statements about the data ("Psalm 23:1 has six words", "the Comma is TR
- * only") instead of a wall of text nobody diffs by hand.
+ * Aufgebaut aus Zusicherungen statt aus einem abgelegten Schnappschuss: Die
+ * Erwartungen bleiben als Aussagen über die Daten lesbar („Psalm 23,1 hat sechs
+ * Wörter", „das Comma steht nur im TR"), statt eine Textwand zu sein, die
+ * niemand von Hand vergleicht.
  *
- * Needs a built database, so CI cannot run it (the workflow has no data). Run
- * it locally after changing server.ts:
+ * Braucht eine gebaute Datenbank, die CI kann den Test deshalb nicht ausführen
+ * (dem Workflow fehlen die Daten). Lokal nach jeder Änderung an server.ts:
  *
  *   bun run test
  */
 import { resolve, dirname } from "node:path";
 import packageJson from "../package.json";
-// Shared with `schema-coverage.ts`, which validates breadth where this file
-// validates named cases. The assertions below are what keeps the validator
-// honest, for both callers.
+// Geteilt mit `schema-coverage.ts`, das die Breite prüft, wo diese Datei
+// benannte Fälle prüft. Die Zusicherungen unten sind es, die den Prüfer ehrlich
+// halten, und zwar für beide Aufrufer.
 import { isRecord, schemaErrors } from "./schema-validator.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
 type Json = Record<string, unknown>;
 /**
- * `json` is the text block parsed, `structured` the `structuredContent` field.
- * Both are kept because the point is to compare them: they are built from one
- * value in the server, and this test is the only place that notices if they
- * ever stop matching.
+ * `json` ist der geparste Textblock, `structured` das Feld `structuredContent`.
+ * Beide werden behalten, weil es gerade um ihren Vergleich geht: Im Server
+ * entstehen sie aus einem Wert, und dieser Test ist die einzige Stelle, der es
+ * auffiele, wenn sie einmal auseinandergehen.
  */
 type ToolResult = {
   text: string;
@@ -38,15 +39,16 @@ type ToolResult = {
   code: number;
 };
 /**
- * A `prompts/get` answer. Prompts have no `isError` channel, so a rejected
- * argument arrives as a JSON-RPC error rather than as a result — `error` holds
- * its message, `text` the rendered prompt of a successful call.
+ * Eine Antwort auf `prompts/get`. Prompts haben keinen `isError`-Kanal, ein
+ * abgewiesenes Argument kommt also als JSON-RPC-Fehler statt als Ergebnis an:
+ * `error` hält dessen Meldung, `text` den gerenderten Prompt eines geglückten
+ * Aufrufs.
  */
 type PromptResult = { text: string; error: string; code: number };
 /**
- * A `resources/read` answer. Like prompts, resources have no `isError` channel;
- * `json` is the single `contents` entry parsed, `error` the JSON-RPC message of
- * a refused read.
+ * Eine Antwort auf `resources/read`. Wie Prompts haben Ressourcen keinen
+ * `isError`-Kanal; `json` ist der eine geparste `contents`-Eintrag, `error` die
+ * JSON-RPC-Meldung eines abgewiesenen Abrufs.
  */
 type ResourceResult = {
   uri: string;
@@ -58,24 +60,25 @@ type ResourceResult = {
 };
 
 /**
- * The JSON-RPC error code of a refused call, 0 when the call succeeded.
+ * Der JSON-RPC-Fehlercode eines abgewiesenen Aufrufs, 0 bei geglücktem Aufruf.
  *
- * Read since 0.5.11, when the caller's own mistakes stopped reporting
- * `InternalError`. The distinction the assertions below guard is which side is
- * at fault: `-32602` for anything wrong in the request, `-32603` reserved for
- * the server's own state (an instance without a database).
+ * Ausgelesen seit 0.5.11, als die Fehler des Aufrufers aufhörten,
+ * `InternalError` zu melden. Die Zusicherungen unten sichern die Unterscheidung,
+ * wessen Fehler vorliegt: `-32602` für alles, was an der Anfrage falsch ist,
+ * `-32603` allein für den Zustand des Servers (eine Instanz ohne Datenbank).
  */
 const NO_ERROR = 0;
 
-// --- minimal stdio MCP client ----------------------------------------------
+// --- knapper MCP-Client über stdio ------------------------------------------
 
 async function callTools(
   calls: ReadonlyArray<readonly [string, Json]>,
   prompts: ReadonlyArray<readonly [string, Json]> = [],
   resources: ReadonlyArray<string> = [],
-  // Extra environment for the spawned server. Used once, at the end, to point
-  // BIBLE_DB_PATH at a file that does not exist: that is the only way to reach
-  // the one refusal which is the server's fault rather than the caller's.
+  // Zusätzliche Umgebung für den gestarteten Server. Einmal genutzt, ganz am
+  // Ende, um BIBLE_DB_PATH auf eine Datei zu richten, die es nicht gibt: nur so
+  // ist die eine Abweisung erreichbar, die dem Server zur Last fällt und nicht
+  // dem Aufrufer.
   env: Record<string, string> = {}
 ): Promise<{
   tools: Json[];
@@ -118,9 +121,9 @@ async function callTools(
       params: { name, arguments: args },
     })
   );
-  // Ids are positional and must stay disjoint: 1 is tools/list, then the tool
-  // calls, then the prompts, then the resource reads, and the three listings
-  // last.
+  // Die Ids sind positionsgebunden und müssen getrennt bleiben: 1 ist
+  // tools/list, dann die Werkzeugaufrufe, dann die Prompts, dann die
+  // Ressourcenabrufe, zuletzt die drei Auflistungen.
   const resBase = 2 + calls.length + prompts.length;
   resources.forEach((uri, i) =>
     send({ jsonrpc: "2.0", id: resBase + i, method: "resources/read", params: { uri } })
@@ -177,7 +180,7 @@ async function callTools(
     try {
       json = JSON.parse(text) as Json;
     } catch {
-      json = null; // error results are plain text, not JSON
+      json = null; // Fehlerergebnisse sind reiner Text, kein JSON
     }
     return {
       text,
@@ -245,7 +248,7 @@ async function callTools(
   };
 }
 
-// --- assertions -------------------------------------------------------------
+// --- Zusicherungen ----------------------------------------------------------
 
 let failures = 0;
 let checks = 0;
@@ -262,13 +265,14 @@ function eq(name: string, actual: unknown, expected: unknown): void {
 }
 
 /**
- * Substring check over NFC-normalised text.
+ * Teilzeichenketten-Prüfung über NFC-normalisierten Text.
  *
- * Necessary, not cosmetic: `tagnt_words` carries the Oxia codepoints (U+1F73 …)
- * for 46 095 of its 141 720 surfaces, while `original_words` is uniformly NFC
- * (Tonos, U+03AD …). Both render identically, and `ἐπέβαλον` from one source
- * does not equal `ἐπέβαλον` from the other bytewise. Without normalising here,
- * an assertion would fail over a difference nobody can see.
+ * Nötig, nicht kosmetisch: `tagnt_words` führt bei 46 095 seiner 141 720
+ * Wortformen die Oxia-Codepunkte (U+1F73 …), während `original_words`
+ * durchgängig NFC ist (Tonos, U+03AD …). Beide sehen gleich aus, und
+ * `ἐπέβαλον` aus der einen Quelle ist byteweise nicht `ἐπέβαλον` aus der
+ * anderen. Ohne die Normalisierung hier scheiterte eine Zusicherung an einem
+ * Unterschied, den niemand sehen kann.
  */
 function has(name: string, haystack: string, needle: string): void {
   const h = haystack.normalize("NFC");
@@ -282,69 +286,71 @@ function lacks(name: string, haystack: string, needle: string): void {
 
 const hint = (j: Json | null): string => (typeof j?.hinweis === "string" ? j.hinweis : "");
 
-// --- cases ------------------------------------------------------------------
+// --- Fälle -------------------------------------------------------------------
 
-// Input at and just past the derived bounds of `verses` (MAX_VERSE_PARTS = 30
-// segments, MAX_VERSE = 200, hence 30 × "176-176" + 29 commas = 239 characters).
-// Built here rather than pasted so the length stays evident.
-const VERSES_MAX_VALID = Array(30).fill("100-176").join(","); // 239 chars, all legal
-const VERSES_TOO_LONG = `${VERSES_MAX_VALID},1`; // 241 chars
+// Eingabe genau an und knapp jenseits der abgeleiteten Grenzen von `verses`
+// (MAX_VERSE_PARTS = 30 Segmente, MAX_VERSE = 200, also 30 × "176-176" plus 29
+// Kommata = 239 Zeichen). Hier gebaut statt hineinkopiert, damit die Länge
+// sichtbar bleibt.
+const VERSES_MAX_VALID = Array(30).fill("100-176").join(","); // 239 Zeichen, sämtlich gültig
+const VERSES_TOO_LONG = `${VERSES_MAX_VALID},1`; // 241 Zeichen
 const VERSES_TOO_MANY = Array.from({ length: 35 }, (_, i) => String(i + 1)).join(",");
 const OVERLONG_NAME = "J".repeat(60);
 
 const CALLS = [
-  // bounds — the message must name the real limit, not "positive integer"
+  // Grenzen: Die Meldung muss die wirkliche Grenze nennen, nicht "positive integer"
   ["bible_original", { book: "Ps", chapter: 23, verse: 999 }],
   ["bible_original", { book: "Ps", chapter: 999, verse: 1 }],
   ["bible_crossrefs", { book: "Joh", chapter: 3, verse: 999 }],
   ["bible_compare", { book: "1Joh", chapter: 5, verse: 999 }],
   ["bible_lookup", { book: "Ps", chapter: 999 }],
-  // book resolution
+  // Buchauflösung
   ["bible_lookup", { book: "Hesekiel-Zusatz", chapter: 1, verses: "1" }],
   ["bible_lookup", { book: "Sirach", chapter: 1, verses: "1" }],
-  // brackets: Menge sets bracketed additions, the other three do not
+  // Klammern: Menge setzt Einschübe in Klammern, die anderen drei nicht
   ["bible_lookup", { book: "Joh", chapter: 3, verses: "16" }],
   ["bible_lookup", { book: "1. Mose", chapter: 15, verses: "3", translation: "MB" }],
-  // data correctness
+  // Richtigkeit der Daten
   ["bible_compare", { book: "1Joh", chapter: 5, verse: 7 }],
   ["bible_compare", { book: "Mk", chapter: 14, verse: 46 }],
   ["bible_original", { book: "Psalm", chapter: 23, verse: 1 }],
   ["bible_search", { query: "lieb*", book: "1Joh" }],
   ["bible_crossrefs", { book: "Joh", chapter: 14, verse: 6, limit: 5 }],
-  // server identity — the version must be the packaged one, not a second place
+  // Auskunft des Servers: Die Version muss die des Pakets sein, keine zweite Pflegestelle
   ["bible_server_info", {}],
-  // `verses`: one case per error class, plus the largest valid input. Every
-  // message must name the condition that is actually violated, and none of the
-  // four bounds may shorten an answer in silence.
+  // `verses`: ein Fall je Fehlerklasse, dazu die größte gültige Eingabe. Jede
+  // Meldung muss die tatsächlich verletzte Bedingung nennen, und keine der vier
+  // Grenzen darf eine Antwort stillschweigend kürzen.
   ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_MANY }],
   ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500" }],
   ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500,2" }],
   ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_LONG }],
   ["bible_lookup", { book: "Ps", chapter: 119, verses: { kein: "string" } }],
   ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_MAX_VALID }],
-  // an overlong book name is a length problem, not a missing or unknown field
+  // Ein zu langer Buchname ist ein Längenproblem, kein fehlendes oder unbekanntes Feld
   ["bible_crossrefs", { book: OVERLONG_NAME, chapter: 1, verse: 1 }],
   ["bible_search", { query: "Gnade", book: OVERLONG_NAME }],
   ["bible_concordance", { lemma: "α".repeat(60) }],
-  // above the scan limit the two counted fields drop out — say so
+  // Oberhalb der Scan-Grenze entfallen die beiden gezählten Felder: das gehört gesagt
   ["bible_search", { query: "der", limit: 2 }],
-  // Conditional output fields, one case per field that is legitimately absent.
-  // These exist for the output schemas: every one of them would be a hard client
-  // error if it ended up in `required` (a client of the 1.x SDK rejects a
-  // successful result that does not match the declared schema).
-  ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }], // no TAGNT row: 9 NT verses have none
-  ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }], // sblgnt carries no Strong's
-  ["bible_concordance", { strong: "G26", limit: 200 }], // everything listed: no truncation hint
-  ["bible_lookup", { book: "Hiob", chapter: 32, verses: "1-4", translation: "MB" }], // Menge without brackets
-  // The one tool call that is not a tool error but a JSON-RPC one: `isError`
-  // needs a tool to carry it, and here none exists.
+  // Bedingte Ausgabefelder, ein Fall je Feld, das rechtmäßig fehlen darf. Sie
+  // stehen hier wegen der Ausgabeschemata: Jedes einzelne wäre ein harter
+  // Client-Fehler, geriete es in `required` (ein Client des 1.x-SDK weist ein
+  // erfolgreiches Ergebnis ab, das nicht zum deklarierten Schema passt).
+  ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }], // keine TAGNT-Zeile: neun NT-Verse haben keine
+  ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }], // sblgnt führt keine Strong-Nummern
+  ["bible_concordance", { strong: "G26", limit: 200 }], // alles aufgelistet: kein Kürzungshinweis
+  ["bible_lookup", { book: "Hiob", chapter: 32, verses: "1-4", translation: "MB" }], // Menge ohne Klammern
+  // Der eine Werkzeugaufruf, der kein Werkzeugfehler ist, sondern ein
+  // JSON-RPC-Fehler: `isError` braucht ein Werkzeug, das es trägt, und hier
+  // gibt es keines.
   ["bible_nichtvorhanden", {}],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
-// Prompts name the loaded inventory and the fields of the answers they steer,
-// so they are checked against `bible_server_info` rather than against a fixed
-// wording: a hard-coded translation or edition list would go stale exactly on
-// the instance that lacks one of them.
+// Prompts nennen den geladenen Bestand und die Felder der Antworten, die sie
+// steuern; geprüft werden sie deshalb gegen `bible_server_info` und nicht gegen
+// einen festen Wortlaut. Eine fest verdrahtete Liste von Übersetzungen oder
+// Editionen veraltete genau auf der Instanz, der eine davon fehlt.
 const PROMPT_CALLS = [
   ["word-study", { word: "Liebe" }],
   ["word-study", {}],
@@ -353,9 +359,10 @@ const PROMPT_CALLS = [
   ["translation-compare", { reference: "Römer 8,1" }],
 ] as const satisfies ReadonlyArray<readonly [string, Json]>;
 
-// Resources are read over the same fresh server. Positive cases first, then one
-// per way a URI can be wrong; the negative ones must carry the same message the
-// matching tool argument would produce, or the two wordings start to drift.
+// Ressourcen werden über denselben frischen Server gelesen. Zuerst die
+// gelingenden Fälle, dann je einer für jede Art, wie eine URI falsch sein kann;
+// die Negativfälle müssen dieselbe Meldung tragen wie das entsprechende
+// Werkzeugargument, sonst laufen die beiden Formulierungen auseinander.
 const RESOURCE_CALLS = [
   "bible://buecher",
   "bible://uebersetzungen",
@@ -368,7 +375,7 @@ const RESOURCE_CALLS = [
   "bible://kapitel/LUT/R%C3%B6mer/8",
   "bible://grundtext/wlc/1%20Mose/1/1",
   "bible://grundtext/byzantine/Johannes/3/16",
-  // negatives
+  // Negativfälle
   "spike://etwas",
   "bible://unbekannt",
   "bible://kapitel/LUT/Psalter",
@@ -377,8 +384,8 @@ const RESOURCE_CALLS = [
   `bible://vers/LUT/Psalter/119/${VERSES_TOO_MANY}`,
   "bible://kapitel/XYZ/Psalter/23",
   "bible://grundtext/wlc/Johannes/3/16",
-  // Two conditions violated at once: the message must name the one the tool
-  // names, or "same wording" holds only for single errors.
+  // Zwei Bedingungen zugleich verletzt: Die Meldung muss die nennen, die auch
+  // das Werkzeug nennt, sonst gilt „gleicher Wortlaut" nur für Einzelfehler.
   "bible://kapitel/LUT/Hesekiel-Zusatz/999",
 ] as const satisfies ReadonlyArray<string>;
 
@@ -456,22 +463,24 @@ eq("bible_lookup chapter", lookupChap999!.text, "Error: 'chapter' must be an int
 console.log("Server-Auskunft");
 {
   const j = serverInfo!.json as Json;
-  // Against the one failure this tool exists to prevent: a version maintained in
-  // a second place. Compares against package.json, not against a literal here.
+  // Gegen den einen Fehler, dessentwegen es dieses Werkzeug gibt: eine Version,
+  // die an zweiter Stelle gepflegt wird. Verglichen wird gegen package.json,
+  // nicht gegen ein Literal an dieser Stelle.
   eq("version == package.json", j?.version, packageJson.version);
   eq("kein Fehler", serverInfo!.isError, false);
   const geladen = j?.uebersetzungen as Array<{ code: string; name: string }> | undefined;
   check("Übersetzungen gelistet", Array.isArray(geladen) && geladen.length > 0);
-  // Each name must carry its edition year: "Schlachter" alone does not identify a
-  // text, and 1951 differs from 2000 in wording.
+  // Jeder Name muss seine Jahreszahl tragen: „Schlachter" allein bezeichnet
+  // keinen Text, und 1951 weicht im Wortlaut von 2000 ab.
   for (const t of geladen ?? []) {
     check(`${t.code}: Jahreszahl im Namen`, /\d{4}/.test(t.name), `war "${t.name}"`);
   }
   const editionen = j?.urtext_editionen as Array<{ code: string; name: string }> | undefined;
   has("Urtext: Mehrheitstext", JSON.stringify(editionen), "byzantine");
   has("Urtext: AT (WLC)", JSON.stringify(editionen), "wlc");
-  // Every edition must carry a resolved name: "tr" alone identifies no text, and
-  // name === code means the EDITION_META fallback silently took over.
+  // Jede Edition muss einen aufgelösten Namen tragen: „tr" allein bezeichnet
+  // keinen Text, und name === code heißt, der Rückfall in EDITION_META hat still
+  // übernommen.
   for (const e of editionen ?? []) {
     check(
       `${e.code}: Name aufgeloest`,
@@ -523,8 +532,9 @@ console.log("Editionsvergleich");
   eq("1Joh 5,7 sblgnt", byType.get("sblgnt"), "ὅτι τρεῖς εἰσιν οἱ μαρτυροῦντες");
   has("1Joh 5,7 tr trägt das Comma", byType.get("tr") ?? "", "ο πατηρ ο λογος και το αγιον πνευμα");
   check("1Joh 5,7 ohne Quellenkonflikt", !("warnung" in (comma!.json ?? {})));
-  // Word counts are stated so nobody has to count: the Comma was reported as 16
-  // additional words where diff and TAGNT attestation both say 17 (25.07.2026).
+  // Die Wortzahlen stehen da, damit niemand zählen muss: Das Comma wurde als 16
+  // zusätzliche Wörter gemeldet, wo Vergleich und TAGNT-Bezeugung beide 17
+  // sagen (25.07.2026).
   const woerter = new Map(
     ((comma!.json?.editionen ?? []) as Array<{ texttyp: string; woerter: number }>).map((e) => [
       e.texttyp,
@@ -578,17 +588,18 @@ has("lieb* in 1Joh: Trennung benannt", String(searchLieb!.json?.hinweis ?? ""), 
 
 console.log("Verslisten-Grenzen");
 {
-  // The house error of this server is the silent cut: a bound bites, the answer
-  // gets shorter, nothing says so, and it still looks complete. "1,2,…,35" on
-  // Ps 119 came back as 1-30 without a word (26.07.2026).
+  // Der Hausfehler dieses Servers ist das stille Kürzen: Eine Grenze greift, die
+  // Antwort wird kürzer, nichts sagt es, und sie sieht trotzdem vollständig aus.
+  // "1,2,…,35" auf Ps 119 kam wortlos als 1-30 zurück (26.07.2026).
   eq(
     "35 Segmente: abgewiesen statt gekürzt",
     versesTooMany!.text,
     "Error: 'verses' must list at most 30 comma-separated segments"
   );
   eq("35 Segmente: isError", versesTooMany!.isError, true);
-  // Same meaning, two paths: the fast path for a plain span skipped the bound
-  // entirely, the parseVerses path dropped the segment. Both must report now.
+  // Gleiche Bedeutung, zwei Wege: Der Schnellpfad für eine schlichte Spanne
+  // übersprang die Grenze ganz, der Weg über parseVerses ließ das Segment fallen.
+  // Beide müssen jetzt melden.
   const outOfBounds = "Error: every verse number in 'verses' must be between 1 and 200";
   eq("Spanne 1-500", versesSpanTooHigh!.text, outOfBounds);
   eq("Spanne 1-500,2 (gleiche Meldung)", versesSpanWithComma!.text, outOfBounds);
@@ -602,18 +613,18 @@ console.log("Verslisten-Grenzen");
     versesNotAString!.text,
     `Error: 'verses' must be a string like "4", "16-17" or "1-3,7"`
   );
-  // The counterpart, and the reason the character bound is derived rather than
-  // chosen: at 239 characters everything is legal and must pass. The old,
-  // hand-picked 200 rejected exactly this input.
+  // Das Gegenstück, und der Grund, warum die Zeichengrenze abgeleitet und nicht
+  // gewählt ist: Bei 239 Zeichen ist alles gültig und muss durchgehen. Die alte,
+  // freihändig gesetzte 200 wies genau diese Eingabe ab.
   eq("239 Zeichen gültig: kein Fehler", versesMaxValid!.isError, false);
   eq("239 Zeichen gültig: volle Spanne", versesMaxValid!.json?.reference, "Psalter 119,100-176");
 }
 
 console.log("Längenmeldungen");
 {
-  // Named the wrong condition before: bible_crossrefs said 'book' is required
-  // while book was set, bible_search said it must be a German book name while
-  // it was one, only too long (26.07.2026).
+  // Nannte früher die falsche Bedingung: bible_crossrefs sagte 'book' is
+  // required, obwohl book gesetzt war, bible_search sagte, es müsse ein
+  // deutscher Buchname sein, obwohl es einer war, nur zu lang (26.07.2026).
   const tooLong = "Error: 'book' must be at most 50 characters (e.g. 'Jesaja', '1. Mose', 'Römer')";
   eq("bible_crossrefs: langer Buchname", xrefLongBook!.text, tooLong);
   eq("bible_search: langer Buchname", searchLongBook!.text, tooLong);
@@ -630,19 +641,19 @@ console.log("Scan-Grenze der Suche");
   check("über 1000 Treffer", ((j?.treffer as number) ?? 0) > 1000);
   check("vorkommen_gesamt entfällt", !("vorkommen_gesamt" in (j ?? {})));
   check("verteilung entfällt", !("verteilung" in (j ?? {})));
-  // What is missing gets estimated and still reads as counted, so the omission
-  // has to be stated along with its reason and the way out.
+  // Was fehlt, wird geschätzt und liest sich trotzdem wie gezählt; deshalb muss
+  // die Auslassung dastehen, samt ihrem Grund und dem Ausweg.
   has("Auslassung benannt", hint(j), "Ab 1000 Treffern werden die Vorkommen nicht ausgezählt");
   has("Grund benannt", hint(j), "weil nicht gezählt wurde");
   has("Ausweg benannt", hint(j), "auf ein Buch ein");
-  // The counted case must stay free of the note.
+  // Der gezählte Fall muss frei von dem Hinweis bleiben.
   lacks("kleine Suche ohne den Hinweis", hint(searchLieb!.json), "Ab 1000 Treffern");
 }
 
 console.log("Bedingte Ausgabefelder");
 {
-  // Each of these fields is absent for a measured reason, and each would break a
-  // validating client if it were declared required.
+  // Jedes dieser Felder fehlt aus einem gemessenen Grund, und jedes zerbräche
+  // einen prüfenden Client, wäre es als required deklariert.
   check("Joh 7,53: ohne bezeugung", !("bezeugung" in (cmpOhneBezeugung!.json ?? {})));
   eq("Joh 7,53: kein Fehler", cmpOhneBezeugung!.isError, false);
   const sblgnt = (origSblgnt!.json?.woerter ?? []) as Array<Json>;
@@ -659,9 +670,9 @@ console.log("Strukturierte Ausgabe");
     tools.map((t) => [String(t.name), isRecord(t.outputSchema) ? t.outputSchema : undefined])
   );
 
-  // The validator is checked before it is trusted, against the real answer of a
-  // real call rather than a fixture. Five ways a handler could drift from its
-  // schema; every one of them must be caught.
+  // Der Prüfer wird geprüft, bevor ihm vertraut wird, und zwar gegen die echte
+  // Antwort eines echten Aufrufs statt gegen eine Attrappe. Fünf Arten, wie ein
+  // Handler von seinem Schema abweichen könnte; jede einzelne muss auffallen.
   {
     const schema = schemaOf.get("bible_search");
     const proben: ReadonlyArray<readonly [string, (o: Json) => void]> = [
@@ -689,8 +700,9 @@ console.log("Strukturierte Ausgabe");
     }
   }
 
-  // Every case, not a hand-picked selection: a rarely taken return path that
-  // forgets structuredContent is a hard client error, not a missing field.
+  // Jeder Fall, keine Auswahl von Hand: Ein selten genommener Rückgabepfad, der
+  // structuredContent vergisst, ist ein harter Client-Fehler, kein fehlendes
+  // Feld.
   let geprueft = 0;
   results.forEach((r, i) => {
     const name = CALLS[i]![0];
@@ -698,9 +710,10 @@ console.log("Strukturierte Ausgabe");
       check(`${name} #${i}: Fehlerantwort ohne structuredContent`, r.structured === null);
       return;
     }
-    // No schema: either a tool that does not (yet) declare one, or the call to a
-    // tool that does not exist, whose refusal is a JSON-RPC error and therefore
-    // carries no result to validate. Both are checked elsewhere.
+    // Kein Schema: entweder ein Werkzeug, das noch keines deklariert, oder der
+    // Aufruf eines Werkzeugs, das es nicht gibt, dessen Abweisung ein
+    // JSON-RPC-Fehler ist und daher kein zu prüfendes Ergebnis trägt. Beides
+    // wird an anderer Stelle geprüft.
     const schema = schemaOf.get(name);
     if (schema === undefined) return;
     check(`${name} #${i}: structuredContent vorhanden`, r.structured !== null);
@@ -714,9 +727,10 @@ console.log("Strukturierte Ausgabe");
     geprueft++;
   });
   check("mindestens ein Fall schemageprüft", geprueft > 0, `geprüft: ${geprueft}`);
-  // bible_setup is not listed here (the database exists), so all seven listed
-  // tools must declare one. A tool that quietly loses its schema would otherwise
-  // just drop out of the loop above and take its checks with it.
+  // bible_setup steht hier nicht in der Liste (die Datenbank existiert), also
+  // müssen alle sieben gelisteten Werkzeuge eines deklarieren. Ein Werkzeug, das
+  // sein Schema still verlöre, fiele sonst einfach aus der Schleife oben heraus
+  // und nähme seine Prüfungen mit.
   for (const t of tools) {
     check(`${String(t.name)}: outputSchema deklariert`, isRecord(t.outputSchema));
   }
@@ -729,23 +743,25 @@ console.log("Prompts");
   const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
   const extras = (info.zusatzdaten ?? {}) as Record<string, boolean>;
 
-  // `title` is the display name in a client's prompt menu; without it the user
-  // reads the identifier. It is optional in the schema, so nothing breaks when
-  // a fourth prompt forgets it — this assertion is the only thing that notices.
+  // `title` ist der Anzeigename im Prompt-Menü eines Clients; ohne ihn liest der
+  // Nutzer den Bezeichner. Im Schema ist er optional, es bricht also nichts,
+  // wenn ein vierter Prompt ihn vergisst: Diese Zusicherung ist das Einzige, dem
+  // es auffällt.
   eq("drei Prompts gelistet", promptList.length, 3);
   for (const p of promptList) {
     check(`${String(p.name)}: title gesetzt`, typeof p.title === "string" && p.title !== "");
     check(`${String(p.name)}: name bleibt englisch`, /^[a-z-]+$/.test(String(p.name)));
   }
 
-  // A missing required argument used to produce an instruction with a hole in
-  // it ("Wortstudie zu „"), and the prompt still came back as a success.
+  // Ein fehlendes Pflichtargument erzeugte früher eine Anweisung mit einem Loch
+  // darin (`Wortstudie zu „`), und der Prompt kam trotzdem als Erfolg zurück.
   //
-  // Both messages are compared literally, and that is deliberate: it is what
-  // keeps a later switch to `McpError` from passing. That class prefixes the
-  // text with "MCP error <code>: " on the way out (types.js:2031), so the code
-  // would look right while every wording drifted. The codes themselves are
-  // asserted in the "Fehlercodes" section below.
+  // Beide Meldungen werden wörtlich verglichen, und das ist Absicht: Genau das
+  // verhindert, dass ein späterer Wechsel auf `McpError` durchginge. Diese
+  // Klasse stellt dem Text auf dem Weg nach draußen "MCP error <code>: " voran
+  // (types.js:2031); der Code sähe also richtig aus, während jeder Wortlaut
+  // verrutscht wäre. Die Codes selbst sichert der Abschnitt „Fehlercodes"
+  // weiter unten.
   eq("word-study ohne Argument: kein Prompt", wordStudyNoArg!.text, "");
   eq(
     "word-study ohne Argument: Meldung nennt das Feld",
@@ -758,14 +774,14 @@ console.log("Prompts");
     "Argument 'reference' must be at most 100 characters"
   );
 
-  // Field names, not the concepts behind them: the answer speaks of
-  // 'kurzbedeutung', never of "Gloss".
+  // Feldnamen, nicht die Begriffe dahinter: Die Antwort spricht von
+  // 'kurzbedeutung', nie von „Gloss".
   has("word-study nennt 'gesamt'", wordStudy!.text, "'gesamt'");
   has("word-study nennt 'buecher'", wordStudy!.text, "'buecher'");
   lacks("word-study ohne Konzeptnamen", wordStudy!.text, "Gloss");
 
-  // Inventory is derived, so every prompt names what this database has and
-  // nothing else.
+  // Der Bestand ist abgeleitet, jeder Prompt nennt also, was diese Datenbank
+  // hat, und nichts sonst.
   for (const code of codes) {
     has(`translation-compare nennt ${code}`, translationCompare!.text, `"${code}"`);
   }
@@ -782,10 +798,11 @@ console.log("Prompts");
       editions.includes(ed)
     );
   }
-  // NT only — the OT edition has no counterpart to compare against.
+  // Nur NT: Die AT-Edition hat kein Gegenstück, gegen das sich vergleichen ließe.
   lacks("variant-check ohne wlc", variantCheck!.text, "wlc");
-  // The caveat fields are the ones measured to be skipped when they sit deep in
-  // the answer, so the prompt that steers text criticism must name them.
+  // Die Vorbehaltsfelder sind gemessen die, die übergangen werden, wenn sie tief
+  // in der Antwort liegen; der Prompt, der die Textkritik steuert, muss sie
+  // deshalb benennen.
   eq(
     "variant-check nennt 'in_dieser_db' genau dann, wenn TAGNT geladen",
     variantCheck!.text.includes("'in_dieser_db'"),
@@ -804,9 +821,10 @@ console.log("Ressourcen");
   const codes = (info.uebersetzungen as Array<{ code: string }>).map((t) => t.code);
   const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
 
-  // The catalogue is the whole point of the design: templates carry the
-  // parameterised space so the list does not become a catalogue of 31 102
-  // verses. If either count changes, the cost of every session start changes.
+  // Der Katalog ist der ganze Sinn des Entwurfs: Die Vorlagen tragen den
+  // parametrisierten Raum, damit die Liste kein Katalog von 31 102 Versen wird.
+  // Ändert sich eine der beiden Zahlen, ändern sich die Kosten jedes
+  // Sitzungsbeginns.
   eq("vier statische Ressourcen gelistet", resourceList.length, 4);
   eq("drei Vorlagen gelistet", templateList.length, 3);
   for (const r of resourceList) {
@@ -828,8 +846,8 @@ console.log("Ressourcen");
     eq(`${tpl}: mimeType`, t.mimeType, "application/json");
   }
 
-  // Round trip: everything the list advertises must actually be readable, and
-  // the answer must carry back the URI that was asked for.
+  // Rundlauf: Alles, was die Liste anbietet, muss tatsächlich lesbar sein, und
+  // die Antwort muss die URI zurücktragen, nach der gefragt wurde.
   const gelistet = [resBuecher, resUebersetzungen, resEditionen, resQuellen];
   resourceList.forEach((r, i) => {
     const gelesen = gelistet[i];
@@ -844,8 +862,8 @@ console.log("Ressourcen");
   eq("bible://buecher: Buch 39 ist AT", buecher.find((b) => b.nummer === 39)?.testament, "AT");
   eq("bible://buecher: Buch 40 ist NT", buecher.find((b) => b.nummer === 40)?.testament, "NT");
 
-  // Derived from the inventory, never a fixed list: an instance missing a
-  // download must not advertise what it cannot serve.
+  // Aus dem Bestand abgeleitet, nie eine feste Liste: Eine Instanz, der ein
+  // Download fehlt, darf nicht anbieten, was sie nicht liefern kann.
   const gelisteteCodes = (
     resUebersetzungen!.json?.uebersetzungen as Array<{ kuerzel: string }>
   ).map((u) => u.kuerzel);
@@ -863,8 +881,9 @@ console.log("Ressourcen");
     [...editions].sort().join(",")
   );
 
-  // Attribution rides on the answer, so it has to be right per resource: a
-  // claimed attribution that does not apply is the same error as a missing one.
+  // Die Namensnennung reist mit der Antwort, sie muss also je Ressource stimmen:
+  // Eine behauptete Nennung, die nicht einschlägig ist, ist derselbe Fehler wie
+  // eine fehlende.
   const quellenVonVers = resVersBereich!.json?.quellen as Array<{ nennung: string | null }>;
   eq("Schlachter-Vers: genau eine Quelle", quellenVonVers.length, 1);
   has("Schlachter-Vers: Nennung mit Adresse", quellenVonVers[0]?.nennung ?? "", "ebible.org");
@@ -876,16 +895,17 @@ console.log("Ressourcen");
   for (const name of namen) {
     has(`bible://quellen nennt die Übersetzung ${name}`, werke, name);
   }
-  // An edition that is not loaded must not appear: a claimed attribution that
-  // does not apply is the same error as an omitted one.
+  // Eine nicht geladene Edition darf nicht erscheinen: Eine behauptete Nennung,
+  // die nicht einschlägig ist, ist derselbe Fehler wie eine weggelassene.
   eq(
     "bible://quellen nennt SBLGNT genau dann, wenn geladen",
     werke.includes("SBL Greek New Testament"),
     editions.includes("sblgnt")
   );
 
-  // The composite string is what got cut at both ends in bible_crossrefs, so a
-  // resource carries the verses one by one and no concatenated `text`.
+  // Die zusammengesetzte Zeichenkette war es, die in bible_crossrefs an beiden
+  // Enden abgeschnitten wurde; eine Ressource trägt die Verse deshalb einzeln
+  // und kein zusammengefügtes `text`.
   const verse = resKapitel!.json?.verse_einzeln as Array<{ verse: number; text: string }>;
   eq("Psalm 23: sechs Verse", verse.length, 6);
   eq("Psalm 23: erster Vers ist 1", verse[0]?.verse, 1);
@@ -901,12 +921,13 @@ console.log("Ressourcen");
     1
   );
 
-  // Percent-encoded and abbreviated book names resolve through the same helper
-  // the tools use — a second resolution path is exactly what must not exist.
+  // Prozentkodierte und abgekürzte Buchnamen laufen durch denselben Helfer wie
+  // bei den Werkzeugen: Ein zweiter Auflösungsweg ist genau das, was es nicht
+  // geben darf.
   has("Buchname mit Punkt und %20", String(resKapitelPunkt!.json?.reference), "1 Mose 1,");
   has("Buchname mit Umlaut", String(resKapitelUmlaut!.json?.reference), "Römer 8,");
 
-  // Original text routes by testament, same as the tool.
+  // Der Grundtext leitet nach Testament weiter, genau wie das Werkzeug.
   eq("Grundtext AT: Edition wlc", resGrundtextAt!.json?.texttyp, "wlc");
   eq("Grundtext NT: Edition byzantine", resGrundtextNt!.json?.texttyp, "byzantine");
   check(
@@ -914,8 +935,9 @@ console.log("Ressourcen");
     (resGrundtextAt!.json?.woerter as Json[]).length > 0
   );
 
-  // Negatives. Each names the condition that is violated, and the two bounds
-  // shared with the tools must be reported in exactly the same words.
+  // Negativfälle. Jeder nennt die verletzte Bedingung, und die beiden mit den
+  // Werkzeugen geteilten Grenzen müssen mit genau denselben Worten gemeldet
+  // werden.
   has("fremdes Schema abgewiesen", resFremdesSchema!.error, 'beginnen mit "bible://"');
   has("unbekannte Ressource nennt die bekannten", resUnbekannt!.error, "bible://buecher");
   has(
@@ -944,15 +966,16 @@ console.log("Ressourcen");
     resEditionFalschesTestament!.error,
     "fürs NT ungültiger texttyp"
   );
-  // Bad book and bad chapter together: the tool reports the chapter, so the
-  // resource must too. Compared against the tool's own answer, not a literal.
+  // Falsches Buch und falsches Kapitel zugleich: Das Werkzeug meldet das
+  // Kapitel, also muss die Ressource es auch. Verglichen wird gegen die Antwort
+  // des Werkzeugs selbst, nicht gegen ein Literal.
   has(
     "zwei verletzte Bedingungen: dieselbe wie beim Werkzeug",
     resZweiVerletzt!.error,
     lookupChap999!.text
   );
-  // Newly worded messages open with the statement; a client prefixes its own
-  // "MCP error <code>: " anyway.
+  // Neu formulierte Meldungen beginnen mit der Aussage; ein Client stellt sein
+  // eigenes "MCP error <code>: " ohnehin davor.
   for (const [label, r] of [
     ["Form", resZuWenigSegmente],
     ["unbekannte Ressource", resUnbekannt],
@@ -965,8 +988,8 @@ console.log("Ressourcen");
     );
   }
 
-  // The inventory answer names the resources, because whether a client ever
-  // asks for the templates is not established.
+  // Die Bestandsauskunft nennt die Ressourcen, denn ob ein Client je nach den
+  // Vorlagen fragt, ist nicht belegt.
   const gemeldet = (serverInfo!.json?.ressourcen ?? {}) as {
     statisch?: string[];
     vorlagen?: string[];
@@ -982,24 +1005,25 @@ console.log("Ressourcen");
     templateList.map((t) => String(t.uriTemplate)).join(",")
   );
 
-  // The endpoint is public and unauthenticated: no resource reports host detail.
+  // Der Endpunkt ist öffentlich und authlos: Keine Ressource meldet Host-Details.
   const allerText = resourceResults.map((r) => r.text).join("\n");
   for (const verboten of ["/home/", "/Users/", "process", "uptime", "hostname"]) {
     lacks(`keine Host-Angabe: ${verboten}`, allerText, verboten);
   }
 }
 
-// --- error codes -------------------------------------------------------------
-// Which side is at fault. Until 0.5.10 every refusal that left through the
-// JSON-RPC channel said `-32603 InternalError`, including the ones the caller
-// had caused; the spec asks for `-32602` for prompts by name and the SDK's own
-// McpServer answers an unknown tool and an unknown resource with it. Checked
-// over stdio only: the codes are produced in the shared handlers, not in a
-// transport, so HTTP would exercise the same lines.
+// --- Fehlercodes -------------------------------------------------------------
+// Wessen Fehler vorliegt. Bis 0.5.10 sagte jede Abweisung, die durch den
+// JSON-RPC-Kanal ging, `-32603 InternalError`, auch die vom Aufrufer
+// verschuldeten; die Spezifikation verlangt für Prompts ausdrücklich `-32602`,
+// und der McpServer des SDK antwortet damit auf ein unbekanntes Werkzeug wie
+// auf eine unbekannte Ressource. Geprüft allein über stdio: Die Codes entstehen
+// in den geteilten Handlern und nicht in einem Transport, HTTP liefe also durch
+// dieselben Zeilen.
 //
-// The message is asserted alongside the code wherever one already exists above.
-// That pairing is the guard against `McpError`, which would set the code
-// correctly and prefix the text with "MCP error -32602: " on the way out.
+// Die Meldung wird neben dem Code zugesichert, wo oben schon eine steht. Dieses
+// Paar ist die Sicherung gegen `McpError`, das den Code richtig setzte und dem
+// Text auf dem Weg nach draußen "MCP error -32602: " voranstellte.
 {
   console.log("Fehlercodes");
   const INVALID_PARAMS = -32602;
@@ -1019,16 +1043,17 @@ console.log("Ressourcen");
   ] as const) {
     eq(`Ressource, ${label}: InvalidParams`, r!.code, INVALID_PARAMS);
   }
-  // A tool that does not exist has no `isError` channel to answer through.
+  // Ein Werkzeug, das es nicht gibt, hat keinen `isError`-Kanal, durch den es antworten könnte.
   eq("unbekanntes Werkzeug: InvalidParams", unbekanntesWerkzeug!.code, INVALID_PARAMS);
   eq(
     "unbekanntes Werkzeug: Meldung nennt den Namen",
     unbekanntesWerkzeug!.error,
     "Unknown tool: bible_nichtvorhanden"
   );
-  // The counter-check that matters more than the six above: a bad argument to a
-  // tool that does exist stays a tool result. Turning these into JSON-RPC errors
-  // would hide them from the model, which is the whole reason they are prose.
+  // Die Gegenprobe, die mehr wiegt als die sechs oben: Ein falsches Argument an
+  // ein Werkzeug, das es gibt, bleibt ein Werkzeugergebnis. Daraus
+  // JSON-RPC-Fehler zu machen verbärge sie vor dem Modell, und genau deshalb
+  // sind sie Prosa.
   for (const [label, r] of [
     ["unbekanntes Buch", hesekiel],
     ["Kapitel außerhalb", lookupChap999],
@@ -1039,11 +1064,12 @@ console.log("Ressourcen");
   }
 }
 
-// --- the server's own fault --------------------------------------------------
-// The single refusal that keeps `InternalError`, and the reason this runs a
-// second server: an instance without a database is a state of the server, not a
-// mistake in the request. It is also the case a later sweep over the throw sites
-// would most easily pull along with the rest, so it is pinned here.
+// --- der Fehler des Servers selbst -------------------------------------------
+// Die eine Abweisung, die `InternalError` behält, und der Grund, warum hier ein
+// zweiter Server läuft: Eine Instanz ohne Datenbank ist ein Zustand des Servers
+// und kein Fehler der Anfrage. Sie ist zugleich der Fall, den ein späterer
+// Durchgang über die Wurfstellen am ehesten mit umstellte, und deshalb ist er
+// hier festgenagelt.
 {
   console.log("Instanz ohne Datenbank");
   const INTERNAL_ERROR = -32603;
@@ -1062,10 +1088,10 @@ console.log("Ressourcen");
     leerRessource!.error,
     "bible_setup"
   );
-  // The tool gate answers through `isError`, as it does with a database.
+  // Die Werkzeugsperre antwortet über `isError`, wie sie es mit Datenbank auch tut.
   eq("Werkzeug ohne Datenbank: bleibt isError", leerLookup!.isError, true);
   eq("Werkzeug ohne Datenbank: kein JSON-RPC-Fehler", leerLookup!.code, NO_ERROR);
-  // Both lists are empty, so nothing is advertised that cannot be read.
+  // Beide Listen sind leer, es wird also nichts angeboten, was sich nicht lesen lässt.
   eq("resources/list ohne Datenbank: leer", ohneDb.resourceList.length, 0);
   eq("resources/templates/list ohne Datenbank: leer", ohneDb.templateList.length, 0);
 }

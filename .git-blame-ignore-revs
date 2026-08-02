@@ -1,0 +1,11 @@
+# Commits, die `git blame` übergehen soll: reine Formulierungsarbeit, die viele
+# Zeilen anfasst, ohne eine Zeile Code zu ändern.
+#
+# Einmal je Klon aktivieren:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Aufnahmekriterium: Der Commit ändert nachweislich keinen Code. Für die
+# Umstellung unten ist das mechanisch geprüft, indem beide Stände durch denselben
+# Transpiler liefen und Datei für Datei dasselbe Ergebnis lieferten.
+
+# v0.5.13: alle Codekommentare vom Englischen ins Deutsche umgestellt (21 Dateien)

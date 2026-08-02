@@ -1,30 +1,32 @@
 #!/usr/bin/env bun
 /**
- * Download the Hebrew Old Testament (Westminster Leningrad Codex / masoretic)
- * with lemma, Strong's numbers and OSHB morphology into the local SQLite
- * database as edition 'wlc' in `original_words`.
+ * Lädt das hebräische Alte Testament (Westminster Leningrad Codex, masoretisch)
+ * samt Lemma, Strong-Nummern und OSHB-Morphologie in die lokale
+ * SQLite-Datenbank, als Edition 'wlc' in `original_words`.
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-heb.ts
  *
- * Source: OpenScriptures Hebrew Bible (morphhb), OSIS XML.
- *   Text (WLC) = Public Domain; lemma + morphology = CC-BY 4.0.
+ * Quelle: OpenScriptures Hebrew Bible (morphhb), OSIS-XML.
+ *   Text (WLC) = Public Domain; Lemma und Morphologie = CC-BY 4.0.
  *   https://github.com/openscriptures/morphhb
- * Strong's → Hebrew lemma: Open Scriptures Strong's Hebrew Dictionary, CC-BY-SA
- *   https://github.com/openscriptures/strongs
- *   The morphhb lemma attribute is a Strong's reference (e.g. "d/8064"), not a
- *   readable lemma; it is resolved here to the pointed Hebrew lemma (שָׁמַיִם)
- *   so `bible_original` can show a real Grundform. Unresolvable references
- *   keep the raw attribute value.
+ * Strong-Nummer → hebräisches Lemma: Open Scriptures Strong's Hebrew
+ *   Dictionary, CC-BY-SA, https://github.com/openscriptures/strongs
+ *   Das lemma-Attribut von morphhb ist ein Strong-Verweis (etwa "d/8064") und
+ *   kein lesbares Lemma; es wird hier zum punktierten hebräischen Lemma
+ *   (שָׁמַיִם) aufgelöst, damit `bible_original` eine echte Grundform zeigen kann.
+ *   Nicht auflösbare Verweise behalten den rohen Attributwert.
  *
- * This is the masoretic text (Ben Asher / Leningrad Codex) — the edition the
- * majority/masoretic-text position (e.g. R. Liebi) holds for the OT, as opposed
- * to conjectural emendation from LXX/Qumran.
+ * Dies ist der masoretische Text (Ben Ascher / Leningrad Codex), die Ausgabe,
+ * an der die Mehrheits- beziehungsweise masoretische Textposition (etwa
+ * R. Liebi) für das AT festhält, im Gegensatz zur mutmaßenden Textbesserung aus
+ * LXX und Qumran.
  *
- * Ketiv/Qere: the written text (ketiv) is stored; the qere reading lives inside
- * <note> elements and is skipped to avoid duplicate word forms.
+ * Ketiv und Qere: Gespeichert wird der geschriebene Text (Ketiv); die
+ * Qere-Lesart steht in <note>-Elementen und wird übergangen, damit keine
+ * doppelten Wortformen entstehen.
  *
- * ADDITIVE: touches only `original_words` (edition 'wlc').
+ * ERGÄNZEND: fasst allein `original_words` an (edition 'wlc').
  */
 
 import { dirname, resolve } from "path";
@@ -39,7 +41,7 @@ const STRONGS_URL =
   "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js";
 const DELAY_MS = 120;
 
-// OSIS book name → bolls.life book_id (1–39, Protestant OT order).
+// OSIS-Buchname → bolls.life-book_id (1 bis 39, Reihenfolge des protestantischen AT).
 const BOOKS: ReadonlyArray<readonly [string, number]> = [
   ["Gen", 1], ["Exod", 2], ["Lev", 3], ["Num", 4], ["Deut", 5], ["Josh", 6],
   ["Judg", 7], ["Ruth", 8], ["1Sam", 9], ["2Sam", 10], ["1Kgs", 11], ["2Kgs", 12],
@@ -73,13 +75,13 @@ const NOTE_RE = /<note[\s\S]*?<\/note>/g;
 const W_RE = /<w\b([^>]*)>([\s\S]*?)<\/w>/g;
 const ATTR_RE = (name: string) => new RegExp(`${name}="([^"]*)"`);
 
-/** First run of digits in a lemma string ("d/8064" → "8064", "1254 a" → "1254"). */
+/** Erste Ziffernfolge in einer Lemma-Zeichenkette ("d/8064" → "8064", "1254 a" → "1254"). */
 function primaryStrong(lemma: string): string {
   const m = lemma.match(/\d+/);
   return m ? m[0] : "";
 }
 
-/** Build a Strong's-number → pointed Hebrew lemma map (same dict shape as the Greek one). */
+/** Baut eine Abbildung Strong-Nummer → punktiertes hebräisches Lemma (gleiche Wörterbuchform wie im Griechischen). */
 function parseStrongsLemmas(js: string): Map<string, string> {
   const map = new Map<string, string>();
   const re = /"H(\d+)":\{[^}]*?"lemma":"([^"]+)"/g;
@@ -125,13 +127,13 @@ export async function main(): Promise<void> {
       VERSE_RE.lastIndex = 0;
       let vm: RegExpExecArray | null;
       while ((vm = VERSE_RE.exec(xml)) !== null) {
-        const osisId = vm[1]!; // e.g. "Gen.1.1"
+        const osisId = vm[1]!; // etwa "Gen.1.1"
         const parts = osisId.split(".");
         const chapter = parseInt(parts[1] ?? "", 10);
         const verse = parseInt(parts[2] ?? "", 10);
         if (!Number.isInteger(chapter) || !Number.isInteger(verse)) continue;
 
-        // Drop qere readings (inside <note>) so only the written ketiv remains.
+        // Qere-Lesarten (in <note>) verwerfen, damit nur das geschriebene Ketiv bleibt.
         const body = vm[2]!.replace(NOTE_RE, "");
 
         let wordIndex = 0;
@@ -144,8 +146,8 @@ export async function main(): Promise<void> {
           const rawLemma = attrs.match(lemmaAttr)?.[1] ?? "";
           const morph = attrs.match(morphAttr)?.[1] ?? "";
           const strong = primaryStrong(rawLemma);
-          // Grundform = pointed Hebrew lemma from the Strong's dictionary;
-          // fall back to the raw OSHB reference if the number resolves nothing.
+          // Grundform = punktiertes hebräisches Lemma aus dem Strong-Wörterbuch;
+          // löst die Nummer nichts auf, bleibt der rohe OSHB-Verweis stehen.
           const lemma = strongsLemmas.get(strong) ?? rawLemma;
           const lang = morph.startsWith("A") ? "arc" : "heb";
           insert.run(bookId, chapter, verse, wordIndex, surface, lemma, strong, morph, lang);
@@ -177,8 +179,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

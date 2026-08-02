@@ -1,24 +1,24 @@
 #!/usr/bin/env bun
 /**
- * Download the morphologically tagged Greek New Testament (MorphGNT / SBLGNT)
- * into the existing local SQLite database as the *secondary* edition in table
- * `original_words` (edition = 'sblgnt').
+ * Lädt das morphologisch ausgezeichnete griechische Neue Testament (MorphGNT /
+ * SBLGNT) in die vorhandene lokale SQLite-Datenbank, und zwar als *sekundäre*
+ * Edition in der Tabelle `original_words` (edition = 'sblgnt').
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-morph.ts
  *
- * Source text : SBL Greek New Testament (Michael W. Holmes), CC-BY 4.0
- * Morphology  : MorphGNT (James Tauber et al.), CC-BY-SA 3.0
+ * Grundtext  : SBL Greek New Testament (Michael W. Holmes), CC-BY 4.0
+ * Morphologie: MorphGNT (James Tauber u. a.), CC-BY-SA 3.0
  *   https://github.com/morphgnt/sblgnt
  *
- * TEXT TYPE: SBLGNT is a *critical* (eclectic) edition in the Nestle-Aland
- * tradition. It is stored as the SECONDARY edition; the primary edition is the
- * Byzantine Majority Text (see download-byz.ts), which Roger Liebi and the
- * majority-text position favour. Morphology (case, number, lemma) is unaffected
- * by the text-type question; only a small number of variant readings differ.
+ * TEXTTYP: Das SBLGNT ist eine *kritische* (eklektische) Edition in der
+ * Nestle-Aland-Tradition. Es liegt als SEKUNDÄRE Edition vor; die primäre ist
+ * der byzantinische Mehrheitstext (siehe download-byz.ts), dem Roger Liebi und
+ * die Mehrheitstext-Position den Vorzug geben. Die Morphologie (Kasus, Numerus,
+ * Lemma) berührt die Texttypfrage nicht, es weichen nur wenige Lesarten ab.
  *
- * ADDITIVE: touches only `original_words` (edition 'sblgnt'); never the
- * `verses`, `books`, or `aliases` tables.
+ * ERGÄNZEND: fasst allein `original_words` an (edition 'sblgnt'), niemals die
+ * Tabellen `verses`, `books` oder `aliases`.
  */
 
 import { dirname, resolve } from "path";
@@ -30,8 +30,9 @@ import { createSourceDigest, writeProvenance } from "./provenance.ts";
 const RAW_BASE = "https://raw.githubusercontent.com/morphgnt/sblgnt/master";
 const DELAY_MS = 150;
 
-// MorphGNT filenames. Internal 6-digit code: book 01=Matthew … 27=Rev;
-// bolls.life book_id (used by this DB) = internal book number + 39 (Mt 01 → 40).
+// Dateinamen des MorphGNT. Interner sechsstelliger Code: Buch 01 = Matthäus …
+// 27 = Offenbarung; die book_id von bolls.life, die diese Datenbank führt, ist
+// die interne Buchnummer plus 39 (Mt 01 → 40).
 const FILES = [
   "61-Mt-morphgnt.txt", "62-Mk-morphgnt.txt", "63-Lk-morphgnt.txt",
   "64-Jn-morphgnt.txt", "65-Ac-morphgnt.txt", "66-Ro-morphgnt.txt",
@@ -94,7 +95,7 @@ export async function main(): Promise<void> {
 
     db.transaction(() => {
       for (const line of lines) {
-        // Fields: BBCCVV  POS  PARSE  text  word  norm  lemma
+        // Felder: BBCCVV  POS  PARSE  text  word  norm  lemma
         const f = line.split(/\s+/);
         if (f.length < 7) continue;
         const code = f[0]!;
@@ -105,7 +106,7 @@ export async function main(): Promise<void> {
         const verse = parseInt(code.slice(4, 6), 10);
         const pos = f[1]!;
         const parse = f[2]!;
-        const word = f[4]!; // clean surface form
+        const word = f[4]!; // bereinigte Wortform
         const lemma = f[6]!;
 
         const key = `${bookId}-${chapter}-${verse}`;
@@ -139,8 +140,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

@@ -6,6 +6,16 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.13] - 2026-08-03
+
+### Geändert (Dokumentation)
+
+- **Alle Codekommentare sind auf Deutsch umgestellt**, in allen 21 `.ts`-Dateien und in einem Zug. Gemessen danach: 1147 Kommentarzeilen eindeutig deutsch gegen 24 eindeutig englisch, wo es vorher 1190 englische gegen 69 deutsche waren. Die 24 verbliebenen sind wörtliche Zitate fremder Meldungen und der Spezifikation; ein übersetztes Zitat wäre keines mehr.
+
+  **Kein Verhalten ändert sich.** Mechanisch nachgewiesen: Beide Stände durch denselben Transpiler ergeben denselben Code, Datei für Datei. Kein Bezeichner, keine Zeichenkette, keine Tool-`description` und keine Fehlermeldung ist angefasst; die deutschen Ausgabetexte sind zeichengleich. Typecheck grün, Golden-Tests bei 313 von 313.
+
+  Beim Umstellen wurde redigiert, nicht nur übersetzt: Kommentare, die nur den Code nacherzählten, sind kürzer, und Codekommentare fallen jetzt unter die Em-Dash-Regel dieses Repositories (kein `—` mehr in einem Kommentar). Zwei Zahlen sind dabei richtiggestellt worden, die von „sechs Werkzeugen" sprachen, wo es sieben sind. Wer `git blame` benutzt, setzt einmalig `git config blame.ignoreRevsFile .git-blame-ignore-revs`, siehe `CONTRIBUTING.md`.
+
 ## [0.5.12] - 2026-08-02
 
 ### Geändert (Dokumentation)

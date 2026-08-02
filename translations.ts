@@ -1,11 +1,11 @@
 /**
- * Registry of the German Bible translations this server supports. All four
- * are freely licensed and available via the bolls.life API under the same
- * codes used here.
+ * Registry der deutschen Bibelübersetzungen, die dieser Server führt. Alle vier
+ * sind frei lizenziert und über die bolls.life-API unter denselben Kürzeln
+ * abrufbar, die hier stehen.
  *
- * The license field is surfaced in THIRD_PARTY_LICENSES.md and the README;
- * Schlachter 1951 requires attribution (CC BY 4.0, Genfer Bibelgesellschaft,
- * license statement at https://ebible.org/deu1951/copyright.htm).
+ * Das Feld `license` erscheint in THIRD_PARTY_LICENSES.md und im README;
+ * Schlachter 1951 verlangt eine Nennung (CC BY 4.0, Genfer Bibelgesellschaft,
+ * Lizenzangabe unter https://ebible.org/deu1951/copyright.htm).
  */
 
 /**
@@ -36,7 +36,7 @@ export type TranslationCode = keyof typeof TRANSLATIONS;
 
 export const DEFAULT_TRANSLATION: TranslationCode = "LUT";
 
-/** Lower-cased user input → canonical code (codes themselves also accepted). */
+/** Kleingeschriebene Eingabe → kanonisches Kürzel (die Kürzel selbst gelten auch). */
 const TRANSLATION_ALIASES: Record<string, TranslationCode> = {
   lut: "LUT", luther: "LUT", luther1912: "LUT",
   sch: "SCH", schlachter: "SCH", schlachter1951: "SCH",
@@ -45,8 +45,9 @@ const TRANSLATION_ALIASES: Record<string, TranslationCode> = {
 };
 
 /**
- * Resolve a tool argument to a translation code. Absent/empty input falls
- * back to the default; unknown input returns null (callers report the error).
+ * Löst ein Werkzeugargument zu einem Übersetzungskürzel auf. Fehlende oder
+ * leere Eingabe fällt auf die Voreinstellung zurück; unbekannte Eingabe liefert
+ * null, die Meldung gibt der Aufrufer aus.
  */
 export function resolveTranslation(input: unknown): TranslationCode | null {
   if (input === undefined || input === null || input === "") return DEFAULT_TRANSLATION;

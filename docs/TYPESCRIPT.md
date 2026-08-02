@@ -89,9 +89,10 @@ Dekodern) sind in Ordnung.
 
 ## Kommentare
 
-Dieser Code ist ungewöhnlich dicht kommentiert: 935 von 4293 Zeilen in
-`server.ts` sind Kommentar, also 22 Prozent, dazu 15 Blöcke von mehr als zwölf
-Zeilen (gemessen 02.08.2026). Das ist Absicht. Ein großer Teil der
+Dieser Code ist ungewöhnlich dicht kommentiert: 1065 von 4424 Zeilen in
+`server.ts` sind Kommentar, also 24 Prozent, dazu 20 Blöcke von mehr als zwölf
+Zeilen (gemessen 03.08.2026, nach der Umstellung auf Deutsch; davor 935 von
+4293 Zeilen und 15 solcher Blöcke). Das ist Absicht. Ein großer Teil der
 Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen
 und dem MCP-SDK, und ohne die Begründung daneben sieht eine solche Stelle aus
 wie eine willkürliche Zeile, die der nächste Umbau geradezieht. Die folgenden
@@ -109,16 +110,24 @@ oft mit Messwerten und Abwägungen, und dieselbe Sache steht deutsch in
 `docs/ENTSCHEIDUNGEN.md`. Zwei Sprachen für denselben Gedanken kosten bei jeder
 Änderung eine Übersetzung.
 
-**Der Bestand ist noch überwiegend englisch** (gemessen 02.08.2026: 630 Zeilen
-eindeutig englisch, 84 deutsch, 88 gemischt). Die Umstellung ist ein eigener
-Auftrag und noch nicht erfolgt. Bis dahin gilt: Neue und ohnehin angefasste
-Kommentare deutsch, kein Umschreiben nebenbei.
+**Die Umstellung ist erfolgt** (03.08.2026, alle 21 `.ts`-Dateien in einem Zug).
+Gemessen danach über den ganzen Baum: 1147 Kommentarzeilen eindeutig deutsch,
+24 eindeutig englisch, 853 zu kurz oder gemischt für eine Zuordnung; in
+`server.ts` 668 deutsch gegen 4 englisch. Die verbliebenen englischen Zeilen
+sind wörtliche Zitate: Meldungen fremder Software, Sätze aus der Spezifikation
+und aus Quellen-Dokumentation. Sie bleiben englisch, weil ein übersetztes Zitat
+kein Zitat mehr ist.
 
-**Achtung bei der Umstellung:** Mit dem Wechsel fallen Kommentare unter die
-Em-Dash-Regel dieses Repositories. Der Halbgeviertstrich `–` mit Leerzeichen
-steht nur, wo wirklich ein Gedankenstrich hingehört; sonst Doppelpunkt, Punkt,
-Komma oder Semikolon. Ein aus dem Englischen mitgeschleppter Em-Dash `—` ist im
-deutschen Satz falsch.
+Seither gilt: Kommentare sind deutsch, auch neue. Ein englischer Kommentar ist
+ein Befund, kein Bestand.
+
+**Kommentare fallen damit unter die Em-Dash-Regel dieses Repositories.** Der
+Halbgeviertstrich `–` mit Leerzeichen steht nur, wo wirklich ein Gedankenstrich
+hingehört; sonst Doppelpunkt, Punkt, Komma oder Semikolon. Ein aus dem
+Englischen mitgeschleppter Em-Dash `—` ist im deutschen Satz falsch. Gemessen
+am 03.08.2026 trägt kein Kommentar mehr einen; die verbliebenen `—` im Code
+stehen in englischen Zeichenketten oder sind der Platzhalter `"—"` für „kein
+Wert", der ein Symbol ist und kein Satzzeichen.
 
 ### K2. Warum, nicht was
 
@@ -161,9 +170,13 @@ Die Länge entscheidet sich an der Reichweite, nicht am Geschmack:
 Richtwert für den Kommentar: bis etwa zwölf Zeilen. Wird ein Block länger,
 steckt meist eine Herleitung darin, die nach `docs/ENTSCHEIDUNGEN.md` gehört,
 während an der Codestelle das Ergebnis genügt („X, weil Y; Messung und
-verworfene Alternativen siehe `docs/ENTSCHEIDUNGEN.md`"). Die fünfzehn Blöcke
-über zwölf Zeilen in `server.ts` sind der erste Ort, an dem bei der
-Übersetzungssitzung zu prüfen ist, ob gekürzt statt übersetzt werden sollte.
+verworfene Alternativen siehe `docs/ENTSCHEIDUNGEN.md`").
+
+`server.ts` hat 20 Blöcke über zwölf Zeilen (03.08.2026, davor 15). Der Zuwachs
+kommt aus der Umstellung selbst: Deutsch braucht für denselben Inhalt mehr
+Zeilen. Geprüft wurde jeder von ihnen, und keiner ist eine Herleitung, die
+verlagert gehörte; sie erklären ihre Codestelle, und dafür gilt der Richtwert
+nicht als Obergrenze. Bei einem **neuen** langen Block bleibt er es.
 
 ### K5. Messwerte mit Datum
 
@@ -197,8 +210,12 @@ Wo sich das nicht vermeiden lässt, benennt jeder der beiden den anderen.
 # Verweise auf Ungeteiltes: muss 0 Treffer ergeben
 grep -rn "CLAUDE\.md\|\.claude/\|docs/intern\|TODO\.md" --include="*.ts" . | grep -v node_modules
 
-# Em-Dash in Kommentaren: nach der Umstellung auf Deutsch manuell prüfen
-grep -n "—" server.ts translations.ts db-path.ts scripts/*.ts
+# Em-Dash in Kommentaren: muss 0 Treffer ergeben
+grep -rnE "^\s*(//|\*|/\*).*—" --include="*.ts" . | grep -v node_modules
+
+# Englisch gebliebene Kommentare: Treffer sind Zitate oder ein Befund
+grep -rnE "^\s*(//|\*|/\*)" --include="*.ts" . | grep -v node_modules \
+  | grep -P "\b(the|and|of|to|that|with|not|this|are|be|which|would|because)\b"
 
 # Datumslose Messaussagen: Treffer ohne Datum in der Nähe manuell ansehen
 grep -n "gemessen\|measured" server.ts

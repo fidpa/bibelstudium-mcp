@@ -1,17 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Bibelstudium MCP Server — word-precise Bible study over a local SQLite DB.
+ * Bibelstudium-MCP-Server: wortgetreue Bibelarbeit über eine lokale
+ * SQLite-Datenbank.
  *
- * Six tools (exact German verses, original-language morphology, concordance,
- * cross-references, full-text search, edition comparison) plus three guided
- * prompts. German output fields, English tool names.
+ * Sieben Werkzeuge (wortgetreue deutsche Verse, Morphologie des Grundtextes,
+ * Konkordanz, Querverweise, Volltextsuche, Editionsvergleich, Serverauskunft),
+ * dazu `bible_setup` nur über stdio, drei geführte Prompts sowie Ressourcen
+ * samt URI-Vorlagen. Deutsche Ausgabefelder, englische Werkzeugnamen.
  *
- * Translations: four freely licensed German translations (see translations.ts),
- * default Luther 1912. Data is built locally via the download-*.ts scripts.
+ * Übersetzungen: vier frei lizenzierte deutsche Ausgaben (siehe
+ * translations.ts), voreingestellt Luther 1912. Die Daten entstehen lokal über
+ * die download-*.ts-Skripte.
  *
- * File layout: setup, prepared statements (one section per table), editions,
- * the three morphology decoders, helpers (generic, then per tool), tool
- * registration, guided prompts, dispatch, handlers, bootstrap.
+ * Aufbau der Datei: Setup, vorbereitete Statements (ein Abschnitt je Tabelle),
+ * Editionen, die drei Morphologie-Dekoder, Helfer (erst generische, dann je
+ * Werkzeug), Ausgabeschemata, Werkzeug-Registrierung, Prompts, Ressourcen,
+ * Dispatch, Handler, Bootstrap.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -45,24 +49,26 @@ import {
 /** Die eine Versionsangabe, aus der auch das MCPB-Manifest gebaut wird. */
 const PACKAGE_VERSION: string = packageJson.version;
 
-// --- Setup — database connection and integrity check -----------------------
-// DB_PATH comes from db-path.ts, which the data-building scripts import too.
-// Both sides must name the same file: bible_setup calls those scripts, and if
-// they disagreed the download would land where the server never looks.
+// --- Setup: Datenbankverbindung und Unversehrtheitsprüfung -----------------
+// DB_PATH kommt aus db-path.ts, das auch die Skripte des Datenaufbaus
+// importieren. Beide Seiten müssen dieselbe Datei meinen: bible_setup ruft jene
+// Skripte, und wichen sie voneinander ab, landete der Download dort, wo der
+// Server nie nachsieht.
 
 /**
- * Why a missing database no longer ends the process.
+ * Warum eine fehlende Datenbank den Prozess nicht mehr beendet.
  *
- * Someone who installed the MCPB bundle has no terminal in the loop: exiting
- * here would show them "server disconnected" and nothing else. Instead the
- * server starts against an empty in-memory database, reports `dataMissing`, and
- * offers bible_setup to build the real one. Every other tool refuses with a
- * pointer to it (see handleCallTool).
+ * Wer das MCPB-Bundle installiert hat, hat kein Terminal dazwischen: Ein
+ * Abbruch an dieser Stelle zeigte ihm „server disconnected" und sonst nichts.
+ * Stattdessen startet der Server gegen eine leere Datenbank im Speicher, meldet
+ * `dataMissing` und bietet bible_setup an, um die echte aufzubauen. Jedes
+ * andere Werkzeug weist mit einem Verweis darauf ab (siehe handleCallTool).
  *
- * The in-memory schema exists so the prepared statements below can compile; it
- * is never written to and is replaced by a restart once the download finished.
- * Only the three tables the statements require are declared — the optional ones
- * are detected by existence, and their absence is already a supported state.
+ * Das Schema im Speicher gibt es, damit die vorbereiteten Statements unten
+ * übersetzt werden können; geschrieben wird nie hinein, und ein Neustart
+ * ersetzt es, sobald der Download fertig ist. Deklariert sind nur die drei
+ * Tabellen, die die Statements brauchen: Die optionalen werden über ihr
+ * Vorhandensein erkannt, und ihr Fehlen ist ohnehin ein vorgesehener Zustand.
  */
 function emptyDatabase(): Database {
   const mem = new Database(":memory:");
@@ -76,7 +82,7 @@ function emptyDatabase(): Database {
   return mem;
 }
 
-/** Why the real database cannot be used, or null when it can. */
+/** Warum die echte Datenbank nicht taugt, oder null, wenn sie taugt. */
 function databaseProblem(candidate: Database): string | null {
   const tables = new Set(
     (candidate
@@ -87,8 +93,8 @@ function databaseProblem(candidate: Database): string | null {
   if (missing.length > 0) {
     return `Der Datenbank fehlen Tabellen (${missing.join(", ")}).`;
   }
-  // A verses table from an older single-translation layout lacks the
-  // `translation` column; download.ts migrates it on the next run.
+  // Einer verses-Tabelle aus dem älteren Aufbau für eine einzige Übersetzung
+  // fehlt die Spalte `translation`; download.ts migriert sie beim nächsten Lauf.
   const verseCols = (candidate.query("PRAGMA table_info(verses)").all() as Array<{ name: string }>)
     .map((c) => c.name);
   if (!verseCols.includes("translation")) {
@@ -104,8 +110,9 @@ function databaseProblem(candidate: Database): string | null {
 let db: Database;
 let dataMissing: string | null = null;
 try {
-  // No WAL pragma — database is read-only; WAL sidecar files could be tampered with.
-  // The download script checkpoints WAL before closing so the DB is self-contained.
+  // Kein WAL-Pragma: Die Datenbank wird nur gelesen, und WAL-Sidecar-Dateien
+  // ließen sich manipulieren. Das Download-Skript setzt vor dem Schließen einen
+  // WAL-Checkpoint, die Datenbank ist damit selbstgenügsam.
   const candidate = new Database(DB_PATH, { readonly: true });
   const problem = databaseProblem(candidate);
   if (problem === null) {
@@ -124,27 +131,29 @@ try {
 }
 
 /**
- * Whether this process serves HTTP instead of stdio.
+ * Ob dieser Prozess HTTP bedient statt stdio.
  *
- * Read here, next to `dataMissing`, because the two together decide whether
- * bible_setup exists at all. Over stdio the caller started this process and owns
- * the machine, so a tool that downloads ~145 MB from eight sources and replaces
- * the database file is a convenience. On an HTTP endpoint the caller is a
- * stranger: the tool would let anyone trigger those downloads repeatedly, and
- * the state that unlocks it — no database — is exactly what a failed or damaged
- * install produces. So it is a stdio-only tool. The operator of an HTTP endpoint
- * builds the data with `--setup` or `bun run setup` instead (see main()).
+ * Hier ausgelesen, neben `dataMissing`, weil die beiden zusammen entscheiden,
+ * ob es bible_setup überhaupt gibt. Über stdio hat der Aufrufer diesen Prozess
+ * gestartet und verfügt über die Maschine; ein Werkzeug, das rund 145 MB von
+ * acht Quellen lädt und die Datenbankdatei ersetzt, ist dort eine
+ * Bequemlichkeit. An einem HTTP-Endpunkt ist der Aufrufer ein Fremder: Das
+ * Werkzeug ließe jeden diese Downloads beliebig oft auslösen, und der Zustand,
+ * der es freischaltet, nämlich keine Datenbank, ist genau der, den eine
+ * gescheiterte oder beschädigte Installation herstellt. Es ist deshalb ein
+ * Werkzeug allein für stdio. Wer einen HTTP-Endpunkt betreibt, baut die Daten
+ * stattdessen mit `--setup` oder `bun run setup` auf (siehe main()).
  *
- * Derived from the environment rather than passed down from main(), so the value
- * cannot disagree with the transport actually chosen there.
+ * Aus der Umgebung abgeleitet statt aus main() durchgereicht, damit der Wert
+ * dem dort tatsächlich gewählten Transport nicht widersprechen kann.
  */
 const HTTP_MODE = (process.env["MCP_HTTP_PORT"] ?? "") !== "";
 
-/** True when started to build the database instead of to serve (see main()). */
+/** Wahr, wenn der Start dem Datenbankaufbau gilt statt dem Bedienen (siehe main()). */
 const SETUP_CLI = process.argv.includes("--setup");
 
-// Not while building the database: "Der Server läuft" would be plainly wrong
-// there, and the tool availability it reports never comes into play.
+// Nicht während des Datenbankaufbaus: „Der Server läuft" wäre dort schlicht
+// falsch, und die gemeldete Werkzeugverfügbarkeit kommt nie zum Tragen.
 if (dataMissing !== null && !SETUP_CLI) {
   console.error(
     HTTP_MODE
@@ -154,7 +163,7 @@ if (dataMissing !== null && !SETUP_CLI) {
   );
 }
 
-// --- Prepared statements — books, aliases, verses --------------------------
+// --- Vorbereitete Statements: books, aliases, verses -----------------------
 const stmtAlias = db.prepare<{ book_id: number }, [string]>(
   "SELECT book_id FROM aliases WHERE alias = ? COLLATE NOCASE"
 );
@@ -174,7 +183,7 @@ const stmtVerseRange = db.prepare<
   "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
 );
 
-// Which translations are actually populated (for validation + error messages).
+// Welche Übersetzungen tatsächlich gefüllt sind (für Prüfung und Meldungen).
 const availableTranslations: Set<string> = new Set(
   (db.query("SELECT DISTINCT translation FROM verses").all() as Array<{
     translation: string;
@@ -189,15 +198,16 @@ const stmtBookByName = db.prepare<{ book_id: number }, [string]>(
   "SELECT book_id FROM books WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY book_id LIMIT 1"
 );
 
-// The whole table, for the `bible://buecher` resource. `chapters` is carried in
-// the schema but was never read until now.
+// Die ganze Tabelle, für die Ressource `bible://buecher`. `chapters` führt das
+// Schema seit je mit, gelesen wurde es bislang nie.
 const stmtBooks = db.prepare<{ book_id: number; name: string; chapters: number }, []>(
   "SELECT book_id, name, chapters FROM books ORDER BY book_id"
 );
 
-// --- Original-language (morphology) support --------------------------------
-// The `original_words` table is optional; it exists only after
-// download-morph.ts has run. Guard so the server still starts without it.
+// --- Grundtext: Morphologie ------------------------------------------------
+// Die Tabelle `original_words` ist optional, es gibt sie erst, nachdem
+// download-morph.ts gelaufen ist. Die Absicherung sorgt dafür, dass der Server
+// auch ohne sie startet.
 const hasOriginal =
   db
     .query(
@@ -205,11 +215,12 @@ const hasOriginal =
     )
     .get() !== null;
 
-// Newest fetch recorded in the provenance table, date only. The one number that
-// dates the whole inventory: "your data is from 2026-07-23" answers more support
-// questions than any count. Table is optional (older builds lack it) and the
-// source URLs stay out — those are the same for every install and documented in
-// the README, so repeating them here would only inflate the payload.
+// Der jüngste in der provenance-Tabelle vermerkte Abruf, nur das Datum. Die eine
+// Zahl, die den ganzen Bestand datiert: „Ihre Daten sind vom 2026-07-23"
+// beantwortet mehr Rückfragen als jede Anzahl. Die Tabelle ist optional (älteren
+// Aufbauten fehlt sie), und die Quell-URLs bleiben draußen: Sie sind für jede
+// Installation dieselben und stehen im README, hier wiederholt blähten sie nur
+// die Nutzlast auf.
 const dataFetchedAt: string | null = (() => {
   const hasProvenance =
     db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='provenance'").get() !==
@@ -219,10 +230,11 @@ const dataFetchedAt: string | null = (() => {
   return row?.t ? row.t.slice(0, 10) : null;
 })();
 
-// Which original-language editions this file actually carries, for
-// bible_server_info. Queried once: the set is fixed for the lifetime of the file,
-// and it is the honest answer to "which source texts do you have" — the download
-// steps are separate, so wlc without sblgnt (or the reverse) is a real state.
+// Welche Grundtext-Editionen diese Datei tatsächlich führt, für
+// bible_server_info. Einmal abgefragt: Die Menge steht für die Lebensdauer der
+// Datei fest, und sie ist die ehrliche Antwort auf „welche Grundtexte haben
+// Sie". Die Download-Schritte sind getrennt, wlc ohne sblgnt (oder umgekehrt)
+// ist also ein wirklich vorkommender Zustand.
 const originalEditions: readonly string[] = hasOriginal
   ? (
       db.query("SELECT DISTINCT edition FROM original_words ORDER BY edition").all() as Array<{
@@ -249,7 +261,7 @@ const stmtOriginal = hasOriginal
     )
   : null;
 
-// Which editions are actually populated (for validation + error messages).
+// Welche Editionen tatsächlich gefüllt sind (für Prüfung und Meldungen).
 const availableEditions: Set<string> = new Set(
   hasOriginal
     ? (db.query("SELECT DISTINCT edition FROM original_words").all() as Array<{
@@ -258,8 +270,9 @@ const availableEditions: Set<string> = new Set(
     : []
 );
 
-// Concordance lookups scan one edition's rows (no dedicated index; the DB is
-// opened read-only, and a full edition scan is a few ms in local SQLite).
+// Konkordanzabfragen laufen über die Zeilen einer Edition (ohne eigenen Index;
+// die Datenbank wird nur lesend geöffnet, und ein voller Editionsdurchlauf
+// kostet im lokalen SQLite wenige Millisekunden).
 const stmtConcordStrong = hasOriginal
   ? db.prepare<
       { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
@@ -280,16 +293,16 @@ const stmtConcordLemma = hasOriginal
     )
   : null;
 
-// --- Strong's definitions (optional table, download-lexicon.ts) ------------
+// --- Strong-Definitionen (optionale Tabelle, download-lexicon.ts) ----------
 const hasStrongDefs =
   db
     .query("SELECT name FROM sqlite_master WHERE type='table' AND name='strong_defs'")
     .get() !== null;
 
-// gloss/meaning are the newer STEPBible columns (meaning is Greek-only, see
-// schema.ts). A DB built before that migration lacks them — the DB is opened
-// read-only here, so select '' placeholders instead until download-lexicon.ts
-// reruns.
+// gloss und meaning sind die neueren STEPBible-Spalten (meaning gibt es nur im
+// Griechischen, siehe schema.ts). Einer vor dieser Migration gebauten Datenbank
+// fehlen sie, und geöffnet wird hier nur lesend; deshalb werden stattdessen
+// Platzhalter '' ausgewählt, bis download-lexicon.ts erneut läuft.
 const hasStepCols = hasStrongDefs
   ? (db.query("PRAGMA table_info(strong_defs)").all() as Array<{ name: string }>).some(
       (c) => c.name === "gloss"
@@ -306,7 +319,7 @@ const stmtStrongDef = hasStrongDefs
     )
   : null;
 
-// --- TAGNT edition attestation (optional table, download-tagnt.ts) ---------
+// --- TAGNT-Bezeugung (optionale Tabelle, download-tagnt.ts) ----------------
 const hasTagnt =
   db
     .query("SELECT name FROM sqlite_master WHERE type='table' AND name='tagnt_words'")
@@ -328,9 +341,9 @@ const stmtTagnt = hasTagnt
     )
   : null;
 
-// --- Full-text search over the German verses (optional FTS5 table) ---------
-// `translation` is UNINDEXED in the FTS table; filtering is a plain equality
-// post-filter on top of the MATCH.
+// --- Volltextsuche über die deutschen Verse (optionale FTS5-Tabelle) -------
+// `translation` ist in der FTS-Tabelle UNINDEXED; gefiltert wird schlicht über
+// Gleichheit, im Nachgang zum MATCH.
 const hasFts =
   db
     .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verses_fts'")
@@ -365,8 +378,9 @@ const stmtSearchBook = hasFts
     )
   : null;
 
-// book_id and chapter ride along so one scan serves both the occurrence total
-// and the per-book/per-chapter breakdown — see the `verteilung` block below.
+// book_id und chapter reisen mit, damit ein Durchlauf sowohl die Gesamtzahl der
+// Vorkommen als auch die Aufschlüsselung je Buch und Kapitel trägt: siehe den
+// `verteilung`-Block weiter unten.
 const stmtSearchAll = hasFts
   ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, string, number]>(
       "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
@@ -383,20 +397,21 @@ const stmtSearchAllBook = hasFts
     )
   : null;
 
-// Occurrence counting reads every matching verse, so it is capped: beyond this
-// the field is omitted rather than paid for. Broad queries ("der") hit it,
-// word studies never do.
+// Das Zählen der Vorkommen liest jeden passenden Vers, deshalb ist es gedeckelt:
+// Jenseits dieser Grenze entfällt das Feld, statt bezahlt zu werden. Breite
+// Anfragen („der") laufen hinein, Wortstudien nie.
 const OCCURRENCE_SCAN_LIMIT = 1000;
 
-// Hit markers must not occur in the verse text itself. The obvious «…» collides
-// with the translations' own guillemets — Menge carries them in 8339 verses,
-// Schlachter in 887, and they nest the other way round (»quote«), so a closing
-// « reads as a marker both to a counter and to a human. ⟦⟧ appears in none of
-// the four translations (checked 25.07.2026).
-// Must stay identical to the delimiters in the two `highlight()` calls above.
+// Treffermarker dürfen im Verstext selbst nicht vorkommen. Das naheliegende «…»
+// stößt mit den eigenen Anführungszeichen der Übersetzungen zusammen: Menge
+// führt sie in 8339 Versen, Schlachter in 887, und sie verschachteln andersherum
+// (»Zitat«), sodass ein schließendes « sowohl für eine Zählung als auch für
+// einen Menschen wie ein Marker aussieht. ⟦⟧ kommt in keiner der vier
+// Übersetzungen vor (geprüft 25.07.2026).
+// Muss mit den Trennzeichen der beiden `highlight()`-Aufrufe oben übereinstimmen.
 const HIT_OPEN = "⟦";
 
-// --- Cross-references (OpenBible.info / TSK, optional table) ---------------
+// --- Querverweise (OpenBible.info / TSK, optionale Tabelle) ----------------
 const hasXrefs =
   db
     .query(
@@ -422,7 +437,7 @@ const stmtXrefs = hasXrefs
     )
   : null;
 
-// --- Editions — metadata, aliases, text-type resolution --------------------
+// --- Editionen: Metadaten, Aliase, Auflösung des Texttyps ------------------
 /**
  * Eine Quellenangabe, wie sie im Feld `quellen` einer Antwort erscheint.
  *
@@ -599,26 +614,28 @@ const EDITION_ALIASES: Record<string, string> = {
   wlc: "wlc", masoretisch: "wlc", hebräisch: "wlc", hebraeisch: "wlc", hebrew: "wlc", masoretic: "wlc",
 };
 
-// Which editions apply to which testament (book_id 1–39 = OT, 40–66 = NT).
+// Welche Editionen für welches Testament gelten (book_id 1 bis 39 = AT, 40 bis 66 = NT).
 const OT_EDITIONS = new Set(["wlc"]);
 const NT_EDITIONS = new Set(["byzantine", "sblgnt", "tr"]);
 
-// The NT editions in comparison order, and the only place that lists them:
-// `bible_compare` renders them in this order and the `variant-check` prompt
-// names those of them that are loaded. NT_EDITIONS above is the membership
-// test, this is the order — a second literal list would drift from it.
+// Die NT-Editionen in der Reihenfolge des Vergleichs, und die einzige Stelle,
+// die sie aufzählt: `bible_compare` gibt sie in dieser Folge aus, und der Prompt
+// `variant-check` nennt die davon geladenen. NT_EDITIONS oben ist die
+// Zugehörigkeitsprüfung, dies hier die Reihenfolge; eine zweite wörtliche Liste
+// liefe davon weg.
 const NT_EDITION_ORDER = ["byzantine", "tr", "sblgnt"] as const;
 
-/** Absent or empty input resolves to byzantine; an unknown alias to null. */
+/** Fehlende oder leere Eingabe löst auf byzantine auf, ein unbekannter Alias auf null. */
 function resolveEdition(input: unknown): string | null {
   if (input === undefined || input === null || input === "") return EDITION_ALIASES["byzantine"]!;
   if (typeof input !== "string") return null;
   return EDITION_ALIASES[input.trim().toLowerCase()] ?? null;
 }
 
-// --- Greek morphology — MorphGNT codes (sblgnt) ----------------------------
-// A parse code is 8 chars in fixed field order: person, tense, voice, mood,
-// case, number, gender, degree; "-" = field not applicable.
+// --- Griechische Morphologie: MorphGNT-Codes (sblgnt) ----------------------
+// Ein Parse-Code hat acht Zeichen in fester Feldreihenfolge: Person, Tempus,
+// Genus verbi, Modus, Kasus, Numerus, Genus, Steigerung; "-" heißt, das Feld
+// trifft nicht zu.
 const POS_LABELS: Record<string, string> = {
   "N-": "Substantiv", "A-": "Adjektiv", "V-": "Verb", "RA": "Artikel",
   "RP": "Pronomen", "RD": "Demonstrativpronomen", "RI": "Interrog./Indef.-Pronomen",
@@ -663,9 +680,9 @@ function posLabel(pos: string): string {
   return POS_LABELS[pos] ?? pos;
 }
 
-// --- Greek morphology — Robinson codes (byzantine, tr) ---------------------
-// Hyphen-separated, e.g. "N-APN", "V-PAM-2P", "T-GSM".
-// Format: POS[-tense/voice/mood]-[person][case][number][gender].
+// --- Griechische Morphologie: Robinson-Codes (byzantine, tr) ---------------
+// Durch Bindestriche getrennt, etwa "N-APN", "V-PAM-2P", "T-GSM".
+// Form: POS[-Tempus/Genus verbi/Modus]-[Person][Kasus][Numerus][Genus].
 const ROB_POS: Record<string, string> = {
   N: "Substantiv", A: "Adjektiv", T: "Artikel", V: "Verb",
   P: "Personalpronomen", R: "Relativpronomen", C: "Reziprok-/Demonstrativpron.",
@@ -685,13 +702,14 @@ const ROB_VOICE: Record<string, string> = {
   D: "Deponens (Med.)", O: "Deponens (Pass.)", N: "Deponens (Med./Pass.)",
   Q: "unpersönlich", X: "kein",
 };
-// Robinson mood letters differ from MorphGNT: imperative is "M" (iMperative), not "D".
+// Die Modusbuchstaben bei Robinson weichen von MorphGNT ab: Der Imperativ ist
+// "M" (iMperativ), nicht "D".
 const ROB_MOOD: Record<string, string> = {
   I: "Indikativ", M: "Imperativ", S: "Konjunktiv",
   O: "Optativ", N: "Infinitiv", P: "Partizip",
 };
 
-/** Decode one Robinson morph code (Byzantine edition) into readable German. */
+/** Löst einen Robinson-Morphologiecode (byzantinische Edition) in lesbares Deutsch auf. */
 function decodeRobinson(code: string): string {
   const raw = code.trim();
   if (!raw) return "—";
@@ -699,11 +717,13 @@ function decodeRobinson(code: string): string {
   const head = parts[0]!;
   const out: string[] = [];
 
-  // Verb: V-<tense+voice+mood>-<person+number> or V-<tvm>-<case+number+gender> (participle)
+  // Verb: V-<Tempus+Genus+Modus>-<Person+Numerus> oder V-<tgm>-<Kasus+Numerus+Genus>
+  // beim Partizip
   if (head === "V") {
     out.push("Verb");
     const tvm = parts[1] ?? "";
-    // tense may be 1 or 2 chars ("2A"), then voice (1), then mood (1)
+    // Das Tempus hat ein oder zwei Zeichen ("2A"), dann folgt das Genus verbi (1),
+    // dann der Modus (1)
     let i = 0;
     let tense = tvm[i] ?? "";
     if (tense === "2" && tvm[i + 1]) { tense = "2" + tvm[i + 1]; i += 2; } else { i += 1; }
@@ -714,27 +734,28 @@ function decodeRobinson(code: string): string {
     if (ROB_MOOD[mood]) out.push(ROB_MOOD[mood]!);
     const tail = parts[2] ?? "";
     if (mood === "P") {
-      // participle: case, number, gender
+      // Partizip: Kasus, Numerus, Genus
       if (GCASE[tail[0] ?? ""]) out.push(GCASE[tail[0]!]!);
       if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
       if (GENDER[tail[2] ?? ""]) out.push(GENDER[tail[2]!]!);
     } else if (tail) {
-      // finite: person + number
+      // finite Form: Person und Numerus
       if (PERSON[tail[0] ?? ""]) out.push(PERSON[tail[0]!]!);
       if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
     }
     return out.join(" ");
   }
 
-  // Non-verb: POS then optional case+number+gender block (e.g. N-APN, T-GSM, A-NPM).
-  // Only declinable word classes carry a case/number/gender suffix; for particles,
-  // conjunctions etc. a trailing "-N"/"-I" is a function marker (negative/interrog.),
-  // not a declension, so it must not be read as a case.
+  // Nicht-Verb: POS, dann ein optionaler Block aus Kasus, Numerus und Genus (etwa
+  // N-APN, T-GSM, A-NPM). Nur deklinierbare Wortarten tragen ein solches Suffix;
+  // bei Partikeln, Konjunktionen und dergleichen ist ein angehängtes "-N"/"-I" ein
+  // Funktionsmarker (Negation, Interrogativ) und keine Deklination, darf also
+  // nicht als Kasus gelesen werden.
   out.push(ROB_POS[head] ?? head);
   const DECLINABLE = new Set(["N", "A", "T", "P", "R", "C", "D", "K", "I", "X", "Q", "F", "S"]);
   const decl = parts[1] ?? "";
   if (DECLINABLE.has(head) && decl && decl !== "PRI" && decl !== "NUI") {
-    // Personal pronoun with leading person digit, e.g. P-1DS, P-2AP
+    // Personalpronomen mit vorangestellter Personenziffer, etwa P-1DS, P-2AP
     let d = decl;
     if (/^[123]/.test(d)) { if (PERSON[d[0]!]) out.push(PERSON[d[0]!]!); d = d.slice(1); }
     if (GCASE[d[0] ?? ""]) out.push(GCASE[d[0]!]!);
@@ -744,7 +765,7 @@ function decodeRobinson(code: string): string {
   return out.join(" ") || "—";
 }
 
-// --- Hebrew/Aramaic morphology (OSHB codes) --------------------------------
+// --- Hebräische und aramäische Morphologie (OSHB-Codes) --------------------
 const HEB_STEM: Record<string, string> = {
   q: "Qal", N: "Nifal", p: "Piel", P: "Pual", h: "Hifil", H: "Hofal",
   t: "Hitpael", o: "Polel", O: "Polal", r: "Hitpolel", m: "Poel", M: "Poal",
@@ -785,7 +806,7 @@ const HEB_SUFF_TYPE: Record<string, string> = {
   d: "Richtungs-He", h: "paragog. He", n: "paragog. Nun", p: "Pronominalsuffix",
 };
 
-/** Decode a run of feature chars in a fixed field order (skips 'x' placeholders). */
+/** Löst eine Folge von Merkmalszeichen in fester Feldreihenfolge auf (überspringt Platzhalter 'x'). */
 function hebFeatures(str: string, order: Array<Record<string, string>>): string[] {
   const out: string[] = [];
   for (let i = 0; i < order.length && i < str.length; i++) {
@@ -797,7 +818,7 @@ function hebFeatures(str: string, order: Array<Record<string, string>>): string[
   return out;
 }
 
-/** Decode one morpheme of an OSHB code (language already stripped). */
+/** Löst ein Morphem eines OSHB-Codes auf (die Sprachkennung ist bereits entfernt). */
 function decodeHebMorpheme(code: string, aramaic: boolean): string {
   if (!code) return "";
   const pos = code[0]!;
@@ -810,7 +831,7 @@ function decodeHebMorpheme(code: string, aramaic: boolean): string {
     case "N": {
       const type = rest[0] ?? "";
       const head = type === "p" ? "Eigenname" : type === "g" ? "Substantiv (Gentilicum)" : "Substantiv";
-      if (type === "p") return head; // proper names carry no further parsing
+      if (type === "p") return head; // Eigennamen tragen keine weitere Bestimmung
       return [head, ...hebFeatures(rest.slice(1), [HEB_GENDER, HEB_NUMBER, HEB_STATE])].join(" ");
     }
     case "A": {
@@ -832,11 +853,11 @@ function decodeHebMorpheme(code: string, aramaic: boolean): string {
       const feats = rest.slice(2);
       let tail: string[];
       if (conjCh === "r" || conjCh === "s") {
-        tail = hebFeatures(feats, [HEB_GENDER, HEB_NUMBER, HEB_STATE]); // participle
+        tail = hebFeatures(feats, [HEB_GENDER, HEB_NUMBER, HEB_STATE]); // Partizip
       } else if (conjCh === "a" || conjCh === "c") {
-        tail = []; // infinitive
+        tail = []; // Infinitiv
       } else {
-        tail = hebFeatures(feats, [HEB_PERSON, HEB_GENDER, HEB_NUMBER]); // finite
+        tail = hebFeatures(feats, [HEB_PERSON, HEB_GENDER, HEB_NUMBER]); // finite Form
       }
       return ["Verb", stem, conj, ...tail].filter(Boolean).join(" ");
     }
@@ -844,7 +865,7 @@ function decodeHebMorpheme(code: string, aramaic: boolean): string {
   }
 }
 
-/** Decode a full OSHB morph string ("HR/Ncfsa" → "Präposition + Substantiv feminin Singular absolut"). */
+/** Löst eine vollständige OSHB-Morphologiezeichenkette auf ("HR/Ncfsa" → "Präposition + Substantiv feminin Singular absolut"). */
 function decodeHebrew(morph: string): string {
   if (!morph) return "—";
   const aramaic = morph[0] === "A";
@@ -853,24 +874,25 @@ function decodeHebrew(morph: string): string {
   return pieces.join(" + ") || "—";
 }
 
-// --- Generic helpers — tool results, text, argument coercion ---------------
+// --- Generische Helfer: Werkzeugergebnisse, Text, Argumentwandlung ---------
 function errorResult(msg: string) {
   return { content: [{ type: "text" as const, text: msg }], isError: true };
 }
 
 /**
- * Successful result: the same payload twice, as the text block every client has
- * always received and as `structuredContent` (protocol revision 2025-06-18).
+ * Erfolgsergebnis: dieselbe Nutzlast zweimal, als Textblock, den jeder Client
+ * seit je bekommt, und als `structuredContent` (Protokollrevision 2025-06-18).
  *
- * Built from one value on purpose. A client of the 1.x SDK throws
- * `InvalidRequest` when a tool declaring an `outputSchema` returns a successful
- * result without `structuredContent` (client/index.js:500), so a return path
- * that forgets it is no longer a missing field but a hard client error. There is
- * exactly one way to build such a result, and this is it — never assemble the
- * pair by hand.
+ * Aus einem Wert gebaut, und das mit Absicht. Ein Client des 1.x-SDK wirft
+ * `InvalidRequest`, wenn ein Werkzeug mit deklariertem `outputSchema` ein
+ * erfolgreiches Ergebnis ohne `structuredContent` liefert
+ * (client/index.js:500); ein Rückgabepfad, der es vergisst, ist damit kein
+ * fehlendes Feld mehr, sondern ein harter Client-Fehler. Es gibt genau einen Weg,
+ * ein solches Ergebnis zu bauen, und das ist dieser: Das Paar niemals von Hand
+ * zusammensetzen.
  *
- * Error results stay plain text via `errorResult`: the same client check exempts
- * `isError`, and the messages are prose, not JSON.
+ * Fehlerergebnisse bleiben über `errorResult` reiner Text: Dieselbe Prüfung im
+ * Client nimmt `isError` aus, und die Meldungen sind Prosa, kein JSON.
  */
 function jsonResult(response: Record<string, unknown>) {
   return {
@@ -880,48 +902,52 @@ function jsonResult(response: Record<string, unknown>) {
 }
 
 /**
- * The third channel: a JSON-RPC error, for prompts and resources, which have no
- * `isError` to put a refusal in. `protocol.js:397` passes a thrown error's
- * `code` through when it is a safe integer and falls back to `InternalError`
- * otherwise, so a bare `new Error` reports an internal fault for what is in fact
- * a caller mistake. Everything thrown out of a handler goes through here.
+ * Der dritte Kanal: ein JSON-RPC-Fehler, für Prompts und Ressourcen, die kein
+ * `isError` haben, in das eine Abweisung passte. `protocol.js:397` reicht das
+ * `code`-Feld eines geworfenen Fehlers durch, sofern es eine sichere Ganzzahl
+ * ist, und fällt sonst auf `InternalError` zurück; ein nacktes `new Error`
+ * meldet also einen internen Fehler für etwas, das in Wahrheit ein Fehler des
+ * Aufrufers ist. Alles, was aus einem Handler geworfen wird, geht hier durch.
  *
- * Deliberately NOT `McpError`: its constructor prefixes the text
- * (`super("MCP error <code>: " + message)`, types.js:2031), that prefix travels
- * on the wire, and the receiving 1.x client prefixes it a second time when it
- * rebuilds the error (protocol.js:459). Measured 02.08.2026 against a probe
- * server on this SDK: `McpError` puts `"MCP error -32602: <text>"` into
- * `error.message`, this helper leaves `<text>` untouched. The messages here are
- * shared character-for-character with the tools, so the prefix is not an option.
+ * Bewusst NICHT `McpError`: Dessen Konstruktor stellt dem Text etwas voran
+ * (`super("MCP error <code>: " + message)`, types.js:2031), dieses Präfix reist
+ * über die Leitung mit, und der empfangende 1.x-Client stellt es beim
+ * Wiederaufbau des Fehlers ein zweites Mal voran (protocol.js:459). Gemessen am
+ * 02.08.2026 gegen einen Probe-Server auf diesem SDK: `McpError` legt
+ * `"MCP error -32602: <text>"` in `error.message`, dieser Helfer lässt `<text>`
+ * unangetastet. Die Meldungen hier sind zeichengleich mit denen der Werkzeuge,
+ * das Präfix kommt also nicht in Frage.
  *
- * `code` is typed as `ErrorCode`, not `number`, so a raw -32602 cannot creep
- * into a later call site.
+ * `code` ist als `ErrorCode` typisiert und nicht als `number`, damit sich an
+ * einer späteren Aufrufstelle keine nackte -32602 einschleicht.
  */
 function rpcError(code: ErrorCode, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
 /**
- * Strip leftover HTML tags. Precaution, not running business: `download.ts`
- * already strips on insert, and `verses` holds no "<" at all in any of the four
- * translations (measured 26.07.2026). Same for invisible characters — no soft
- * hyphen (U+00AD), no NBSP, no ZWSP in any row — so nothing else is removed
- * here; anything that would be removed has to stay in step with
- * `rebuildVersesFts`, or search output and quotation drift apart.
+ * Entfernt übrig gebliebene HTML-Auszeichnungen. Vorsorge, kein laufendes
+ * Geschäft: `download.ts` entfernt sie bereits beim Einfügen, und `verses`
+ * enthält in keiner der vier Übersetzungen überhaupt ein "<" (gemessen
+ * 26.07.2026). Ebenso bei unsichtbaren Zeichen: kein weiches Trennzeichen
+ * (U+00AD), kein NBSP, kein ZWSP in irgendeiner Zeile. Deshalb wird hier sonst
+ * nichts entfernt; was künftig entfernt würde, muss mit `rebuildVersesFts`
+ * Schritt halten, sonst laufen Suchausgabe und Zitat auseinander.
  */
 function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "");
 }
 
-// Words in square brackets are part of the edition's wording, not something this
-// server added: Menge sets explanatory additions this way (137 verses; the other
-// three translations use none, and none of the four carries footnote digits, so
-// there is no numeric counterpart to distinguish here). Measured in the upstream
-// repo on 25.07.2026: asked for a verse carrying such brackets, a client that had
-// called the tool unwrapped them, turning an addition of the edition into plain
-// text. No sample word in the hint on purpose — a concrete example has once been
-// picked up as a label and pinned to the wrong case (see the hint of
-// bible_compare).
+// Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und sind nichts,
+// was dieser Server ergänzt hätte: Menge setzt erklärende Einschübe so (137
+// Verse; die anderen drei Übersetzungen verwenden keine, und keine der vier
+// trägt Fußnotenziffern, es gibt hier also kein numerisches Gegenstück zu
+// unterscheiden). Gemessen im Ursprungs-Repo am 25.07.2026: Nach einem Vers mit
+// solchen Klammern gefragt, entfernte ein Client, der das Werkzeug aufgerufen
+// hatte, sie beim Wiedergeben, und aus dem Einschub der Ausgabe wurde
+// gewöhnlicher Text. Bewusst kein Beispielwort im Hinweis: Ein konkretes
+// Beispiel wurde schon einmal als Etikett aufgegriffen und auf einen
+// unpassenden Fall gesetzt (siehe den Hinweis von bible_compare).
 const BRACKET_WORD_RE = /\[(?!\d+\])[^\]]+\]/;
 const BRACKET_WORD_HINT =
   "Wörter in eckigen Klammern gehören zum Wortlaut der Übersetzung und sind " +
@@ -929,7 +955,7 @@ const BRACKET_WORD_HINT =
   "Klammern steht der Einschub da wie der übrige Text, und die Ausgabe setzt " +
   "ihn gerade ab.";
 
-/** Hint if any of `texts` carries bracketed words; empty otherwise. */
+/** Hinweis, wenn einer der `texts` Wörter in Klammern trägt; sonst leer. */
 function bracketHints(texts: readonly string[]): string[] {
   return texts.some((t) => BRACKET_WORD_RE.test(t)) ? [BRACKET_WORD_HINT] : [];
 }
@@ -939,8 +965,9 @@ function escapeLike(str: string): string {
 }
 
 /**
- * Accept an integer given as a number or digit string. MCP clients (LLMs)
- * regularly send "3" where the schema says number; be lenient rather than fail.
+ * Nimmt eine Ganzzahl an, ob als Zahl oder als Ziffernfolge. MCP-Clients (also
+ * Sprachmodelle) schicken regelmäßig "3", wo das Schema eine Zahl vorsieht;
+ * nachsichtig sein statt scheitern.
  */
 function toInt(value: unknown): number | null {
   if (typeof value === "number" && Number.isInteger(value)) return value;
@@ -950,15 +977,15 @@ function toInt(value: unknown): number | null {
   return null;
 }
 
-// --- Book resolution and "not found" errors (all six tools) ----------------
+// --- Buchauflösung und „nicht gefunden"-Meldungen (alle Werkzeuge) ---------
 function resolveBook(book: string): number | null {
   const normalized = book.trim().toLowerCase();
 
-  // Try exact alias match first
+  // Zuerst den genauen Alias versuchen
   const aliasResult = stmtAlias.get(normalized);
   if (aliasResult) return aliasResult.book_id;
 
-  // Try fuzzy match on full book names (LIKE '%search%')
+  // Dann unscharf über die vollen Buchnamen (LIKE '%suche%')
   const nameResult = stmtBookByName.get(`%${escapeLike(normalized)}%`);
   if (nameResult) return nameResult.book_id;
 
@@ -972,17 +999,17 @@ function getBookDisplayName(bookId: number): string {
 
 let aliasCache: Array<{ alias: string; book_id: number }> | null = null;
 
-// Deuterocanonical/apocryphal books, so a miss on them can be answered
-// precisely instead of guessed at. Without this "Sirach" scored an edit
-// distance of 2 against the alias "sach" and came back as "Meinten Sie
-// Sacharja?" — a wrong answer dressed as a helpful one (25.07.2026).
-// "zusatz" alone is too broad — it swallowed "Hesekiel-Zusatz", which is not an
-// apocryphal book at all (there is none for Ezekiel) and is better served by the
-// near-match suggestion. Only the actual titles count.
+// Deuterokanonische und apokryphe Bücher, damit ein Fehlgriff darauf genau
+// beantwortet und nicht geraten wird. Ohne diese Liste kam „Sirach" auf eine
+// Editierdistanz von 2 gegen den Alias „sach" und zurück als „Meinten Sie
+// Sacharja?", eine falsche Antwort im Gewand einer Hilfe (25.07.2026).
+// „zusatz" allein ist zu weit gefasst: Es verschluckte „Hesekiel-Zusatz", das gar
+// kein apokryphes Buch ist (für Hesekiel gibt es keines) und dem der Vorschlag
+// des nächstliegenden Buches besser dient. Es zählen nur die tatsächlichen Titel.
 const APOKRYPHEN =
   /\b(tobit|tobias|judit|sirach|ecclesiasticus|weisheit salomos|baruch|makkab|manasse|esra\s*[34]|susanna|bel und|asarja|zus(a|ä)tze?\s+zu\s+(daniel|est(h)?er))/i;
 
-/** Levenshtein distance, capped — only small distances interest us. */
+/** Levenshtein-Distanz, gedeckelt: Nur kleine Distanzen sind hier von Belang. */
 function editDistance(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 2) return 99;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -1001,13 +1028,13 @@ function editDistance(a: string, b: string): number {
 }
 
 /**
- * Nearest known book for an unresolved name, or null.
+ * Das nächstliegende bekannte Buch zu einem nicht aufgelösten Namen, oder null.
  *
- * Two cases seen in practice: a known book carrying an extra qualifier
- * ("Hesekiel-Zusatz" → Hesekiel) and a plain typo ("Hesekil"). The first is a
- * containment test, the second an edit distance of at most 2. Suggest only —
- * never resolve to it, or the answer silently covers a different book than the
- * one asked for.
+ * Zwei Fälle kommen in der Praxis vor: ein bekanntes Buch mit einem Zusatz
+ * daran („Hesekiel-Zusatz" → Hesekiel) und ein schlichter Tippfehler
+ * („Hesekil"). Der erste ist eine Enthaltensein-Prüfung, der zweite eine
+ * Editierdistanz von höchstens 2. Nur vorschlagen, niemals dorthin auflösen,
+ * sonst beantwortet die Antwort still ein anderes Buch als das erfragte.
  */
 function suggestBook(book: string): string | null {
   const q = book.trim().toLowerCase();
@@ -1022,10 +1049,10 @@ function suggestBook(book: string): string | null {
     if (row.alias.length < 3) continue;
     let score: number;
     if (q.includes(row.alias)) {
-      score = 100 - row.alias.length; // longest contained alias wins
+      score = 100 - row.alias.length; // der längste enthaltene Alias gewinnt
     } else {
-      // A distance of 2 is only meaningful on longer names: on a four-letter
-      // alias it relates almost anything to anything.
+      // Eine Distanz von 2 sagt nur bei längeren Namen etwas: Bei einem Alias aus
+      // vier Buchstaben setzt sie fast alles mit fast allem in Beziehung.
       const d = editDistance(q, row.alias);
       const erlaubt = d <= 1 || (d === 2 && Math.min(q.length, row.alias.length) >= 6);
       if (!erlaubt) continue;
@@ -1039,15 +1066,18 @@ function suggestBook(book: string): string | null {
 }
 
 /**
- * Uniform "book not found" wording: names the nearest known book when there is
- * one, and states the canon scope. Without the scope note a miss on "Sirach"
- * looks like a typo rather than a book this DB does not carry (66 books,
- * protestant canon) — the caller cannot tell the two apart from "not found".
+ * Der einheitliche Wortlaut für „Buch nicht gefunden": nennt das nächstliegende
+ * bekannte Buch, sofern es eines gibt, und benennt den Umfang des Kanons. Ohne
+ * den Hinweis auf den Umfang sieht ein Fehlgriff auf „Sirach" nach einem
+ * Tippfehler aus statt nach einem Buch, das diese Datenbank nicht führt (66
+ * Bücher, protestantischer Kanon); aus „nicht gefunden" allein kann der Aufrufer
+ * die beiden nicht unterscheiden.
  *
- * The message and its packaging are separate because the same miss reaches the
- * caller through two channels: tools return it as an `isError` result, resources
- * have no such channel and must throw. One wording, two envelopes — a second
- * formulation would drift, as the boundary messages already did (25.07.2026).
+ * Meldung und Verpackung sind getrennt, weil derselbe Fehlgriff den Aufrufer
+ * über zwei Kanäle erreicht: Werkzeuge liefern ihn als Ergebnis mit `isError`,
+ * Ressourcen haben keinen solchen Kanal und müssen werfen. Ein Wortlaut, zwei
+ * Umschläge; eine zweite Formulierung liefe weg, wie es die Grenzmeldungen schon
+ * getan haben (25.07.2026).
  */
 function bookNotFoundMessage(book: string): string {
   if (APOKRYPHEN.test(book)) {
@@ -1059,10 +1089,11 @@ function bookNotFoundMessage(book: string): string {
       "klingendes Buch des Kanons meinen."
     );
   }
-  // Lead with the statement, not with "Error:". The apocrypha branch above
-  // opens with a fact and gets relayed; this branch opened with "Error: Book …
-  // not found" and was dropped as a failed call, suggestion and all
-  // (25.07.2026, "Hesekiel-Zusatz"). Same lesson as `quellenkonflikte`.
+  // Mit der Aussage beginnen, nicht mit "Error:". Der Apokryphen-Zweig oben
+  // eröffnet mit einer Tatsache und wird wiedergegeben; dieser Zweig eröffnete
+  // mit "Error: Book … not found" und wurde als gescheiterter Aufruf verworfen,
+  // samt Vorschlag (25.07.2026, „Hesekiel-Zusatz"). Dieselbe Lehre wie bei
+  // `quellenkonflikte`.
   const nahe = suggestBook(book);
   return (
     `"${book}" ist kein Buch dieser Bibel-Datenbank.` +
@@ -1079,49 +1110,53 @@ function bookNotFound(book: string): ReturnType<typeof errorResult> {
   return errorResult(bookNotFoundMessage(book));
 }
 
-// Reference bounds. Shared so that the limit and the message that reports it
-// cannot drift apart: three handlers used to reject `verse=999` with "must be a
-// positive integer", which names a condition the input satisfies (25.07.2026).
-const MAX_CHAPTER = 150; // Psalms has the most chapters (150)
-const MAX_VERSE = 200; // Longest chapter (Psalm 119) has 176 verses
-const MAX_VERSE_PARTS = 30; // comma-separated segments in `verses`
-const MAX_BOOK_LENGTH = 50; // longest German book name is ~20 chars
-const MAX_LEMMA_LENGTH = 50; // own field, own limit — not the book bound
+// Grenzen der Stellenangabe. Gemeinsam gehalten, damit die Grenze und die
+// Meldung, die sie nennt, nicht auseinanderlaufen können: Drei Handler wiesen
+// `verse=999` mit "must be a positive integer" zurück, einer Bedingung, die die
+// Eingabe erfüllt (25.07.2026).
+const MAX_CHAPTER = 150; // Die Psalmen haben die meisten Kapitel (150)
+const MAX_VERSE = 200; // Das längste Kapitel (Psalm 119) hat 176 Verse
+const MAX_VERSE_PARTS = 30; // kommagetrennte Segmente in `verses`
+const MAX_BOOK_LENGTH = 50; // der längste deutsche Buchname hat rund 20 Zeichen
+const MAX_LEMMA_LENGTH = 50; // eigenes Feld, eigene Grenze, nicht die des Buchnamens
 
-// Derived, not chosen: the longest legal `verses` string is MAX_VERSE_PARTS
-// segments of the form "176-176" plus the commas between them. A hand-picked
-// 200 used to sit here, colliding with MAX_VERSE by accident and cutting into
-// valid input: 30 segments of "100-176" (239 characters, every number legal)
-// were rejected (26.07.2026). Note that this bound can never be the only one
-// violated — any longer string necessarily breaks the segment or the value
-// bound as well. It exists so that an oversized input is turned away before
-// the first split, not as a rule of its own; there is no test case for it
-// alone, and none can be constructed.
-const MAX_VERSE_PART_LENGTH = 2 * String(MAX_VERSE).length + 1; // "176-176"
+// Abgeleitet, nicht gewählt: Die längste gültige `verses`-Zeichenkette besteht
+// aus MAX_VERSE_PARTS Segmenten der Form "176-176" samt den Kommata dazwischen.
+// Hier stand einmal eine freihändig gesetzte 200, die zufällig mit MAX_VERSE
+// zusammenfiel und in gültige Eingabe schnitt: 30 Segmente "100-176" (239
+// Zeichen, jede Zahl gültig) wurden abgewiesen (26.07.2026). Zu beachten ist,
+// dass diese Grenze nie allein verletzt sein kann; jede längere Zeichenkette
+// bricht zwangsläufig auch die Segment- oder die Wertgrenze. Sie steht da, damit
+// eine übergroße Eingabe schon vor dem ersten split abgewiesen wird, und nicht
+// als eigene Regel. Einen Testfall für sie allein gibt es nicht und kann es
+// nicht geben.
+const MAX_VERSE_PART_LENGTH = 2 * String(MAX_VERSE).length + 1; // Form "176-176"
 const MAX_VERSES_LENGTH =
   MAX_VERSE_PARTS * MAX_VERSE_PART_LENGTH + (MAX_VERSE_PARTS - 1);
 
 const chapterOutOfRange = `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}`;
 const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_VERSE}`;
 const bookTooLong = `Error: 'book' must be at most ${MAX_BOOK_LENGTH} characters (e.g. 'Jesaja', '1. Mose', 'Römer')`;
-// One message per condition. A single collective message names the form of
-// `verses`, and the form was in order in exactly the case that hit the bound.
+// Eine Meldung je Bedingung. Eine einzige Sammelmeldung nannte die Form von
+// `verses`, und die Form war genau in dem Fall in Ordnung, der an die Grenze
+// stieß.
 const versesNotAString = `Error: 'verses' must be a string like "4", "16-17" or "1-3,7"`;
 const versesTooLong = `Error: 'verses' must be at most ${MAX_VERSES_LENGTH} characters`;
 const versesTooManyParts = `Error: 'verses' must list at most ${MAX_VERSE_PARTS} comma-separated segments`;
 const versesOutOfBounds = `Error: every verse number in 'verses' must be between 1 and ${MAX_VERSE}`;
 
-// --- bible_lookup helpers --------------------------------------------------
+// --- Helfer für bible_lookup -----------------------------------------------
 /**
- * Parse a verse reference string like "4", "16-17", "1,3,5", "1-3,7".
- * Returns an array of individual verse numbers.
+ * Liest eine Versangabe wie "4", "16-17", "1,3,5", "1-3,7" und liefert die
+ * einzelnen Versnummern als Feld.
  */
 function parseVerses(versesStr: string): number[] {
   const verses: number[] = [];
-  // Second line only: the handler rejects an overlong list with a message
-  // before it gets here. This slice used to be the reporting layer and said
-  // nothing — "1,2,…,35" on Ps 119 came back as verses 1-30, isError false, no
-  // hint, and the answer looked complete (measured 26.07.2026).
+  // Nur zweite Linie: Der Handler weist eine zu lange Liste mit einer Meldung
+  // zurück, bevor sie hier ankommt. Dieses slice war einmal die meldende Schicht
+  // und sagte nichts: „1,2,…,35" auf Ps 119 kam als Verse 1-30 zurück, isError
+  // false, ohne Hinweis, und die Antwort sah vollständig aus (gemessen
+  // 26.07.2026).
   const parts = versesStr.split(",").map((p) => p.trim()).slice(0, MAX_VERSE_PARTS);
 
   for (const part of parts) {
@@ -1142,8 +1177,9 @@ function parseVerses(versesStr: string): number[] {
     }
   }
 
-  // Dedupe and sort ascending so the returned text matches the canonical
-  // order of the formatted reference ("5,3,3" → verses 3 and 5, once each).
+  // Doppelte entfernen und aufsteigend sortieren, damit der gelieferte Text zur
+  // kanonischen Reihenfolge der formatierten Stellenangabe passt ("5,3,3" →
+  // Verse 3 und 5, je einmal).
   return [...new Set(verses)].sort((a, b) => a - b);
 }
 
@@ -1153,12 +1189,13 @@ function lookupVerses(
   chapter: number,
   versesStr: string
 ): ReadonlyArray<{ verse: number; text: string }> {
-  // If no specific verses requested, return entire chapter
+  // Ohne bestimmte Verse das ganze Kapitel liefern
   if (!versesStr || versesStr.trim() === "") {
     return stmtVerses.all(translation, bookId, chapter);
   }
 
-  // Check if it's a simple range (e.g., "3-7") — use range query for efficiency
+  // Bei einer schlichten Spanne (etwa "3-7") die Bereichsabfrage nehmen, sie ist
+  // günstiger
   const rangeMatch = versesStr.trim().match(/^(\d+)-(\d+)$/);
   if (rangeMatch) {
     const start = parseInt(rangeMatch[1]!, 10);
@@ -1166,7 +1203,7 @@ function lookupVerses(
     return stmtVerseRange.all(translation, bookId, chapter, start, end);
   }
 
-  // Parse complex verse references and query individually
+  // Zusammengesetzte Versangaben zerlegen und einzeln abfragen
   const verseNums = parseVerses(versesStr);
   const results: Array<{ verse: number; text: string }> = [];
   for (const v of verseNums) {
@@ -1179,7 +1216,7 @@ function lookupVerses(
 }
 
 /**
- * Format verse numbers into a compact reference string.
+ * Formt Versnummern zu einer knappen Stellenangabe.
  * [1,2,3,5,7,8,9] → "1-3.5.7-9"
  */
 function formatVerseReference(verses: number[]): string {
@@ -1207,8 +1244,8 @@ function formatVerseReference(verses: number[]): string {
 }
 
 /**
- * Resolve a `translation` tool argument to a loaded translation code, or an
- * error message for the caller to return.
+ * Löst ein `translation`-Argument zu einem geladenen Übersetzungskürzel auf,
+ * oder zu einer Meldung, die der Aufrufer zurückgibt.
  */
 function requireTranslation(input: unknown): { code: TranslationCode } | { error: string } {
   const code = resolveTranslation(input);
@@ -1234,20 +1271,22 @@ function requireTranslation(input: unknown): { code: TranslationCode } | { error
 }
 
 /**
- * The verse payload shared by `bible_lookup` and the two text resources.
- * Returns null when the reference resolves to no verse at all; the caller words
- * that miss, because only it knows how the reference was spelled.
+ * Die Versnutzlast, die sich `bible_lookup` und die beiden Textressourcen
+ * teilen. Liefert null, wenn die Stellenangabe auf gar keinen Vers führt; den
+ * Fehlgriff formuliert der Aufrufer, denn nur er weiß, wie die Angabe
+ * geschrieben war.
  *
- * `form` decides how the verses are carried, and that is the one difference
- * between the two callers. The tool has always delivered a single `text` with
- * the verse numbers folded in; a resource carries `verse_einzeln` instead,
- * because it is attached to a conversation and quoted from, and a composite
- * string is exactly what got cut at both ends in `bible_crossrefs` (25.07.2026,
- * Joh 11,25-26). Carrying both would cost 2,57× (Psalm 119, Luther: 13 562 →
- * 34 876 characters), `verse_einzeln` alone costs 1,58× — so it replaces `text`
- * rather than joining it. In the tool the surcharge would count twice, since
- * the payload also travels as `structuredContent`; that is why the tool keeps
- * the composite string.
+ * `form` entscheidet, wie die Verse getragen werden, und das ist der eine
+ * Unterschied zwischen den beiden Aufrufern. Das Werkzeug liefert seit je ein
+ * einziges `text` mit eingeflochtenen Versnummern; eine Ressource trägt
+ * stattdessen `verse_einzeln`, denn sie hängt an einem Gespräch und wird
+ * zitiert, und eine zusammengesetzte Zeichenkette ist genau das, was in
+ * `bible_crossrefs` an beiden Enden abgeschnitten wurde (25.07.2026,
+ * Joh 11,25-26). Beides zu tragen kostete das 2,57-Fache (Psalm 119, Luther:
+ * 13 562 → 34 876 Zeichen), `verse_einzeln` allein kostet das 1,58-Fache;
+ * deshalb ersetzt es `text`, statt danebenzutreten. Im Werkzeug zählte der
+ * Aufschlag doppelt, weil die Nutzlast auch als `structuredContent` reist, und
+ * genau deshalb behält das Werkzeug die zusammengesetzte Zeichenkette.
  */
 function lookupPayload(
   code: TranslationCode,
@@ -1280,15 +1319,16 @@ function lookupPayload(
   };
 }
 
-// --- bible_original helpers ------------------------------------------------
+// --- Helfer für bible_original ---------------------------------------------
 /**
- * Edition routing, lookup and word payload for one verse, shared by the
- * `bible_original` tool and the `bible://grundtext/…` resource.
+ * Editionsrouting, Nachschlagen und Wortnutzlast eines Verses, geteilt vom
+ * Werkzeug `bible_original` und der Ressource `bible://grundtext/…`.
  *
- * Starts after the argument check, because the two callers read their arguments
- * from different places (a tool argument object, a URI segment) but must route
- * and answer identically from there on. `bookLabel` appears only in the "no
- * data" message and is the caller's spelling, so that message stays what it was.
+ * Setzt hinter der Argumentprüfung an, denn die beiden Aufrufer lesen ihre
+ * Argumente von verschiedenen Stellen (einem Argumentobjekt, einem
+ * URI-Segment), müssen von dort an aber gleich weiterleiten und gleich
+ * antworten. `bookLabel` erscheint allein in der Meldung „keine Daten" und ist
+ * die Schreibweise des Aufrufers; diese Meldung bleibt damit, was sie war.
  */
 function originalPayload(
   bookLabel: string,
@@ -1305,7 +1345,8 @@ function originalPayload(
     };
   }
 
-  // Route by testament: OT (1–39) → Hebrew WLC; NT (40–66) → Greek text type.
+  // Weiterleitung nach Testament: AT (1 bis 39) → hebräisches WLC; NT (40 bis 66)
+  // → griechischer Texttyp.
   const isOT = bookId < 40;
   let edition: string;
   let hinweisZusatz = "";
@@ -1349,8 +1390,9 @@ function originalPayload(
     meta0.decoder === "morphgnt" ? decodeParse :
     decodeRobinson;
   const woerter = rows.map((r) => {
-    // SBLGNT stores POS separately (r.pos); the other decoders fold it into the
-    // morphology string, so prepend it here for a consistent output shape.
+    // Das SBLGNT legt die Wortart getrennt ab (r.pos); die anderen Dekoder falten
+    // sie in die Morphologiezeichenkette. Deshalb hier voranstellen, damit die
+    // Ausgabe überall dieselbe Form hat.
     const morph =
       meta0.decoder === "morphgnt"
         ? [posLabel(r.pos), decodeParse(r.parse)].filter(Boolean).join(" ")
@@ -1378,11 +1420,13 @@ function originalPayload(
   };
 }
 
-// --- bible_concordance helpers ---------------------------------------------
-// Lemma strings with combining marks (Hebrew niqqud, Greek accents) can differ
-// in code-point order between the stored data and a caller's input while being
-// canonically equivalent. Resolve such misses via a lazy per-edition map of
-// NFC-normalized → stored lemma (built once per edition, ~10k entries).
+// --- Helfer für bible_concordance ------------------------------------------
+// Lemmata mit kombinierenden Zeichen (hebräische Nikkud, griechische Akzente)
+// können sich zwischen den abgelegten Daten und der Eingabe eines Aufrufers in
+// der Reihenfolge der Codepunkte unterscheiden und dabei kanonisch gleichwertig
+// sein. Solche Fehlgriffe löst eine bei Bedarf gebaute Abbildung je Edition auf,
+// von NFC-normalisiert auf abgelegtes Lemma (einmal je Edition gebaut, rund
+// 10 000 Einträge).
 const lemmaIndexCache = new Map<string, Map<string, string>>();
 function findStoredLemma(edition: string, lemma: string): string | null {
   let idx = lemmaIndexCache.get(edition);
@@ -1397,11 +1441,12 @@ function findStoredLemma(edition: string, lemma: string): string | null {
   return idx.get(lemma.normalize("NFC")) ?? null;
 }
 
-// --- bible_search helpers --------------------------------------------------
+// --- Helfer für bible_search -----------------------------------------------
 /**
- * Turn free-form user input into a safe FTS5 MATCH expression.
- * Quoted segments become phrases; bare words are ANDed; a trailing `*` on a
- * word makes it a prefix query. Returns null if no searchable token remains.
+ * Formt freie Eingabe in einen unbedenklichen FTS5-MATCH-Ausdruck um.
+ * Zitierte Abschnitte werden zu Phrasen, nackte Wörter mit UND verknüpft, und
+ * ein angehängtes `*` macht aus einem Wort eine Präfixsuche. Liefert null, wenn
+ * kein durchsuchbares Token übrig bleibt.
  */
 function buildFtsQuery(input: string): string | null {
   const terms: string[] = [];
@@ -1409,7 +1454,7 @@ function buildFtsQuery(input: string): string | null {
   for (let i = 0; i < parts.length; i++) {
     const seg = parts[i]!;
     if (i % 2 === 1) {
-      // inside quotes → one phrase
+      // innerhalb von Anführungszeichen: eine Phrase
       const words = seg.match(/[\p{L}\p{N}]+/gu) ?? [];
       if (words.length > 0) terms.push(`"${words.join(" ")}"`);
     } else {
@@ -1421,11 +1466,12 @@ function buildFtsQuery(input: string): string | null {
   return terms.length > 0 ? terms.join(" ") : null;
 }
 
-// --- bible_compare helpers -------------------------------------------------
+// --- Helfer für bible_compare ----------------------------------------------
 /**
- * Normalize a Greek surface form for edition comparison: strip diacritics,
- * lowercase, fold final sigma. byzantine/tr are stored unaccented, sblgnt is
- * accented — without this every word pair would differ.
+ * Normalisiert eine griechische Wortform für den Editionsvergleich: diakritische
+ * Zeichen entfernen, kleinschreiben, das Schlusssigma falten. byzantine und tr
+ * liegen unakzentuiert vor, sblgnt akzentuiert; ohne das wiche jedes Wortpaar
+ * voneinander ab.
  */
 function normForCompare(w: string): string {
   return w
@@ -1436,9 +1482,10 @@ function normForCompare(w: string): string {
 }
 
 /**
- * LCS word diff between two editions of a verse. Compares normalized forms,
- * reports original surfaces. Each segment holds the differing run of words on
- * either side ("" = missing on that side).
+ * Wortvergleich zweier Editionen eines Verses über die längste gemeinsame
+ * Teilfolge. Verglichen werden normalisierte Formen, gemeldet die
+ * ursprünglichen Wortformen. Jedes Segment hält die abweichende Wortfolge
+ * beider Seiten ("" heißt: auf dieser Seite nicht vorhanden).
  */
 function diffSegments(aWords: string[], bWords: string[]): Array<{ a: string; b: string }> {
   const an = aWords.map(normForCompare);
@@ -1477,7 +1524,7 @@ function diffSegments(aWords: string[], bWords: string[]): Array<{ a: string; b:
   return segs.map((s) => ({ a: s.a.join(" "), b: s.b.join(" ") }));
 }
 
-/** TAGNT's witness label per edition loaded here; its other six have no local text. */
+/** Das TAGNT-Zeugenkürzel je hier geladener Edition; für die übrigen sechs liegt kein Text vor. */
 const TAGNT_LABEL: Record<string, string> = {
   byzantine: "Byz",
   tr: "TR",
@@ -1488,19 +1535,21 @@ const TAGNT_WITNESS_RE = /\b(?:NA28|NA27|Tyn|SBL|WH|Treg|TR|Byz)\b/g;
 const GREEK_RUN_RE = /\p{Script=Greek}+/gu;
 
 /**
- * Greek letters only. The Script=Greek range also carries non-letters — koronis
- * ᾽ (U+1FBD) marks elision ("ἀλλ᾽") and would otherwise ride along into the
- * compared form, so "ἀλλ᾽" never matched the stored "αλλ".
+ * Nur griechische Buchstaben. Der Bereich Script=Greek führt auch Zeichen, die
+ * keine Buchstaben sind: Die Koronis ᾽ (U+1FBD) markiert die Elision („ἀλλ᾽")
+ * und reiste sonst in die verglichene Form mit, sodass „ἀλλ᾽" nie zum
+ * abgelegten „αλλ" passte.
  */
 function greekLettersOnly(s: string): string {
   return (s.match(GREEK_RUN_RE) ?? []).join("").replace(/[^\p{L}]/gu, "");
 }
 
 /**
- * True when two normalized forms differ only by an elided final vowel
- * ("αλλ" ↔ "αλλα", "αφ" ↔ "απο" is NOT this case). Editions elide by different
- * conventions, so such a pair is an orthographic split, not a textual variant —
- * worth showing in `in_dieser_db`, not worth warning about.
+ * Wahr, wenn sich zwei normalisierte Formen allein durch einen elidierten
+ * Schlussvokal unterscheiden („αλλ" ↔ „αλλα"; „αφ" ↔ „απο" ist NICHT dieser
+ * Fall). Die Editionen elidieren nach verschiedenen Konventionen, ein solches
+ * Paar ist also eine Schreibvariante und keine Textvariante: in `in_dieser_db`
+ * zu zeigen, aber keine Warnung wert.
  */
 function istElision(a: string, b: string): boolean {
   const [kurz, lang] = a.length <= b.length ? [a, b] : [b, a];
@@ -1508,16 +1557,17 @@ function istElision(a: string, b: string): boolean {
 }
 
 /**
- * Cross-check a TAGNT variant note against the edition texts in this DB.
+ * Gleicht eine TAGNT-Variantennotiz gegen die Editionstexte dieser Datenbank ab.
  *
- * TAGNT notes name only the witnesses its own apparatus records for a variant.
- * At 1Tim 3,16 that is "TR: ἀνελήφθη ;" — which reads as though every other
- * edition, Byz included, had the headword ἀνελήμφθη. The Robinson-Pierpont text
- * stored here reads ἀνελήφθη too, so the note alone leads to the wrong
- * conclusion about the Majority Text (measured 24.07.2026: over 362 random NT
- * verses note and edition text disagree in 11 %). Report which loaded edition
- * actually attests which form, straight from `original_words`, and flag the
- * disagreements.
+ * TAGNT-Notizen nennen allein die Zeugen, die der eigene Apparat für eine
+ * Variante führt. Bei 1Tim 3,16 ist das „TR: ἀνελήφθη ;", was sich liest, als
+ * trüge jede andere Edition, Byz eingeschlossen, das Stichwort ἀνελήμφθη. Der
+ * hier abgelegte Robinson-Pierpont-Text liest ebenfalls ἀνελήφθη; die Notiz
+ * allein führt also zum falschen Schluss über den Mehrheitstext (gemessen am
+ * 24.07.2026: über 362 zufällige NT-Verse gehen Notiz und Editionstext in
+ * 11 Prozent auseinander). Gemeldet wird deshalb, welche geladene Edition
+ * welche Form tatsächlich bezeugt, unmittelbar aus `original_words`, und die
+ * Widersprüche werden gekennzeichnet.
  */
 function crossCheckVariant(
   note: string,
@@ -1527,7 +1577,7 @@ function crossCheckVariant(
   const head = greekLettersOnly(headword);
   if (head === "") return undefined;
 
-  // One ";"-separated segment per variant: its witnesses and its Greek form.
+  // Ein mit ";" getrenntes Segment je Variante: ihre Zeugen und ihre griechische Form.
   const varianten = note
     .split(";")
     .map((seg) => ({
@@ -1561,10 +1611,11 @@ function crossCheckVariant(
       if (label === undefined) continue;
       const liestVariante = liest(v.form).includes(t.ed);
       const genannt = v.zeugen.has(label);
-      // Lead with what the edition reads, then the note it contradicts. Phrased
-      // the other way round ("TAGNT nennt … — der Text liest anders") it reads
-      // as a remark about data quality and gets dropped when the finding is
-      // retold; Mk 14,46 was reported twice without it (25.07.2026).
+      // Zuerst nennen, was die Edition liest, dann die Notiz, der sie
+      // widerspricht. Umgekehrt formuliert („TAGNT nennt … der Text liest
+      // anders") liest es sich wie eine Randbemerkung zur Datenqualität und
+      // entfällt beim Wiedergeben des Befundes; Mk 14,46 wurde zweimal ohne den
+      // Vorbehalt gemeldet (25.07.2026).
       const liesForm = liest(v.form).includes(t.ed) ? v.form : head;
       if (liestVariante && !genannt) {
         abgleich.push(
@@ -1584,29 +1635,33 @@ function crossCheckVariant(
 }
 
 
-// --- Output schemas — one per read tool ------------------------------------
-// Declared so a consuming program can find a field instead of parsing prose,
-// and so `structuredContent` has something to be checked against.
+// --- Ausgabeschemata: eines je Lesewerkzeug --------------------------------
+// Deklariert, damit ein konsumierendes Programm ein Feld finden kann, statt
+// Prosa zu zerlegen, und damit `structuredContent` etwas hat, woran es geprüft
+// wird.
 //
-// Two rules hold for all of them, and both are load-bearing:
+// Für alle gelten zwei Regeln, und beide tragen:
 //
-// 1. `required` lists ONLY fields present in every successful return path. For a
-//    client of the 1.x SDK a declared schema is stricter than none: a successful
-//    answer that does not match is rejected outright (client/index.js:500),
-//    where before it was merely an answer with a field missing. Every entry
-//    below therefore names the condition under which the field is absent, and
-//    tests/test-golden.ts carries one case per condition. Widening `required`
-//    without a matching case is how this turns into an outage.
-// 2. No `additionalProperties: false`, anywhere. Adding an output field has to
-//    stay a non-breaking change, which is the house rule for this interface.
+// 1. `required` nennt NUR Felder, die in jedem Erfolgspfad dastehen. Für einen
+//    Client des 1.x-SDK ist ein deklariertes Schema strenger als gar keines:
+//    Eine erfolgreiche Antwort, die nicht passt, wird rundweg abgewiesen
+//    (client/index.js:500), wo sie vorher bloß eine Antwort mit einem fehlenden
+//    Feld war. Jeder Eintrag unten benennt deshalb die Bedingung, unter der das
+//    Feld fehlt, und tests/test-golden.ts trägt je Bedingung einen Fall.
+//    `required` ohne einen passenden Fall zu erweitern ist der Weg, aus dieser
+//    Stelle einen Ausfall zu machen.
+// 2. Nirgends `additionalProperties: false`. Ein Ausgabefeld zu ergänzen muss
+//    eine nicht brechende Änderung bleiben, das ist die Hausregel dieser
+//    Schnittstelle.
 //
-// Field descriptions are used sparingly and only where a consumer has actually
-// been measured to go wrong (counts, caveats, source fidelity). Whether a
-// description inside an output schema reaches a model at all is NOT established
-// — unlike the one on the tool itself, which is (see bible_lookup).
+// Feldbeschreibungen stehen sparsam und nur dort, wo ein Konsument gemessen
+// danebengegriffen hat (Zahlen, Vorbehalte, Quellentreue). Ob eine Beschreibung
+// innerhalb eines Ausgabeschemas ein Modell überhaupt erreicht, ist NICHT
+// belegt, anders als die am Werkzeug selbst, für die es belegt ist (siehe
+// bible_lookup).
 
-/** Identical in every answer, so it is declared once. `nennung: null` means the
- *  licence requires no attribution; that is a statement, not a missing value. */
+/** In jeder Antwort gleich, deshalb einmal deklariert. `nennung: null` heißt,
+ *  die Lizenz verlangt keine Nennung; das ist eine Aussage, kein fehlender Wert. */
 const QUELLEN_SCHEMA = {
   type: "array",
   items: {
@@ -1620,8 +1675,8 @@ const QUELLEN_SCHEMA = {
   },
 };
 
-/** Conditional: `hinweis` (only when the text carries bracketed words — Menge
- *  has 137 such verses, the other three translations none). */
+/** Bedingt: `hinweis`, nur wenn der Text Wörter in Klammern trägt (Menge hat
+ *  137 solche Verse, die anderen drei Übersetzungen keine). */
 const LOOKUP_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1634,8 +1689,8 @@ const LOOKUP_OUTPUT = {
   required: ["reference", "translation", "text", "quellen"],
 };
 
-/** Conditional: `woerter[].strong` (absent for all 137 554 SBLGNT words and for
- *  5951 WLC words; byzantine and tr carry it throughout). */
+/** Bedingt: `woerter[].strong`, fehlt bei allen 137 554 SBLGNT-Wörtern und bei
+ *  5951 WLC-Wörtern; byzantine und tr führen es durchgängig. */
 const ORIGINAL_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1669,9 +1724,9 @@ const ORIGINAL_OUTPUT = {
   required: ["reference", "texttyp", "edition", "sprache", "hinweis", "woerter", "quellen"],
 };
 
-/** Conditional: `verweise[].verse_einzeln` (only for a multi-verse target inside
- *  one chapter), `lesehinweis` (only when some reference carries it), `hinweis`
- *  (bracketed words). */
+/** Bedingt: `verweise[].verse_einzeln`, nur bei einem mehrversigen Ziel innerhalb
+ *  eines Kapitels; `lesehinweis`, nur wenn ein Verweis ihn trägt; `hinweis` bei
+ *  Wörtern in Klammern. */
 const CROSSREFS_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1706,10 +1761,11 @@ const CROSSREFS_OUTPUT = {
   required: ["reference", "verweise", "quellen"],
 };
 
-/** Conditional: the six lexicon fields (`strong`, `umschrift`, `kurzbedeutung`,
- *  `bedeutung`, `kjv_woerter`, `lexikon`; the last is Greek-only and all depend
- *  on strong_defs being loaded and holding an entry), `hinweis` (only when the
- *  occurrence list was capped by `limit`). */
+/** Bedingt: die sechs Lexikonfelder (`strong`, `umschrift`, `kurzbedeutung`,
+ *  `bedeutung`, `kjv_woerter`, `lexikon`; das letzte gibt es nur im
+ *  Griechischen, und alle setzen voraus, dass strong_defs geladen ist und einen
+ *  Eintrag führt), sowie `hinweis`, nur wenn `limit` die Vorkommensliste
+ *  gekürzt hat. */
 const CONCORDANCE_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1753,9 +1809,10 @@ const CONCORDANCE_OUTPUT = {
   ],
 };
 
-/** Conditional: `vorkommen_gesamt` (only when counted AND different from
- *  `treffer`), `verteilung` (only when counted and more than one bucket). Both
- *  drop out above OCCURRENCE_SCAN_LIMIT; `hinweis` says so in that case. */
+/** Bedingt: `vorkommen_gesamt`, nur wenn gezählt wurde UND die Zahl von
+ *  `treffer` abweicht; `verteilung`, nur wenn gezählt wurde und es mehr als eine
+ *  Gruppe gibt. Beide entfallen oberhalb von OCCURRENCE_SCAN_LIMIT, und
+ *  `hinweis` sagt das dann. */
 const SEARCH_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1803,11 +1860,11 @@ const SEARCH_OUTPUT = {
   required: ["suche", "uebersetzung", "treffer", "verse", "hinweis", "quellen"],
 };
 
-/** Conditional: `warnung` + `quellenkonflikte` (only when the TAGNT attestation
- *  contradicts the edition text), `bezeugung` (only when TAGNT knows the verse —
- *  9 NT verses have no row at all), and inside it `lesehinweis`,
+/** Bedingt: `warnung` und `quellenkonflikte`, nur wenn die TAGNT-Bezeugung dem
+ *  Editionstext widerspricht; `bezeugung`, nur wenn TAGNT den Vers kennt (neun
+ *  NT-Verse haben überhaupt keine Zeile), und darin `lesehinweis`,
  *  `bedeutungsvariante`, `schreibvariante`, `in_dieser_db`, `abgleich`.
- *  `vergleiche[]` has two shapes, so only `paar` is required. */
+ *  `vergleiche[]` hat zwei Gestalten, deshalb ist allein `paar` erforderlich. */
 const COMPARE_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1869,7 +1926,7 @@ const COMPARE_OUTPUT = {
               bedeutungsvariante: { type: "string" },
               schreibvariante: { type: "string" },
               in_dieser_db: {
-                // Dynamic keys: one per attested word form.
+                // Dynamische Schlüssel: einer je bezeugter Wortform.
                 type: "object",
                 additionalProperties: { type: "array", items: { type: "string" } },
                 description:
@@ -1894,8 +1951,8 @@ const COMPARE_OUTPUT = {
   required: ["reference", "sprache", "editionen", "vergleiche", "hinweis", "quellen"],
 };
 
-/** Conditional: `daten_stand` (only once a download recorded provenance),
- *  `hinweis` (only while the database is missing). */
+/** Bedingt: `daten_stand`, erst wenn ein Download eine Herkunft vermerkt hat;
+ *  `hinweis`, nur solange die Datenbank fehlt. */
 const SERVER_INFO_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1947,18 +2004,19 @@ const SERVER_INFO_OUTPUT = {
   ],
 };
 
-// All six tools only read: one local SQLite file opened read-only, no writes,
-// no side effects, no network. Both spec defaults are wrong here (readOnlyHint
-// defaults to false, openWorldHint to true), so both are stated. destructiveHint
-// and idempotentHint stay out on purpose — the schema defines them as meaningful
-// only when readOnlyHint is false.
+// Die sieben Lesewerkzeuge lesen nur: eine lokale SQLite-Datei, nur lesend
+// geöffnet, keine Schreibvorgänge, keine Nebenwirkungen, kein Netz. Beide
+// Vorgabewerte der Spezifikation sind hier falsch (readOnlyHint steht auf false,
+// openWorldHint auf true), deshalb stehen beide ausdrücklich da. destructiveHint
+// und idempotentHint bleiben bewusst draußen: Das Schema erklärt sie nur dann
+// für bedeutsam, wenn readOnlyHint false ist.
 const READ_ONLY_LOCAL = { readOnlyHint: true, openWorldHint: false } as const;
 
-// bible_setup is the one tool that writes: it downloads the Bible data and
-// replaces the database file. readOnlyHint and openWorldHint are therefore both
-// wrong for it, and destructiveHint becomes meaningful — it only ever adds data,
-// and running it again rebuilds the same tables, so it is neither destructive
-// nor harmful to repeat.
+// bible_setup ist das eine Werkzeug, das schreibt: Es lädt die Bibeldaten und
+// ersetzt die Datenbankdatei. readOnlyHint und openWorldHint sind für es deshalb
+// beide falsch, und destructiveHint wird bedeutsam. Es ergänzt ausschließlich
+// Daten, und ein erneuter Lauf baut dieselben Tabellen wieder auf; es ist also
+// weder zerstörend noch schädlich zu wiederholen.
 const SETUP_ANNOTATIONS = {
   readOnlyHint: false,
   openWorldHint: true,
@@ -1968,17 +2026,19 @@ const SETUP_ANNOTATIONS = {
 
 const handleListTools = async () => ({
   tools: [
-    // Advertised only while data is missing, and never over HTTP: once the
-    // database is in place this tool has nothing to offer, and a visible "set up
-    // the database" action invites a model to re-run downloads that already
-    // succeeded. On an HTTP endpoint it must not appear at all — see HTTP_MODE.
+    // Nur angeboten, solange die Daten fehlen, und niemals über HTTP: Steht die
+    // Datenbank erst, hat dieses Werkzeug nichts anzubieten, und eine sichtbare
+    // Aktion „Datenbank aufbauen" lädt ein Modell dazu ein, bereits geglückte
+    // Downloads erneut anzustoßen. An einem HTTP-Endpunkt darf es gar nicht
+    // erscheinen, siehe HTTP_MODE.
     //
-    // The one tool without an outputSchema, and that is a decision rather than an
-    // omission: it answers in two different shapes (the plan, and the result of a
-    // run), it is the only tool that writes, and no consumer needs its output as
-    // data. Declaring a schema would buy nothing and add a second shape to keep
-    // in step. It therefore also keeps returning its result directly instead of
-    // through jsonResult().
+    // Das eine Werkzeug ohne outputSchema, und das ist entschieden, nicht
+    // vergessen: Es antwortet in zwei verschiedenen Gestalten (dem Plan und dem
+    // Ergebnis eines Laufs), es ist das einzige schreibende Werkzeug, und kein
+    // Konsument braucht seine Ausgabe als Daten. Ein Schema zu deklarieren
+    // brächte nichts ein und schüfe eine zweite Gestalt, die mitzupflegen wäre.
+    // Deshalb liefert es sein Ergebnis auch weiterhin unmittelbar statt über
+    // jsonResult().
     ...(dataMissing !== null && !HTTP_MODE
       ? [
           {
@@ -2008,11 +2068,11 @@ const handleListTools = async () => ({
     {
       name: "bible_lookup",
       annotations: READ_ONLY_LOCAL,
-      // The "quotes" framing alone was read as covering only requests for
-      // wording: "Schlag mir Hesekiel-Zusatz 1,1 nach" was answered from memory
-      // because the book seemed not to exist, so no quote was expected
-      // (25.07.2026). Existence and canon questions are exactly the ones the
-      // server can settle — say so.
+      // Die Rahmung über „Zitate" allein wurde so gelesen, als deckte sie nur
+      // Fragen nach dem Wortlaut: „Schlag mir Hesekiel-Zusatz 1,1 nach" wurde aus
+      // dem Gedächtnis beantwortet, weil das Buch nicht zu existieren schien und
+      // deshalb kein Zitat erwartet wurde (25.07.2026). Fragen nach Existenz und
+      // Kanon sind genau die, die der Server klären kann; das gehört gesagt.
       description:
         "Look up Bible verses by reference. Returns exact text from a freely licensed German " +
         "translation (default: Luther 1912). Use this for ALL Bible quotes — never quote " +
@@ -2218,18 +2278,18 @@ const handleListTools = async () => ({
       },
       outputSchema: COMPARE_OUTPUT,
     },
-    // Deliberately about the server, not about scripture: the version reaches
-    // clients in the initialize handshake, but no client shows it to the user
-    // and it does not reach the model either (measured 26.07.2026 — instructions
-    // is set and still invisible in the chat). A tool result is the one channel
-    // the model sees for certain, and "which version are you on?" is the first
-    // question a bug report has to answer.
+    // Bewusst über den Server, nicht über die Schrift: Die Version erreicht die
+    // Clients im initialize-Handschlag, aber kein Client zeigt sie dem Nutzer, und
+    // das Modell erreicht sie ebenso wenig (gemessen 26.07.2026: instructions ist
+    // gesetzt und blieb im Chat trotzdem unsichtbar). Ein Werkzeugergebnis ist der
+    // eine Kanal, den das Modell sicher sieht, und „auf welcher Version laufen
+    // Sie?" ist die erste Frage, die ein Fehlerbericht beantworten muss.
     //
-    // Reports only what differs between installations: the release, and which
-    // data this instance holds — data/ is built locally and not shipped, so two
-    // servers on the same version can hold different texts. No host details
-    // (uptime, paths, process, machine): this endpoint is public and
-    // unauthenticated, and a stranger has no business learning them.
+    // Meldet allein, was sich zwischen Installationen unterscheidet: die Version
+    // und den Datenbestand dieser Instanz. data/ entsteht lokal und wird nicht
+    // ausgeliefert, zwei Server derselben Version können also verschiedene Texte
+    // führen. Keine Host-Details (Laufzeit, Pfade, Prozess, Maschine): Dieser
+    // Endpunkt ist öffentlich und authlos, und einen Fremden gehen sie nichts an.
     {
       name: "bible_server_info",
       annotations: READ_ONLY_LOCAL,
@@ -2246,17 +2306,17 @@ const handleListTools = async () => ({
   ],
 });
 
-// --- MCP server — guided prompts -------------------------------------------
-// Workflow prompts that orchestrate the six tools. Names/descriptions are
-// English (like the tool names); the prompt bodies are German user-facing
-// content, matching the German output fields.
+// --- MCP-Server: geführte Prompts ------------------------------------------
+// Ablauf-Prompts, die die Lesewerkzeuge zusammenspielen lassen. Bezeichner und
+// Beschreibungen sind englisch (wie die Werkzeugnamen); die Prompt-Texte selbst
+// sind deutsche Inhalte für den Nutzer, passend zu den deutschen Ausgabefeldern.
 
-// `title` is the display name a client shows in its prompt menu, and that menu
-// is read by the user, not the model — same reason the resources carry German
-// names. `name` stays English and unchanged: it is the identifier a caller
-// sends, and renaming it would be a breaking change. Prompt arguments have no
-// `title` in the SDK schema (name, description, required only), so their
-// wording stays in `description`.
+// `title` ist der Anzeigename, den ein Client in seinem Prompt-Menü zeigt, und
+// dieses Menü liest der Nutzer, nicht das Modell; aus demselben Grund tragen die
+// Ressourcen deutsche Namen. `name` bleibt englisch und unverändert: Es ist der
+// Bezeichner, den ein Aufrufer schickt, und ihn umzubenennen wäre eine brechende
+// Änderung. Prompt-Argumente haben im SDK-Schema kein `title` (nur name,
+// description, required), ihr Wortlaut bleibt deshalb in `description`.
 const PROMPTS = [
   {
     name: "word-study",
@@ -2311,22 +2371,24 @@ const handleListPrompts = async () => ({
   prompts: PROMPTS.map((p) => ({ ...p, arguments: [...p.arguments] })),
 });
 
-// A prompt argument is interpolated into a numbered instruction, so it gets the
-// same treatment as a tool argument: a required one that is absent must say so
-// rather than produce an instruction with a hole in it (`Wortstudie zu „"`),
-// and line breaks or control characters would break the list the value lands
-// in. 100 characters hold every legal value with room to spare — the longest
-// reference is around 20 ("1. Thessalonicher 5,23"), a Strong's number five.
+// Ein Prompt-Argument wird in eine nummerierte Anweisung eingesetzt und
+// bekommt deshalb dieselbe Behandlung wie ein Werkzeugargument: Fehlt ein
+// erforderliches, muss das dastehen, statt eine Anweisung mit einem Loch darin
+// zu erzeugen (`Wortstudie zu „"`), und Zeilenumbrüche oder Steuerzeichen
+// zerrissen die Liste, in der der Wert landet. 100 Zeichen fassen jeden gültigen
+// Wert mit reichlich Luft: Die längste Stellenangabe hat rund 20 („1.
+// Thessalonicher 5,23"), eine Strong-Nummer fünf.
 const MAX_PROMPT_ARG_LENGTH = 100;
 
 /**
- * Read one prompt argument: fold whitespace and control characters, enforce the
- * length bound, and refuse an absent required value. Throws, because a prompt
- * result has no `isError` channel — the error belongs in the JSON-RPC response.
+ * Liest ein Prompt-Argument: faltet Leerraum und Steuerzeichen, setzt die
+ * Längengrenze durch und weist einen fehlenden Pflichtwert ab. Wirft, denn ein
+ * Prompt-Ergebnis hat keinen `isError`-Kanal: Der Fehler gehört in die
+ * JSON-RPC-Antwort.
  *
- * `InvalidParams` is what the spec asks for by name here: "Missing required
- * arguments: -32602", "Invalid prompt name: -32602" (server/prompts, a SHOULD in
- * every revision this server speaks).
+ * `InvalidParams` ist hier ausdrücklich das, was die Spezifikation verlangt:
+ * "Missing required arguments: -32602", "Invalid prompt name: -32602"
+ * (server/prompts, ein SHOULD in jeder Revision, die dieser Server spricht).
  */
 function promptArg(args: Record<string, string>, name: string, required: boolean): string {
   const raw = args[name];
@@ -2345,7 +2407,7 @@ function promptArg(args: Record<string, string>, name: string, required: boolean
   return value;
 }
 
-/** "\"LUT\" (Luther 1912), \"SCH\" (…)" — codes alone identify nothing. */
+/** "\"LUT\" (Luther 1912), \"SCH\" (…)": Die Kürzel allein bezeichnen nichts. */
 function loadedTranslationList(): string {
   return [...availableTranslations]
     .sort()
@@ -2361,11 +2423,12 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   if (name === "word-study") {
     const word = promptArg(args, "word", true);
     const ref = promptArg(args, "reference", false);
-    // Every step names the fields the answer actually carries, not the concepts
-    // behind them: "Gloss, Definition, Abbott-Smith" used to stand here, while
-    // the response speaks of `kurzbedeutung`, `bedeutung` and `lexikon`. Same
-    // reason the bare edition keys got their names in `bible_server_info` —
-    // a consumer cannot resolve a term the payload never uses.
+    // Jeder Schritt nennt die Felder, die die Antwort tatsächlich trägt, und
+    // nicht die Begriffe dahinter: Hier stand einmal „Gloss, Definition,
+    // Abbott-Smith", während die Antwort von `kurzbedeutung`, `bedeutung` und
+    // `lexikon` spricht. Aus demselben Grund bekamen die nackten
+    // Editionsschlüssel in `bible_server_info` ihre Namen: Einen Begriff, den die
+    // Nutzlast nie verwendet, kann ein Konsument nicht auflösen.
     const lexikon = !hasStrongDefs
       ? " Lexikondaten sind in dieser Datenbank nicht geladen; das Bedeutungsspektrum ergibt sich dann allein aus den Belegstellen."
       : hasStepCols
@@ -2382,16 +2445,18 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
       `4. Fasse das Bedeutungsspektrum zusammen: Grundbedeutung, Bedeutungsnuancen nach Kontext, auffällige Verteilung. Belege jede Aussage mit einer konkret abgerufenen Stelle; kennzeichne offene Fragen als offen.`;
   } else if (name === "variant-check") {
     const ref = promptArg(args, "reference", true);
-    // Derived from what is loaded, not from a fixed triple: an instance with
-    // only two NT editions would otherwise be told to call a third.
+    // Aus dem Geladenen abgeleitet, nicht aus einem festen Dreiergespann: Einer
+    // Instanz mit nur zwei NT-Editionen würde sonst aufgetragen, eine dritte
+    // aufzurufen.
     const geladen = NT_EDITION_ORDER.filter((e) => availableEditions.has(e));
     const editionen =
       geladen.map((e) => `texttyp "${e}" (${EDITION_META[e]!.label})`).join(", ") ||
       "keine NT-Edition (in dieser Datenbank ist keine geladen, der Vergleich ist hier nicht möglich)";
-    // The attestation block is optional data: naming it unconditionally would
-    // send the model looking for a field that an instance without TAGNT never
-    // returns. Its caveat fields get named explicitly, because they are the
-    // ones measured to be skipped when they sit deep in the response.
+    // Der Bezeugungsblock ist optional: Ihn ohne Vorbehalt zu nennen
+    // schickte das Modell auf die Suche nach einem Feld, das eine Instanz ohne
+    // TAGNT nie liefert. Seine Vorbehaltsfelder werden ausdrücklich benannt, denn
+    // sie sind gemessen die, die übergangen werden, wenn sie tief in der Antwort
+    // liegen.
     const bezeugung = hasTagnt
       ? ` Dazu kommt in 'bezeugung' die Bezeugung pro Wort über acht Editionen.\n` +
         `2. Lies 'warnung' und 'quellenkonflikte' zuerst, falls sie dastehen: Dort widerspricht die TAGNT-Notiz dem Editionstext, und maßgeblich ist der Editionstext. In 'bezeugung.abweichend' gilt dasselbe je Wort: 'in_dieser_db' sagt, welche der geladenen Editionen eine Form tatsächlich liest, während die Notizen 'bedeutungsvariante'/'schreibvariante' nur die Zeugen des STEPBible-Apparats nennen. Aus einer Notiz folgt nicht, dass die übrigen Editionen anders lesen.\n`
@@ -2405,10 +2470,11 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   } else if (name === "translation-compare") {
     const ref = promptArg(args, "reference", true);
     const liste = loadedTranslationList();
-    // Menge sets explanatory additions in square brackets (137 verses, and only
-    // there). Naming it up front rather than relying on the hint in the answer:
-    // the whole point of this prompt is a word-by-word comparison, which is
-    // exactly where an unwrapped addition reads as the edition's own wording.
+    // Menge setzt erklärende Einschübe in eckige Klammern (137 Verse, und nur
+    // dort). Vorab benannt statt auf den Hinweis in der Antwort verlassen: Der
+    // ganze Sinn dieses Prompts ist der Vergleich Wort für Wort, und genau dort
+    // liest sich ein aus den Klammern genommener Einschub wie der Wortlaut der
+    // Ausgabe selbst.
     const klammern = availableTranslations.has("MB")
       ? " Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und bleiben beim Zitieren stehen; sie sind keine Einfügung dieses Servers."
       : "";
@@ -2429,27 +2495,29 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   };
 };
 
-// --- MCP server — resources ------------------------------------------------
-// The third primitive, and the only one the *user* reaches for: a tool or a
-// prompt is picked by the model, a resource is attached by hand. That is why the
-// names, descriptions and URI words here are German while tool and prompt
-// identifiers are English — the audience is different.
+// --- MCP-Server: Ressourcen ------------------------------------------------
+// Das dritte Primitiv, und das einzige, nach dem der *Nutzer* greift: Werkzeug
+// und Prompt wählt das Modell, eine Ressource hängt man von Hand an. Deshalb sind
+// die Namen, Beschreibungen und URI-Wörter hier deutsch, während die Bezeichner
+// von Werkzeugen und Prompts englisch sind: Das Publikum ist ein anderes.
 //
-// The catalogue stays small on purpose. `resources/list` crosses the wire at
-// every session start, and this database holds 31 102 verses in 1190 chapters:
-// enumerating any part of that would dwarf `tools/list` (14 969 characters,
-// measured 02.08.2026). The parameterised space lives in URI templates, the
-// list carries four fixed entries that describe the inventory itself.
+// Der Katalog bleibt mit Absicht klein. `resources/list` geht bei jedem
+// Sitzungsbeginn über die Leitung, und diese Datenbank führt 31 102 Verse in
+// 1190 Kapiteln: Irgendeinen Teil davon aufzuzählen ließe `tools/list` winzig
+// aussehen (14 969 Zeichen, gemessen 02.08.2026). Der parametrisierte Raum liegt
+// in URI-Vorlagen, die Liste trägt vier feste Einträge, die den Bestand selbst
+// beschreiben.
 
 const URI_SCHEME = "bible://";
 
-// Derived from the bounds the segments already carry, not chosen: the scheme,
-// four name-like segments (each bounded by MAX_BOOK_LENGTH, the widest such
-// bound in use), a verse list of MAX_VERSES_LENGTH, the separators, and a
-// factor of three because percent-encoding turns one non-ASCII character into
-// up to nine (three UTF-8 bytes at three characters each). Like
-// MAX_VERSES_LENGTH this can never be the only bound violated — it exists to
-// turn away an oversized URI before the first split, not as a rule of its own.
+// Abgeleitet aus den Grenzen, die die Segmente ohnehin tragen, nicht gewählt:
+// das Schema, vier namensartige Segmente (jedes durch MAX_BOOK_LENGTH begrenzt,
+// die weiteste solche Grenze im Gebrauch), eine Versliste von
+// MAX_VERSES_LENGTH, die Trennzeichen, und ein Faktor drei, weil die
+// Prozentkodierung aus einem Nicht-ASCII-Zeichen bis zu neun macht (drei
+// UTF-8-Bytes zu je drei Zeichen). Wie MAX_VERSES_LENGTH kann auch diese Grenze
+// nie die einzige verletzte sein; sie steht da, um eine übergroße URI vor dem
+// ersten split abzuweisen, und nicht als eigene Regel.
 const MAX_URI_LENGTH =
   URI_SCHEME.length + 4 + (4 * MAX_BOOK_LENGTH + MAX_VERSES_LENGTH) * 3;
 
@@ -2518,18 +2586,19 @@ const RESOURCE_TEMPLATES = [
 ] as const;
 
 /**
- * Why the lists are empty without data, and why reading throws.
+ * Warum die Listen ohne Daten leer sind, und warum das Lesen wirft.
  *
- * A resource result has no `isError` channel, so a refusal belongs in the
- * JSON-RPC response — same as with prompts. And the wording splits by transport
- * for the same reason the tool gate does: over stdio the caller started this
- * process and can run bible_setup, over HTTP the caller is a stranger for whom
- * naming that tool describes something that does not exist there.
+ * Ein Ressourcenergebnis hat keinen `isError`-Kanal, eine Abweisung gehört also
+ * in die JSON-RPC-Antwort, genau wie bei den Prompts. Und der Wortlaut trennt
+ * sich nach Transport, aus demselben Grund wie bei der Werkzeugsperre: Über
+ * stdio hat der Aufrufer diesen Prozess gestartet und kann bible_setup
+ * ausführen, über HTTP ist er ein Fremder, dem dieses Werkzeug zu nennen etwas
+ * beschriebe, das es dort nicht gibt.
  *
- * The one throw in this file that stays `InternalError`, and not by oversight:
- * an instance without a database is a state of the server, not a mistake in the
- * request. Every other refusal below is the caller's and says `InvalidParams`.
- * Do not sweep this one along with them.
+ * Der eine Wurf in dieser Datei, der `InternalError` behält, und das nicht aus
+ * Versehen: Eine Instanz ohne Datenbank ist ein Zustand des Servers und kein
+ * Fehler der Anfrage. Jede andere Abweisung weiter unten ist die des Aufrufers
+ * und sagt `InvalidParams`. Diese hier nicht mit ihnen umstellen.
  */
 function requireData(): void {
   if (dataMissing === null) return;
@@ -2552,47 +2621,53 @@ const handleListResourceTemplates = async () => ({
   resourceTemplates: dataMissing !== null ? [] : RESOURCE_TEMPLATES.map((t) => ({ ...t })),
 });
 
-// --- Resources — URI segments ----------------------------------------------
-// Every segment check reuses the bound and the message the tools already use.
-// Six of those messages once named a condition the input satisfied because the
-// limit sat next to a separately worded text (25.07.2026); a resource path with
-// its own wording would repeat that, so there is none here.
+// --- Ressourcen: URI-Segmente ----------------------------------------------
+// Jede Segmentprüfung greift auf die Grenze und die Meldung zurück, die die
+// Werkzeuge ohnehin verwenden. Sechs jener Meldungen nannten einmal eine
+// Bedingung, die die Eingabe erfüllte, weil die Grenze neben einem getrennt
+// formulierten Text stand (25.07.2026); ein Ressourcenpfad mit eigenem Wortlaut
+// wiederholte das, deshalb gibt es hier keinen.
 //
-// Every refusal in this section throws `InvalidParams`, and that needs a word,
-// because the spec revision this server speaks says something else. For
-// resources it lists "Resource not found: -32002, Internal errors: -32603"
-// (server/resources, a SHOULD). -32602 is chosen anyway: -32002 fits the two
-// not-found cases and none of the thirteen malformed-URI ones; the draft
-// revision retires it outright ("-32002 … replaced by -32602", and
-// implementations of that version MUST NOT emit it); and the SDK this server
-// runs on already answers a missing resource with -32602 (server/mcp.js:393).
-// -32603 is wrong under every one of those readings, which is what this changed.
-// Neither code touches the reserved -32020..-32099 range, so the 28.07.2026
-// decision to stay recognisable as a pre-2026-07-28 server is unaffected.
+// Jede Abweisung in diesem Abschnitt wirft `InvalidParams`, und das braucht ein
+// Wort, denn die Protokollrevision, die dieser Server spricht, sagt etwas
+// anderes. Für Ressourcen führt sie "Resource not found: -32002, Internal
+// errors: -32603" (server/resources, ein SHOULD). Gewählt ist trotzdem -32602:
+// -32002 passt auf die zwei Nicht-gefunden-Fälle und auf keinen der dreizehn
+// Fälle einer fehlerhaften URI; die Entwurfsrevision schafft den Code ganz ab
+// ("-32002 … replaced by -32602", und Umsetzungen jener Fassung dürfen ihn nicht
+// senden, MUST NOT); und das SDK, auf dem dieser Server läuft, beantwortet eine fehlende
+// Ressource bereits mit -32602 (server/mcp.js:393). Unter jeder dieser Lesarten
+// ist -32603 falsch, und das ist es, was diese Umstellung geändert hat. Keiner
+// der beiden Codes rührt an den reservierten Bereich -32020 bis -32099; die
+// Entscheidung vom 28.07.2026, als Server vor der Revision 2026-07-28 erkennbar
+// zu bleiben, ist also unberührt.
 //
-// The measured price, and it is charged here and nowhere else: Claude Code reads
-// -32602 on `resources/read` as "not found" and replaces the message below with
-// its own ("Resource not found: … Re-run ListMcpResourcesTool to refresh"). Under
-// -32603 it passed the server's wording through verbatim. Measured 02.08.2026
-// against the deployed endpoint before and after, two kinds of bad URI, texts
-// character-identical throughout; prompts and tools are unaffected. So every
-// message in this section is still exact, and in that one client nobody reads it.
-// Whether -32002 would fare better is untested and costs a rollout to find out.
-// See docs/ENTSCHEIDUNGEN.md and docs/FEHLERBEHEBUNG.md.
+// Der gemessene Preis, und er fällt hier an und sonst nirgends: Claude Code
+// liest -32602 bei `resources/read` als „nicht gefunden" und ersetzt die Meldung
+// unten durch eine eigene ("Resource not found: … Re-run ListMcpResourcesTool to
+// refresh"). Unter -32603 reichte der Client den Wortlaut des Servers wörtlich
+// durch. Gemessen am 02.08.2026 gegen den ausgerollten Endpunkt davor und
+// danach, an zwei Arten fehlerhafter URI, bei durchgängig zeichengleichen
+// Texten; Prompts und Werkzeuge sind nicht betroffen. Jede Meldung dieses
+// Abschnitts ist also weiterhin genau, und in diesem einen Client liest sie
+// niemand. Ob -32002 besser abschnitte, ist ungeprüft und kostet zum Herausfinden
+// einen Rollout. Siehe docs/ENTSCHEIDUNGEN.md und docs/FEHLERBEHEBUNG.md.
 
 /**
- * Check arity and reject empty segments, then hand back a copy.
+ * Prüft die Anzahl der Segmente, weist leere zurück und gibt eine Kopie heraus.
  *
- * The empty check is not cosmetic: `resolveTranslation("")` answers with the
- * default, so "bible://kapitel/…//23" would silently serve Luther for a
- * translation the caller never named. Callers index the result with `!`, and
- * this length check is what justifies it.
+ * Die Leerprüfung ist nicht kosmetisch: `resolveTranslation("")` antwortet mit
+ * der Voreinstellung, "bible://kapitel/…//23" lieferte also stillschweigend
+ * Luther für eine Übersetzung, die der Aufrufer nie genannt hat. Aufrufer greifen
+ * mit `!` auf das Ergebnis zu, und diese Längenprüfung ist es, die das
+ * rechtfertigt.
  *
- * No "Error:" prefix on the messages formulated here — the house rule is that a
- * message opens with the statement, and a client of the 1.x SDK already prefixes
- * a JSON-RPC error with "MCP error <code>: " (types.js:2031), so the word would
- * appear twice. The messages inherited from the tools keep their prefix: there
- * being character-identical to the tool is worth more than the house style.
+ * Kein "Error:"-Präfix an den hier formulierten Meldungen: Die Hausregel lautet,
+ * dass eine Meldung mit der Aussage beginnt, und ein Client des 1.x-SDK stellt
+ * einem JSON-RPC-Fehler ohnehin "MCP error <code>: " voran (types.js:2031), das
+ * Wort erschiene also zweimal. Die von den Werkzeugen geerbten Meldungen behalten
+ * ihr Präfix: Dort wiegt die Zeichengleichheit mit dem Werkzeug schwerer als der
+ * Hausstil.
  */
 function requireSegments(rest: readonly string[], count: number, form: string): string[] {
   if (rest.length !== count || rest.some((s) => s === "")) {
@@ -2602,11 +2677,11 @@ function requireSegments(rest: readonly string[], count: number, form: string): 
 }
 
 /**
- * Length and resolution are separate because the tools check them at different
- * points: `bible_lookup` bounds the book name first but resolves it only after
- * chapter and verses, so a URI that violates two conditions must report the same
- * one the tool would. Folded together, the resource named the book while the
- * tool named the chapter.
+ * Länge und Auflösung sind getrennt, weil die Werkzeuge sie an verschiedenen
+ * Stellen prüfen: `bible_lookup` begrenzt den Buchnamen zuerst, löst ihn aber
+ * erst nach Kapitel und Versen auf. Eine URI, die zwei Bedingungen verletzt, muss
+ * deshalb dieselbe melden wie das Werkzeug. Zusammengelegt nannte die Ressource
+ * das Buch, während das Werkzeug das Kapitel nannte.
  */
 function requireBookLength(segment: string): void {
   if (segment.length > MAX_BOOK_LENGTH) throw rpcError(ErrorCode.InvalidParams, bookTooLong);
@@ -2634,7 +2709,7 @@ function segmentVerse(segment: string): number {
   return verse;
 }
 
-/** Same four checks, same order and same messages as in `bible_lookup`. */
+/** Dieselben vier Prüfungen, dieselbe Reihenfolge, dieselben Meldungen wie in `bible_lookup`. */
 function segmentVerses(segment: string): string {
   if (segment.length > MAX_VERSES_LENGTH) {
     throw rpcError(ErrorCode.InvalidParams, versesTooLong);
@@ -2656,11 +2731,11 @@ function segmentTranslation(segment: string): TranslationCode {
   return resolved.code;
 }
 
-// --- Resources — payloads ---------------------------------------------------
-// Each of the four fixed resources reports what this instance actually carries,
-// never a fixed list: an installation without the Hebrew download would
-// otherwise advertise an edition it cannot serve. Same rule the prompts follow
-// since 0.5.7.
+// --- Ressourcen: Nutzlasten ------------------------------------------------
+// Jede der vier festen Ressourcen meldet, was diese Instanz tatsächlich führt,
+// nie eine feste Liste: Eine Installation ohne den hebräischen Download böte
+// sonst eine Edition an, die sie nicht liefern kann. Dieselbe Regel befolgen die
+// Prompts seit 0.5.7.
 
 function booksPayload(): Record<string, unknown> {
   return {
@@ -2677,7 +2752,8 @@ function booksPayload(): Record<string, unknown> {
   };
 }
 
-/** The loaded translations in registry order, so the output is deterministic. */
+/** Die geladenen Übersetzungen in der Reihenfolge der Registry, damit die Ausgabe
+ *  stets dieselbe Reihenfolge hat. */
 function loadedTranslationCodes(): TranslationCode[] {
   return (Object.keys(TRANSLATIONS) as TranslationCode[]).filter((code) =>
     availableTranslations.has(code)
@@ -2700,9 +2776,10 @@ function translationsPayload(): Record<string, unknown> {
 }
 
 /**
- * OT edition first, then the NT editions in comparison order. Every entry is a
- * literal key of EDITION_META, which is what justifies the `!` on the lookups
- * below; a new edition has to be added to both or the assertion loses its base.
+ * Zuerst die AT-Edition, dann die NT-Editionen in der Reihenfolge des
+ * Vergleichs. Jeder Eintrag ist ein wörtlicher Schlüssel von EDITION_META, und
+ * genau das rechtfertigt das `!` an den Zugriffen unten; eine neue Edition gehört
+ * in beide, sonst verliert die Zusicherung ihre Grundlage.
  */
 const EDITION_ORDER: readonly string[] = ["wlc", ...NT_EDITION_ORDER];
 
@@ -2749,8 +2826,8 @@ function versesPayload(
   kapitel: string,
   verse: string
 ): Record<string, unknown> {
-  // Same order as bible_lookup: bound the name, then chapter, then the verse
-  // list, then resolve. See requireBookLength.
+  // Dieselbe Reihenfolge wie bei bible_lookup: erst den Namen begrenzen, dann das
+  // Kapitel, dann die Versliste, dann auflösen. Siehe requireBookLength.
   requireBookLength(buch);
   const chapter = segmentChapter(kapitel);
   const versesStr = segmentVerses(verse);
@@ -2774,7 +2851,7 @@ function grundtextPayload(
   kapitel: string,
   vers: string
 ): Record<string, unknown> {
-  // Same order as bible_original, for the same reason as above.
+  // Dieselbe Reihenfolge wie bei bible_original, aus demselben Grund wie oben.
   requireBookLength(buch);
   const chapter = segmentChapter(kapitel);
   const verse = segmentVerse(vers);
@@ -2785,7 +2862,7 @@ function grundtextPayload(
   return result.payload;
 }
 
-// --- Resources — read -------------------------------------------------------
+// --- Ressourcen: lesen -----------------------------------------------------
 const handleReadResource = async (request: ReadResourceRequest) => {
   const uri = request.params.uri;
   requireData();
@@ -2803,9 +2880,9 @@ const handleReadResource = async (request: ReadResourceRequest) => {
     );
   }
 
-  // Parsed by hand, not through `new URL()`: that would read the first segment
-  // as an authority and lower-case it, so "bible://kapitel/SCH/…" would arrive
-  // with a translation code this server does not know.
+  // Von Hand zerlegt, nicht über `new URL()`: Das läse das erste Segment als
+  // Autorität und schriebe es klein, "bible://kapitel/SCH/…" käme also mit einem
+  // Übersetzungskürzel an, das dieser Server nicht kennt.
   let segments: string[];
   try {
     segments = uri.slice(URI_SCHEME.length).split("/").map(decodeURIComponent);
@@ -2862,18 +2939,21 @@ const handleReadResource = async (request: ReadResourceRequest) => {
   };
 };
 
-// --- bible_setup — build the database from inside the server ---------------
+// --- bible_setup: die Datenbank aus dem Server heraus aufbauen -------------
 /**
- * Guarded by an explicit confirmation flag rather than running on first use.
+ * Durch ein ausdrückliches Bestätigungsflag gesichert, statt beim ersten
+ * Gebrauch loszulaufen.
  *
- * The download takes about a minute and reaches out to eight external sources;
- * that is not something to start behind the user's back because a model happened
- * to ask for a verse. Without `bestaetigung` the tool answers with the plan, so
- * the model has something concrete to present before asking.
+ * Der Download dauert rund eine Minute und greift auf acht fremde Quellen zu;
+ * das startet man nicht hinter dem Rücken des Nutzers, nur weil ein Modell
+ * gerade nach einem Vers gefragt hat. Ohne `bestaetigung` antwortet das Werkzeug
+ * mit dem Plan, damit das Modell etwas Handfestes vorlegen kann, bevor es
+ * fragt.
  */
 async function handleSetup(args: { bestaetigung?: unknown }) {
-  // Hiding the tool from tools/list is not enough: a caller may name any tool it
-  // likes, and this one writes. The refusal has to sit in the handler.
+  // Das Werkzeug aus tools/list herauszuhalten genügt nicht: Ein Aufrufer darf
+  // jede Werkzeugbezeichnung schicken, die ihm einfällt, und dieses hier
+  // schreibt. Die Abweisung muss im Handler sitzen.
   if (HTTP_MODE) {
     return errorResult(
       "Dieses Werkzeug steht im HTTP-Modus nicht zur Verfügung. Die Datenbank baut " +
@@ -2887,8 +2967,8 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
     );
   }
 
-  // Import here, not at module scope: this pulls in all eight download modules,
-  // and a server that already has its data should never load them.
+  // Import hier und nicht auf Modulebene: Er zieht alle acht Download-Module
+  // herein, und ein Server, der seine Daten schon hat, soll sie nie laden.
   const { runSetup, SETUP_STEPS } = await import("./scripts/setup.ts");
 
   if (args.bestaetigung !== true) {
@@ -2910,12 +2990,12 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
   }
 
   console.error("bible_setup: starting download");
-  // The download scripts report progress with console.log, which is right for a
-  // terminal and fatal here: stdout carries the JSON-RPC stream, and a single
-  // stray line makes the client treat the server as broken. Measured — the first
-  // end-to-end run of this tool produced an unparseable stream. Redirect for the
-  // duration rather than rewriting every log line in eight scripts that are also
-  // used standalone.
+  // Die Download-Skripte melden ihren Fortschritt mit console.log, was auf einer
+  // Konsole richtig und hier verhängnisvoll ist: Auf stdout liegt der
+  // JSON-RPC-Strom, und eine einzige verirrte Zeile lässt den Client den Server
+  // für kaputt halten. Gemessen: Der erste End-to-End-Lauf dieses Werkzeugs
+  // lieferte einen unparsbaren Strom. Für die Dauer umgebogen, statt jede
+  // Logzeile in acht Skripten umzuschreiben, die auch eigenständig laufen.
   const consoleLog = console.log;
   console.log = console.error;
   let report;
@@ -2940,8 +3020,9 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
     );
   }
 
-  // A restart is required because the connection and its prepared statements are
-  // bound to the empty in-memory database this process started with.
+  // Ein Neustart ist nötig, weil die Verbindung und ihre vorbereiteten Statements
+  // an die leere Datenbank im Speicher gebunden sind, mit der dieser Prozess
+  // gestartet ist.
   const result = {
     status: report.complete ? "fertig" : "teilweise_fertig",
     dauer_sekunden: Math.round(report.seconds),
@@ -2968,15 +3049,17 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
 }
 
 /**
- * Version and data inventory of this instance. Field names are German like the
- * other tool payloads. Every value comes from a check already made at startup,
- * so the call costs nothing beyond serialising.
+ * Fassung und Datenbestand dieser Instanz. Die Feldnamen sind deutsch wie in den
+ * übrigen Werkzeugnutzlasten. Jeder Wert stammt aus einer Prüfung, die beim
+ * Start ohnehin schon lief; der Aufruf kostet also nichts außer dem
+ * Serialisieren.
  *
- * Inventory rather than statistics: a verse total says nothing a caller can act
- * on, while "does this server have the original text, Strong's, cross-references"
- * decides which questions it can answer at all. The download steps are separate
- * and each optional, so an instance missing one of them is a normal state — and
- * the usual cause when a tool comes back empty.
+ * Bestand statt Statistik: Eine Gesamtzahl der Verse sagt einem Aufrufer nichts,
+ * womit er etwas anfangen könnte, während „hat dieser Server den Grundtext, die
+ * Strong-Nummern, die Querverweise" entscheidet, welche Fragen er überhaupt
+ * beantworten kann. Die Download-Schritte sind getrennt und je für sich
+ * optional, eine Instanz ohne einen davon ist also ein gewöhnlicher Zustand, und
+ * die übliche Ursache, wenn ein Werkzeug leer zurückkommt.
  */
 function handleServerInfo() {
   const result = {
@@ -2986,14 +3069,15 @@ function handleServerInfo() {
       code,
       name: TRANSLATIONS[code as TranslationCode]?.name ?? code,
     })),
-    // Same shape as `uebersetzungen`, and for the same reason: the bare keys
-    // ("byzantine", "tr") do not identify an edition, and a caller cannot look
-    // them up anywhere in this payload. Which text form is loaded decides which
-    // questions this instance can answer at all, so the name belongs here.
-    // Names come from EDITION_META, where text, license and hinweis already sit
-    // together, rather than a second list that could drift from it. Empty when
-    // download-morph.ts never ran; `?? code` keeps an edition the database
-    // carries but the table does not know visible instead of dropping it.
+    // Dieselbe Gestalt wie `uebersetzungen`, und aus demselben Grund: Die nackten
+    // Schlüssel („byzantine", „tr") bezeichnen keine Edition, und ein Aufrufer
+    // kann sie in dieser Nutzlast nirgends nachschlagen. Welche Textform geladen
+    // ist, entscheidet, welche Fragen diese Instanz überhaupt beantworten kann;
+    // der Name gehört also hierher. Die Namen kommen aus EDITION_META, wo Text,
+    // Lizenz und hinweis ohnehin beieinander liegen, statt aus einer zweiten
+    // Liste, die davon wegliefe. Leer, wenn download-morph.ts nie lief; `?? code`
+    // hält eine Edition sichtbar, die die Datenbank führt und die Tabelle nicht
+    // kennt, statt sie fallen zu lassen.
     urtext_editionen: originalEditions.map((code) => ({
       code,
       name: EDITION_META[code]?.label ?? code,
@@ -3025,36 +3109,39 @@ function handleServerInfo() {
   return jsonResult(result);
 }
 
-// --- MCP server — request dispatch (bible_lookup handled inline) -----------
+// --- MCP-Server: Verteilung der Anfragen (bible_lookup inline bedient) -----
 const handleCallTool = async (request: CallToolRequest) => {
   const toolName = request.params.name;
-  // `arguments` is optional per the MCP schema, and clients do omit it when the
-  // model calls a tool without parameters. Without this fallback every handler
-  // would throw a raw TypeError into the JSON-RPC layer instead of returning
-  // the "field is required" tool error the caller can act on.
+  // `arguments` ist im MCP-Schema optional, und Clients lassen es tatsächlich
+  // weg, wenn das Modell ein Werkzeug ohne Parameter aufruft. Ohne diesen
+  // Rückfall würfe jeder Handler einen nackten TypeError in die JSON-RPC-Schicht,
+  // statt den Werkzeugfehler „Feld erforderlich" zu liefern, mit dem der Aufrufer
+  // etwas anfangen kann.
   const rawArgs = request.params.arguments ?? {};
 
   if (toolName === "bible_setup") {
     return handleSetup(rawArgs as { bestaetigung?: unknown });
   }
 
-  // Answered before the dataMissing gate below, and deliberately so: an instance
-  // without data is exactly when someone asks what this server is and what it
-  // has. Sending "no Bible database" instead of the version would withhold the
-  // one fact that was asked for.
+  // Vor der dataMissing-Sperre unten beantwortet, und das mit Absicht: Eine
+  // Instanz ohne Daten ist genau die Lage, in der jemand fragt, was dieser Server
+  // ist und was er hat. „Keine Bibeldatenbank" statt der Fassung zu schicken
+  // hielte gerade die erfragte Auskunft zurück.
   if (toolName === "bible_server_info") {
     return handleServerInfo();
   }
 
-  // One gate for all six data tools instead of a check per handler: without a
-  // database every one of them would otherwise answer "book not found", which
-  // reads like the reference was wrong rather than like nothing is loaded yet.
+  // Eine Sperre für alle datenlesenden Werkzeuge statt einer Prüfung je Handler:
+  // Ohne Datenbank antwortete sonst jedes von ihnen „Buch nicht gefunden", was
+  // sich liest, als sei die Stellenangabe falsch, und nicht, als sei noch nichts
+  // geladen.
   if (dataMissing !== null) {
-    // Two audiences, two messages. Over stdio the caller can fix this, so name
-    // the tool that does it. Over HTTP the caller is a stranger with no access to
-    // the machine: pointing at bible_setup would name a tool that is not offered
-    // and cannot be used. The one instruction that holds either way is the last
-    // sentence.
+    // Zwei Adressaten, zwei Meldungen. Über stdio kann der Aufrufer das beheben,
+    // also das Werkzeug nennen, das es tut. Über HTTP ist er ein Fremder ohne
+    // Zugriff auf die Maschine: Auf bible_setup zu zeigen würde ein Werkzeug
+    // benennen,
+    // das dort nicht angeboten wird und sich nicht verwenden lässt. Die eine
+    // Anweisung, die in beiden Fällen trägt, ist der letzte Satz.
     return errorResult(
       HTTP_MODE
         ? `${dataMissing} Dieser Endpunkt hat derzeit keine Bibeldaten und kann keine ` +
@@ -3120,11 +3207,12 @@ const handleCallTool = async (request: CallToolRequest) => {
     );
   }
   if (toolName !== "bible_lookup") {
-    // InvalidParams, not InternalError: the spec's own example for this case is
-    // `{"code": -32602, "message": "Unknown tool: …"}` (server/tools), and the
-    // SDK's high-level McpServer throws exactly that (server/mcp.js:104). The
-    // six tools above answer input errors with `isError` instead — that channel
-    // needs a tool that exists, and this is the one case where none does.
+    // InvalidParams, nicht InternalError: Das eigene Beispiel der Spezifikation
+    // für diesen Fall lautet `{"code": -32602, "message": "Unknown tool: …"}`
+    // (server/tools), und der hochsprachige McpServer des SDK wirft genau das
+    // (server/mcp.js:104). Die Werkzeuge oben beantworten Eingabefehler
+    // stattdessen mit `isError`; dieser Kanal braucht ein Werkzeug, das es gibt,
+    // und dies ist der eine Fall, in dem es keines gibt.
     throw rpcError(ErrorCode.InvalidParams, `Unknown tool: ${toolName}`);
   }
 
@@ -3137,8 +3225,8 @@ const handleCallTool = async (request: CallToolRequest) => {
 
   const { book, translation } = args;
 
-  // Validate required inputs. Presence and length are separate checks so that
-  // each message names the condition that is actually violated.
+  // Pflichteingaben prüfen. Anwesenheit und Länge sind getrennte Prüfungen, damit
+  // jede Meldung die tatsächlich verletzte Bedingung nennt.
   if (!book || typeof book !== "string") {
     return errorResult("Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer').");
   }
@@ -3151,7 +3239,8 @@ const handleCallTool = async (request: CallToolRequest) => {
     return errorResult(chapterOutOfRange);
   }
 
-  // Accept verses as string or single number (lenient towards MCP clients).
+  // `verses` als Zeichenkette oder als einzelne Zahl annehmen (nachsichtig
+  // gegenüber MCP-Clients).
   const verses =
     args.verses === undefined || args.verses === null
       ? ""
@@ -3160,7 +3249,7 @@ const handleCallTool = async (request: CallToolRequest) => {
         : typeof args.verses === "number" && Number.isInteger(args.verses)
           ? String(args.verses)
           : null;
-  // Cheapest guard first: type, length, segment count, values.
+  // Die billigste Prüfung zuerst: Typ, Länge, Anzahl der Segmente, Werte.
   if (verses === null) {
     return errorResult(versesNotAString);
   }
@@ -3170,11 +3259,12 @@ const handleCallTool = async (request: CallToolRequest) => {
   if (verses.split(",").length > MAX_VERSE_PARTS) {
     return errorResult(versesTooManyParts);
   }
-  // Ahead of both lookup paths, because they used to disagree: the fast path
-  // for a simple span did not check MAX_VERSE at all ("1-500" answered like
-  // valid input), while the parseVerses path dropped the offending segment
-  // silently ("1-500,2" answered with verse 2 alone). Same meaning, two
-  // results, decided by a comma (measured 26.07.2026).
+  // Vor beiden Nachschlagepfaden, denn sie waren einmal uneins: Der Schnellpfad
+  // für eine schlichte Spanne prüfte MAX_VERSE gar nicht („1-500" wurde wie
+  // gültige Eingabe beantwortet), während der Weg über parseVerses das
+  // beanstandete Segment stillschweigend fallen ließ („1-500,2" wurde mit Vers 2
+  // allein beantwortet). Gleiche Bedeutung, zwei Ergebnisse, entschieden durch
+  // ein Komma (gemessen 26.07.2026).
   if ([...verses.matchAll(/\d+/g)].some(([n]) => {
     const value = parseInt(n, 10);
     return value < 1 || value > MAX_VERSE;
@@ -3182,20 +3272,21 @@ const handleCallTool = async (request: CallToolRequest) => {
     return errorResult(versesOutOfBounds);
   }
 
-  // Resolve book name to ID
+  // Buchnamen zur Nummer auflösen
   const bookId = resolveBook(book);
   if (bookId === null) {
     return bookNotFound(book);
   }
 
-  // Resolve translation (strict: unknown/unloaded codes are errors)
+  // Übersetzung auflösen (streng: unbekannte oder nicht geladene Kürzel sind Fehler)
   const resolved = requireTranslation(translation);
   if ("error" in resolved) {
     return errorResult(resolved.error);
   }
 
-  // Look up verses. Payload shared with the text resources; `text` is the shape
-  // this tool has always returned (see lookupPayload).
+  // Verse nachschlagen. Die Nutzlast teilt sich dieses Werkzeug mit den
+  // Textressourcen; `text` ist die Gestalt, die es seit je liefert (siehe
+  // lookupPayload).
   const response = lookupPayload(resolved.code, bookId, chapter, verses, "text");
   if (response === null) {
     return {
@@ -3212,10 +3303,10 @@ const handleCallTool = async (request: CallToolRequest) => {
   return jsonResult(response);
 };
 
-// --- Tool handlers ---------------------------------------------------------
+// --- Werkzeug-Handler ------------------------------------------------------
 /**
- * Handle the `bible_original` tool: return one NT verse word-by-word with
- * lemma and decoded morphology from the SBLGNT / MorphGNT data.
+ * Bedient das Werkzeug `bible_original`: liefert einen NT-Vers Wort für Wort mit
+ * Lemma und aufgelöster Morphologie aus den SBLGNT/MorphGNT-Daten.
  */
 function handleOriginal(args: {
   book?: unknown;
@@ -3254,8 +3345,9 @@ function handleOriginal(args: {
 }
 
 /**
- * Handle the `bible_crossrefs` tool: return cross-references for one verse,
- * ranked by OpenBible.info votes, each with its German target text.
+ * Bedient das Werkzeug `bible_crossrefs`: liefert die Querverweise zu einem
+ * Vers, nach den Bewertungen von OpenBible.info geordnet, jeden mit seinem
+ * deutschen Zieltext.
  */
 function handleCrossrefs(args: {
   book?: unknown;
@@ -3313,13 +3405,14 @@ function handleCrossrefs(args: {
         : `${bookName} ${r.to_chapter},${r.to_verse}-${r.to_verse_end}`
       : `${bookName} ${r.to_chapter},${r.to_verse} – ${r.to_chapter_end},${r.to_verse_end}`;
 
-    // Text: full range within one chapter (capped at 4 verses), otherwise the
-    // first verse only — cross-chapter targets are rare and usually long.
-    // Multi-verse ranges additionally ship as `verse_einzeln`: the joined form
-    // embeds verse numbers into the string, which leaves consumers to split it
-    // themselves — and they drop the outer edges when they do (observed
-    // 25.07.2026, Joh 11,25-26 quoted without "Jesus spricht zu ihr:" and
-    // without the closing question).
+    // Text: die volle Spanne innerhalb eines Kapitels (gedeckelt bei vier
+    // Versen), sonst allein der erste Vers, denn Ziele über Kapitelgrenzen hinweg
+    // sind selten und meist lang. Mehrversige Spannen gehen zusätzlich als
+    // `verse_einzeln` hinaus: Die zusammengefügte Form flicht die Versnummern in
+    // die Zeichenkette, überlässt das Zerlegen also den Konsumenten, und die
+    // schneiden dabei die äußeren Ränder weg (beobachtet am 25.07.2026,
+    // Joh 11,25-26 zitiert ohne „Jesus spricht zu ihr:" und ohne die
+    // abschließende Frage).
     let text = "";
     let einzeln: Array<{ nr: number; text: string }> | null = null;
     if (sameChapter) {
@@ -3365,8 +3458,9 @@ function handleCrossrefs(args: {
 }
 
 /**
- * Handle the `bible_concordance` tool: all occurrences of an original-language
- * word (by Strong's number or exact lemma) in one edition, with statistics.
+ * Bedient das Werkzeug `bible_concordance`: alle Vorkommen eines Wortes des
+ * Grundtextes (über die Strong-Nummer oder das genaue Lemma) in einer Edition,
+ * samt Auswertung.
  */
 function handleConcordance(args: {
   strong?: unknown;
@@ -3381,7 +3475,7 @@ function handleConcordance(args: {
     );
   }
 
-  // Determine search mode and testament.
+  // Suchart und Testament bestimmen.
   let strongDigits: string | null = null;
   let isHebrew: boolean;
   let suche: string;
@@ -3418,7 +3512,7 @@ function handleConcordance(args: {
     return errorResult("Error: entweder 'strong' (z. B. \"G26\") oder 'lemma' angeben.");
   }
 
-  // Resolve edition: Hebrew → wlc; Greek → NT edition per texttyp.
+  // Edition auflösen: Hebräisch → wlc; Griechisch → NT-Edition gemäß texttyp.
   let edition: string;
   if (isHebrew) {
     edition = "wlc";
@@ -3444,7 +3538,8 @@ function handleConcordance(args: {
       ? stmtConcordStrong.all(edition, strongDigits)
       : stmtConcordLemma.all(edition, suche);
   if (rows.length === 0 && strongDigits === null) {
-    // Exact match failed — retry via Unicode-normalized lemma lookup.
+    // Der genaue Treffer blieb aus: über das Unicode-normalisierte Lemma erneut
+    // nachschlagen.
     const stored = findStoredLemma(edition, suche);
     if (stored !== null) rows = stmtConcordLemma.all(edition, stored);
   }
@@ -3455,7 +3550,8 @@ function handleConcordance(args: {
     );
   }
 
-  // Aggregate: per-book counts and distinct verses (rows are in canonical order).
+  // Zusammenfassen: Anzahl je Buch und verschiedene Verse (die Zeilen stehen in
+  // kanonischer Reihenfolge).
   const bookNames = new Map<number, string>();
   const name = (id: number): string => {
     let n = bookNames.get(id);
@@ -3474,18 +3570,19 @@ function handleConcordance(args: {
     suche,
     grundform: rows[0]!.lemma || "—",
   };
-  // Enrich with the Strong's dictionary entry (transliteration + meaning) if
-  // the lexicon table is loaded and a Strong's number is known.
+  // Um den Eintrag des Strong-Wörterbuchs anreichern (Umschrift und Bedeutung),
+  // sofern die Lexikontabelle geladen und eine Strong-Nummer bekannt ist.
   const strongKey =
     strongDigits !== null
       ? (isHebrew ? "H" : "G") + strongDigits
       : rows[0]!.strong
         ? (isHebrew ? "H" : "G") + rows[0]!.strong
         : null;
-  // Which lexicon actually contributed decides the attribution below: translit,
-  // definition and kjv come from the Strong's dictionaries (CC BY-SA), gloss and
-  // the Abbott-Smith entry from STEPBible (CC BY 4.0). Naming a source that did
-  // not contribute is the same error as omitting one that did.
+  // Welches Lexikon tatsächlich beigetragen hat, entscheidet über die Nennung
+  // weiter unten: translit, definition und kjv kommen aus den
+  // Strong-Wörterbüchern (CC BY-SA), gloss und der Abbott-Smith-Eintrag von
+  // STEPBible (CC BY 4.0). Eine Quelle zu nennen, die nichts beigetragen hat, ist
+  // derselbe Fehler wie eine wegzulassen, die es tat.
   let usedStrongsLexicon = false;
   let usedStepLexicon = false;
   if (strongKey !== null && stmtStrongDef) {
@@ -3496,8 +3593,9 @@ function handleConcordance(args: {
       if (def.gloss) response.kurzbedeutung = def.gloss;
       if (def.definition) response.bedeutung = def.definition;
       if (def.kjv) response.kjv_woerter = def.kjv;
-      // Full Abbott-Smith lexicon entry (STEPBible TBESG, Greek only) — the
-      // scholarly meaning; typically a few hundred characters, worth the tokens.
+      // Der vollständige Abbott-Smith-Eintrag (STEPBible TBESG, nur Griechisch):
+      // die wissenschaftliche Bedeutung, meist einige hundert Zeichen, die Tokens
+      // wert.
       if (def.meaning) response.lexikon = def.meaning;
       usedStrongsLexicon = Boolean(def.translit || def.definition || def.kjv);
       usedStepLexicon = Boolean(def.gloss || def.meaning);
@@ -3527,7 +3625,8 @@ function handleConcordance(args: {
 }
 
 /**
- * Handle the `bible_search` tool: full-text search over one translation's verses.
+ * Bedient das Werkzeug `bible_search`: Volltextsuche über die Verse einer
+ * Übersetzung.
  */
 function handleSearch(args: {
   query?: unknown;
@@ -3589,11 +3688,12 @@ function handleSearch(args: {
       ? stmtSearch.all(match, translation, limit)
       : stmtSearchBook.all(match, translation, bookId, limit);
 
-  // `treffer` counts verses, not word occurrences — a verse can match several
-  // times (1Joh 2,15 carries three forms of "lieb*"). Consumers read "Treffer"
-  // as findings and try to break the number down per verse, guessing the
-  // per-verse counts (observed 25.07.2026). Count the highlight markers over
-  // all matching verses so the second number is stated rather than inferred.
+  // `treffer` zählt Verse, nicht Wortvorkommen: Ein Vers kann mehrfach passen
+  // (1Joh 2,15 trägt drei Formen von „lieb*"). Konsumenten lesen „Treffer" als
+  // Fundstellen und versuchen, die Zahl je Vers aufzuschlüsseln, wobei sie die
+  // Zahlen je Vers raten (beobachtet 25.07.2026). Deshalb werden die
+  // Hervorhebungsmarker über alle passenden Verse gezählt, damit die zweite Zahl
+  // dasteht, statt abgeleitet zu werden.
   const scanSkipped = total > OCCURRENCE_SCAN_LIMIT;
   const scan =
     !scanSkipped && stmtSearchAll && stmtSearchAllBook
@@ -3604,14 +3704,15 @@ function handleSearch(args: {
   const hits = (text: string) => text.split(HIT_OPEN).length - 1;
   const vorkommen = scan === null ? null : scan.reduce((sum, r) => sum + hits(r.text), 0);
 
-  // Any breakdown a consumer might want has to be counted here rather than left
-  // to the model: over six measured runs the numbers the tool stated were right
-  // 10/10, while self-derived chapter sums were wrong in three of five — and
-  // wrong in a way that looks counted, because the total still adds up
-  // (25.07.2026). Group by book for a whole-Bible search and by chapter when the
-  // search is confined to one book: that is the level the question is asked at
-  // in each case. Only emitted with more than one bucket — a single-entry
-  // breakdown repeats `treffer` and teaches nothing.
+  // Jede Aufschlüsselung, die ein Konsument brauchen könnte, wird hier gezählt
+  // und nicht dem Modell überlassen: Über sechs gemessene Läufe kamen die vom
+  // Werkzeug genannten Zahlen in 10 von 10 Fällen richtig an, während selbst
+  // abgeleitete Kapitelsummen in drei von fünf Fällen falsch waren, und zwar so
+  // falsch, dass es gezählt aussieht, weil die Gesamtsumme aufgeht (25.07.2026).
+  // Gruppiert wird nach Buch, wenn die ganze Bibel durchsucht wird, und nach
+  // Kapitel, wenn die Suche auf ein Buch eingeschränkt ist: Auf dieser Ebene wird
+  // die Frage jeweils gestellt. Ausgegeben nur bei mehr als einer Gruppe, denn
+  // eine Aufschlüsselung mit einem Eintrag wiederholt `treffer` und lehrt nichts.
   const verteilung: Array<Record<string, unknown>> = [];
   if (scan !== null) {
     const buckets = new Map<number, { treffer: number; vorkommen: number }>();
@@ -3658,14 +3759,14 @@ function handleSearch(args: {
       : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: " +
           "je Vers daran abzählen, nicht schätzen."
   );
-  // Above the scan limit both counted fields drop out, and nothing used to say
-  // so: the answer named `treffer` and kept asking the caller to count the
-  // markers per verse, while the two numbers that are otherwise stated were
-  // simply absent (measured 26.07.2026, "der" with 13 033 hits). By the
-  // measurement `verteilung` rests on, what is missing gets estimated and still
-  // reads as counted. All three numbers are per translation (`total` and the
-  // scan queries carry the same `translation`), which is why the way out names
-  // it alongside the narrower query.
+  // Oberhalb der Scan-Grenze entfallen beide gezählten Felder, und lange sagte
+  // das nichts: Die Antwort nannte `treffer` und forderte weiter dazu auf, die
+  // Marker je Vers abzuzählen, während die beiden Zahlen, die sonst dastehen,
+  // schlicht fehlten (gemessen 26.07.2026, „der" mit 13 033 Treffern). Nach
+  // eben der Messung, auf der `verteilung` beruht, wird geschätzt, was fehlt,
+  // und liest sich trotzdem wie gezählt. Alle drei Zahlen gelten je Übersetzung
+  // (`total` und die Scan-Abfragen tragen dieselbe `translation`), und deshalb
+  // benennt der Ausweg sie neben der engeren Anfrage.
   if (scanSkipped) {
     hinweise.push(
       `Ab ${OCCURRENCE_SCAN_LIMIT} Treffern werden die Vorkommen nicht ausgezählt: ` +
@@ -3690,8 +3791,9 @@ function handleSearch(args: {
 }
 
 /**
- * Handle the `bible_compare` tool: word-diff one NT verse across the Greek
- * editions (pairwise, normalized comparison, original surfaces reported).
+ * Bedient das Werkzeug `bible_compare`: vergleicht einen NT-Vers Wort für Wort
+ * über die griechischen Editionen (paarweise, normalisiert verglichen, gemeldet
+ * werden die ursprünglichen Wortformen).
  */
 function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknown }) {
   if (!stmtOriginal || availableEditions.size === 0) {
@@ -3758,11 +3860,11 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
       if (segs.length === 0) {
         vergleiche.push({ paar, ergebnis: "identisch (nach Normalisierung)" });
       } else {
-        // The word count of a variant run is stated, not left to be counted:
-        // the Comma Johanneum was reported as "16 additional words" where the
-        // edition diff and the TAGNT attestation both say 17 (25.07.2026).
-        // Only for runs of two or more — "(1 Wort)" on every single-word
-        // difference is noise that buries the cases that matter.
+        // Die Wortzahl einer abweichenden Folge steht da, statt abgezählt zu
+        // werden: Das Comma Johanneum wurde als „16 zusätzliche Wörter"
+        // gemeldet, wo Editionsvergleich und TAGNT-Bezeugung beide 17 sagen
+        // (25.07.2026). Nur ab zwei Wörtern, denn „(1 Wort)" an jeder
+        // Einzelwortabweichung ist Rauschen, das die wichtigen Fälle begräbt.
         const laenge = (s: string) => {
           const n = s === "" ? 0 : s.split(" ").length;
           return n > 1 ? ` (${n} Wörter)` : "";
@@ -3781,9 +3883,9 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     }
   }
 
-  // Per-word attestation across eight editions (STEPBible TAGNT). Words the
-  // full set attests are only counted; listed are the ones whose witness set
-  // differs — that is where the text-critical signal sits.
+  // Die Bezeugung je Wort über acht Editionen (STEPBible TAGNT). Wörter, die alle
+  // acht Editionen bezeugen, werden nur gezählt; aufgelistet sind die, deren
+  // Zeugenmenge abweicht, denn dort sitzt das textkritische Signal.
   let bezeugung: Record<string, unknown> | undefined;
   const quellenkonflikte: string[] = [];
   if (stmtTagnt) {
@@ -3834,10 +3936,10 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     }
   }
 
-  // Source conflicts sit four levels down in bezeugung.abweichend[].abgleich,
-  // and consumers that treat the attestation block as optional detail never
-  // reach them — Mk 14,46 was reported without the caveat (25.07.2026). Repeat
-  // them at the top of the response, before the data they qualify.
+  // Quellenkonflikte liegen vier Ebenen tief in bezeugung.abweichend[].abgleich,
+  // und Konsumenten, die den Bezeugungsblock als optionales Detail behandeln,
+  // erreichen sie nie: Mk 14,46 wurde ohne den Vorbehalt gemeldet (25.07.2026).
+  // Deshalb oben in der Antwort wiederholt, vor den Daten, die sie einschränken.
   const response = {
     reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
     sprache: "Griechisch (Koine)",
@@ -3859,11 +3961,11 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
     })),
     vergleiche,
     ...(bezeugung !== undefined ? { bezeugung } : {}),
-    // No example of a variant type here: the earlier "(z. B. bewegliches Ny)"
-    // was picked up as a label and pinned onto an unrelated case — ἐπέβαλον /
-    // ἐπέβαλαν in Mk 14,46 got called movable ny, though that is a thematic
-    // vs. alpha aorist ending (25.07.2026). Point at the classifying fields
-    // instead of seeding a term.
+    // Hier kein Beispiel für eine Variantenart: Das frühere „(z. B. bewegliches
+    // Ny)" wurde als Etikett aufgegriffen und auf einen Fall gesetzt, der nichts
+    // damit zu tun hat. ἐπέβαλον / ἐπέβαλαν in Mk 14,46 hieß dann bewegliches Ny,
+    // obwohl es um thematische gegen Alpha-Aoristendung geht (25.07.2026). Auf
+    // die klassifizierenden Felder zeigen, statt einen Fachbegriff einzustreuen.
     hinweis:
       "Vergleich ignoriert Akzente, Groß-/Kleinschreibung und Schlusssigma (byzantine/tr sind " +
       "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
@@ -3884,11 +3986,11 @@ function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknow
   return jsonResult(response);
 }
 
-// --- MCP server — construction and tool registration -----------------------
-// A factory, not a singleton: one `Server` binds exactly one transport, so the
-// HTTP mode below needs a fresh instance per session. Everything expensive
-// (database, prepared statements, the tool list) lives at module level and is
-// shared; an instance is just the handler wiring.
+// --- MCP-Server: Aufbau und Werkzeug-Registrierung -------------------------
+// Eine Fabrik, kein Singleton: Ein `Server` bindet genau einen Transport, der
+// HTTP-Modus unten braucht deshalb je Anfrage eine frische Instanz. Alles
+// Teure (Datenbank, vorbereitete Statements, die Werkzeugliste) liegt auf
+// Modulebene und wird geteilt; eine Instanz ist nur die Verdrahtung der Handler.
 function createServer(): Server {
   const s = new Server(
     // Version aus package.json, nicht daneben gepflegt: sie lief bereits
@@ -3937,23 +4039,25 @@ function createServer(): Server {
 
 // --- Bootstrap -------------------------------------------------------------
 /**
- * HTTP mode, opt-in via MCP_HTTP_PORT. Without it the server speaks stdio as
- * before, so local clients and `bun run test` are unaffected.
+ * HTTP-Modus, zuzuschalten über MCP_HTTP_PORT. Ohne die Variable spricht der
+ * Server stdio wie bisher; lokale Clients und `bun run test` sind also nicht
+ * betroffen.
  *
- * Binds to 127.0.0.1 unless MCP_HTTP_HOST says otherwise. That default is the
- * security-relevant part: reaching this server from outside should require a
- * deliberate step (a tunnel or reverse proxy that terminates TLS), never a
- * forgotten default. Publishing the port directly also exposes the machine's
- * address, and neither TLS nor access control is provided here.
+ * Gebunden wird an 127.0.0.1, sofern MCP_HTTP_HOST nichts anderes sagt. Diese
+ * Vorgabe ist der sicherheitsrelevante Teil: Diesen Server von außen zu
+ * erreichen soll einen bewussten Schritt verlangen (einen Tunnel oder einen
+ * Reverse Proxy, der TLS abschließt) und nie eine vergessene Voreinstellung.
+ * Den Port unmittelbar zu veröffentlichen gäbe zudem die Adresse der Maschine
+ * preis, und weder TLS noch Zugriffsschutz bringt der Server mit.
  *
- * Stateless: `Server` binds a single transport, so each request gets its own
- * instance from createServer(). The database and every prepared statement stay
- * shared at module level, so a request costs almost nothing beyond the handler
- * wiring.
+ * Zustandslos: `Server` bindet einen einzigen Transport, jede Anfrage bekommt
+ * deshalb aus createServer() ihre eigene Instanz. Datenbank und alle
+ * vorbereiteten Statements bleiben auf Modulebene geteilt, eine Anfrage kostet
+ * also kaum mehr als das Verdrahten der Handler.
  */
 // CORS, damit auch browserbasierte Clients den Endpunkt nutzen können. Für
 // MCP-Clients ohne Browser ist es folgenlos: die schicken keinen Origin. Kein
-// Widerspruch zur Origin-Prüfung unten — die entscheidet, WER antworten
+// Widerspruch zur Origin-Prüfung unten: Die entscheidet, WER antworten
 // bekommt, diese Kopfzeilen sagen dem Browser nur, was er damit tun darf.
 //
 // 'expose' nennt die Sitzungs-ID aus der Zeit vor dem zustandslosen Umbau.
@@ -3970,17 +4074,18 @@ const CORS_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Why /health queries the database instead of reporting `dataMissing`.
+ * Warum /health die Datenbank abfragt, statt `dataMissing` zu melden.
  *
- * `dataMissing` is decided once, at startup. A file that is swapped or damaged
- * while the process runs would leave it at `null`, and /health would keep
- * answering "ok" for a server that can no longer answer a single lookup. The
- * cheapest query that proves the whole path still works is one row from the
- * table every tool needs; it is served from SQLite's page cache and costs
- * microseconds, so a monitor may poll it.
+ * `dataMissing` wird einmal beim Start entschieden. Eine Datei, die im
+ * laufenden Betrieb getauscht oder beschädigt wird, ließe den Wert auf `null`
+ * stehen, und /health meldete weiter „ok" für einen Server, der keine einzige
+ * Stelle mehr nachschlagen kann. Die billigste Abfrage, die den ganzen Weg als
+ * funktionierend nachweist, ist eine Zeile aus der Tabelle, die jedes Werkzeug
+ * braucht; sie kommt aus dem Seiten-Cache von SQLite und kostet Mikrosekunden,
+ * eine Überwachung darf sie also regelmäßig aufrufen.
  *
- * Returns null when healthy, otherwise the reason, so the caller has something
- * to put in the response body.
+ * Liefert null im gesunden Fall, sonst den Grund, damit der Aufrufer etwas hat,
+ * das er in den Antwortrumpf legen kann.
  */
 function healthProblem(): string | null {
   if (dataMissing !== null) return dataMissing;
@@ -4004,54 +4109,58 @@ function withCors(response: Response): Response {
 }
 
 /**
- * Why the endpoint records which protocol revision its callers speak.
+ * Warum der Endpunkt festhält, welche Protokollrevision seine Aufrufer sprechen.
  *
- * Revision 2026-07-28 removed `initialize` and the session: a modern client
- * carries version, identity and capabilities in each request's `_meta` and
- * mirrors the version into the `MCP-Protocol-Version` header. This server runs
- * on the 1.x SDK and speaks only the handshake-based revisions, so per the
- * spec's compatibility matrix a modern client either fails outright or, worse,
- * has an era-ambiguous method served under legacy semantics: the stateless POST
- * path accepts requests without a handshake, so nothing here would notice.
- * Moving to the v2 SDK is a package split plus a rewrite of every handler
- * registration, so the trigger should be a measured client, not a date. This is
- * that measurement.
+ * Die Revision 2026-07-28 hat `initialize` und die Sitzung abgeschafft: Ein
+ * moderner Client trägt Version, Identität und Fähigkeiten im `_meta` jeder
+ * Anfrage und spiegelt die Version in die Kopfzeile `MCP-Protocol-Version`.
+ * Dieser Server läuft auf dem 1.x-SDK und spricht allein die Revisionen mit
+ * Handschlag; nach der Verträglichkeitsmatrix der Spezifikation scheitert ein
+ * moderner Client also entweder rundweg oder, schlimmer, bekommt eine in der
+ * Ära mehrdeutige Methode unter der alten Bedeutung bedient: Der zustandslose
+ * POST-Pfad nimmt Anfragen ohne Handschlag an, hier fiele es also niemandem
+ * auf. Der Umstieg auf das v2-SDK ist eine Paketteilung samt Neufassung jeder
+ * Handler-Registrierung; der Auslöser sollte deshalb ein gemessener Client sein
+ * und kein Datum. Dies ist diese Messung.
  *
- * One line per protocol version, not per request and not per client. The
- * endpoint is public and authless: a line per request would be an access log
- * nobody asked for and a free way to fill the journal. The set is capped for
- * the same reason the session registry was removed — it grows on
- * caller-supplied input, and an unbounded one is exactly the leak this server
- * already had once.
+ * Eine Zeile je Protokollversion, nicht je Anfrage und nicht je Client. Der
+ * Endpunkt ist öffentlich und authlos: Eine Zeile je Anfrage wäre ein
+ * Zugriffsprotokoll, nach dem niemand gefragt hat, und ein müheloser Weg, das
+ * Journal zu füllen. Die Menge ist gedeckelt, aus demselben Grund, aus dem die
+ * Sitzungsregistratur verschwunden ist: Sie wächst mit Eingaben des Aufrufers,
+ * und eine ungedeckelte ist genau das Leck, das dieser Server schon einmal
+ * hatte.
  *
- * Nothing caller-supplied is written verbatim. The version is validated against
- * the revision format rather than merely sanitised, and the client's self-
- * reported name is not recorded at all. Both follow from the privacy notice
- * this endpoint publishes, which promises operational events "ohne
- * Personenbezug": a promise about free-form text from strangers is only ever
- * kept by the goodwill of their software, whereas a value matched against
- * `YYYY-MM-DD` before it reaches the journal is kept by construction. Both the
- * `Mcp-Protocol-Version` header and `params.protocolVersion` are caller-
- * controlled — an address or a name fits in either.
+ * Nichts vom Aufrufer wird wörtlich geschrieben. Die Version wird gegen das
+ * Format einer Revision geprüft, nicht bloß gesäubert, und der selbstgemeldete
+ * Name des Clients wird gar nicht festgehalten. Beides folgt aus der
+ * Datenschutzerklärung, die dieser Endpunkt veröffentlicht und die
+ * Betriebsereignisse „ohne Personenbezug" zusagt: Ein Versprechen über freien
+ * Text von Fremden hält immer nur das Wohlwollen ihrer Software, während ein
+ * Wert, der vor dem Journal gegen `YYYY-MM-DD` geprüft wird, konstruktiv
+ * gehalten ist. Sowohl die Kopfzeile `Mcp-Protocol-Version` als auch
+ * `params.protocolVersion` bestimmt der Aufrufer, und in beide passt eine
+ * Adresse oder ein Name.
  */
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
 /**
- * First revision carrying version and identity per request. Revision names are
- * ISO dates, so a string compare orders them and `>=` is the era test.
+ * Die erste Revision, die Version und Identität je Anfrage trägt. Revisionen
+ * heißen nach ISO-Daten, ein Zeichenkettenvergleich ordnet sie also, und `>=`
+ * ist die Prüfung auf die Ära.
  */
 const FIRST_MODERN_REVISION = "2026-07-28";
 const MAX_PROTOCOL_SIGHTINGS = 20;
 const protocolSightings = new Set<string>();
 let modernLogged = false;
 
-/** Stands in for a version that is not a revision name, so no such value is logged. */
+/** Steht für eine Angabe, die kein Revisionsname ist, damit kein solcher Wert ins Protokoll gerät. */
 const UNKNOWN_REVISION = "unbekannte Angabe";
 
 /**
- * A protocol revision is named by its release date. Anything else is refused
- * rather than cleaned up: this is the only value from the request that reaches
- * the journal, so it is worth constraining to a shape that cannot carry a
- * message, an identifier or a control character.
+ * Eine Protokollrevision heißt nach ihrem Erscheinungsdatum. Alles andere wird
+ * abgewiesen statt gesäubert: Dies ist der einzige Wert aus der Anfrage, der ins
+ * Journal gelangt, und deshalb lohnt es sich, ihn auf eine Form festzulegen, die
+ * weder eine Botschaft noch eine Kennung noch ein Steuerzeichen tragen kann.
  */
 function asRevision(value: unknown): string | null {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
@@ -4064,16 +4173,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 async function noteProtocolVersion(request: Request): Promise<void> {
-  // The cheap path, taken by every request once a version has been seen: a
-  // header lookup and a set lookup, no body read.
+  // Der billige Weg, den jede Anfrage nimmt, sobald eine Version einmal gesehen
+  // ist: ein Blick in die Kopfzeilen und einer in die Menge, ohne den Rumpf zu
+  // lesen.
   const headerRevision = asRevision(request.headers.get("mcp-protocol-version"));
 
-  // Modern sightings collapse into a single line, legacy ones are keyed by
-  // version. The useful fact about a modern caller is that one exists, not
-  // which date it names, and keying them by version hands an authless caller
-  // both a line per invented future date and a way to crowd the real sighting
-  // out of the capped set. Measured 28.07.2026: twenty fake dates produced
-  // twenty warnings and then swallowed the genuine 2026-07-28 client.
+  // Sichtungen aus der modernen Ära fallen in eine einzige Zeile zusammen, die
+  // älteren werden nach Version geführt. Das Brauchbare an einem modernen
+  // Aufrufer ist, dass es ihn gibt, und nicht, welches Datum er nennt; sie nach
+  // Version zu führen gäbe einem authlosen Aufrufer beides: eine Zeile je
+  // erfundenem Zukunftsdatum und einen Weg, die echte Sichtung aus der
+  // gedeckelten Menge zu verdrängen. Gemessen am 28.07.2026: Zwanzig
+  // vorgetäuschte Daten erzeugten zwanzig Warnungen und verschluckten dann den
+  // echten Client vom 2026-07-28.
   const headerModern = headerRevision !== null && headerRevision >= FIRST_MODERN_REVISION;
   if (headerModern && modernLogged) return;
   if (!headerModern) {
@@ -4085,18 +4197,18 @@ async function noteProtocolVersion(request: Request): Promise<void> {
   let modernMeta = false;
   let discover = false;
 
-  // Read the body only for a version not yet recorded, so at most once per
-  // version. The header is absent exactly on a legacy `initialize`, and on
-  // clients older than 2025-06-18, which never defined it.
+  // Den Rumpf nur für eine noch nicht vermerkte Version lesen, also höchstens
+  // einmal je Version. Die Kopfzeile fehlt genau bei einem alten `initialize`
+  // und bei Clients vor 2025-06-18, die sie nie definiert haben.
   try {
     const body = asRecord(await request.clone().json());
     if (body !== null) {
       discover = body["method"] === "server/discover";
       const params = asRecord(body["params"]);
       if (params !== null) {
-        // Legacy: `initialize` states the version in params.
+        // Alte Ära: `initialize` nennt die Version in params.
         bodyRevision = asRevision(params["protocolVersion"]);
-        // Modern: every request states it in _meta instead.
+        // Moderne Ära: Jede Anfrage nennt sie stattdessen in _meta.
         const meta = asRecord(params["_meta"]);
         if (meta !== null && typeof meta[META_PROTOCOL_VERSION] === "string") {
           modernMeta = true;
@@ -4105,16 +4217,18 @@ async function noteProtocolVersion(request: Request): Promise<void> {
       }
     }
   } catch {
-    // Not JSON, or a body this server will reject anyway. The header alone
-    // still identifies the era, and failing here must not fail the request.
+    // Kein JSON, oder ein Rumpf, den dieser Server ohnehin abweist. Die
+    // Kopfzeile allein bezeichnet die Ära weiterhin, und ein Fehlschlag hier darf
+    // die Anfrage nicht scheitern lassen.
   }
 
   const revision = bodyRevision ?? headerRevision;
-  // `server/discover` exists only in the modern era, so it identifies one even
-  // if a caller omits the version.
+  // `server/discover` gibt es nur in der modernen Ära, die Methode bezeichnet sie
+  // also auch dann, wenn ein Aufrufer die Version weglässt.
   const modern = modernMeta || discover || (revision !== null && revision >= FIRST_MODERN_REVISION);
-  // A caller that names no valid revision still gets counted, but under a fixed
-  // label: its own string must not reach the journal.
+  // Ein Aufrufer, der keine gültige Revision nennt, wird trotzdem gezählt, aber
+  // unter einer festen Bezeichnung: Seine eigene Zeichenkette darf nicht ins
+  // Journal.
   const shown = revision ?? UNKNOWN_REVISION;
 
   if (modern) {
@@ -4140,10 +4254,11 @@ async function noteProtocolVersion(request: Request): Promise<void> {
 
 async function serveHttp(port: number): Promise<void> {
   const host = process.env["MCP_HTTP_HOST"] ?? "127.0.0.1";
-  // Browser origins that may talk to this server. Empty by default: MCP clients
-  // are not browsers and send no Origin at all, so the strict default costs
-  // nothing and closes the DNS-rebinding hole the spec requires servers to
-  // close. A web client is opt-in via MCP_HTTP_ALLOWED_ORIGINS.
+  // Browser-Herkünfte, die mit diesem Server sprechen dürfen. Voreingestellt
+  // leer: MCP-Clients sind keine Browser und schicken überhaupt keinen Origin,
+  // die strenge Vorgabe kostet also nichts und schließt das Loch für
+  // DNS-Rebinding, das die Spezifikation zu schließen verlangt. Ein Web-Client
+  // lässt sich über MCP_HTTP_ALLOWED_ORIGINS ausdrücklich zulassen.
   const allowedOrigins = (process.env["MCP_HTTP_ALLOWED_ORIGINS"] ?? "")
     .split(",")
     .map((o) => o.trim())
@@ -4171,11 +4286,12 @@ async function serveHttp(port: number): Promise<void> {
         return withCors(new Response(null, { status: 204 }));
       }
       if (url.pathname === "/health") {
-        // Reports whether the service works, not just that the process is up.
-        // An HTTP endpoint has no terminal watching stderr, and with bible_setup
-        // gone there is no in-band way left to notice a broken database: every
-        // tool would simply refuse, one at a time. 503 rather than 200 so a
-        // monitor sees it without parsing the body.
+        // Meldet, ob der Dienst funktioniert, und nicht bloß, dass der Prozess
+        // läuft. An einem HTTP-Endpunkt sieht kein Terminal auf stderr, und ohne
+        // bible_setup gibt es keinen Weg mehr innerhalb des Protokolls, eine
+        // kaputte Datenbank zu bemerken: Jedes Werkzeug wiese einfach ab, eines
+        // nach dem anderen. 503 statt 200, damit eine Überwachung es sieht, ohne
+        // den Rumpf zu zerlegen.
         const problem = healthProblem();
         return withCors(
           new Response(
@@ -4189,8 +4305,8 @@ async function serveHttp(port: number): Promise<void> {
       }
       if (url.pathname !== "/mcp") return withCors(new Response("Not found", { status: 404 }));
 
-      // Spec: servers MUST validate Origin. The SDK's own option for this is
-      // deprecated in favour of exactly this kind of outer check.
+      // Spezifikation: Server MÜSSEN den Origin prüfen. Die eigene Option des SDK
+      // dafür gilt als überholt, zugunsten genau dieser Art äußerer Prüfung.
       const origin = request.headers.get("origin");
       if (origin !== null && !allowedOrigins.includes(origin)) {
         return withCors(new Response("Forbidden origin", { status: 403 }));
@@ -4218,18 +4334,20 @@ async function serveHttp(port: number): Promise<void> {
         return withCors(new Response(null, { status: 200 }));
       }
 
-      // Records the protocol revision of the caller, at most one line per
-      // version seen. Never fails the request: a caller must not be able to
-      // break a lookup by sending a body this cannot read.
+      // Hält die Protokollrevision des Aufrufers fest, höchstens eine Zeile je
+      // gesehener Version. Lässt die Anfrage nie scheitern: Ein Aufrufer darf ein
+      // Nachschlagen nicht dadurch zerbrechen können, dass er einen Rumpf
+      // schickt, den dies hier nicht lesen kann.
       await noteProtocolVersion(request);
 
-      // Stateless: one server plus transport per request, no session registry.
-      // This server is pure request/response — it never pushes notifications and
-      // has nothing to resume — so sessions would buy nothing and cost a registry
-      // that has to be swept, capped and expired. An earlier stateful version
-      // leaked exactly that way (21 requests, 21 sessions that never went away,
-      // measured 25.07.2026). Both objects fall out of scope once the response
-      // stream ends.
+      // Zustandslos: ein Server samt Transport je Anfrage, keine
+      // Sitzungsregistratur. Dieser Server ist reines Anfrage-Antwort-Spiel, er
+      // schiebt keine Benachrichtigungen und hat nichts fortzusetzen; Sitzungen
+      // brächten ihm also nichts und kosteten eine Registratur, die zu räumen, zu
+      // deckeln und verfallen zu lassen wäre. Eine frühere sitzungsbehaftete
+      // Fassung lief genau dort aus (21 Anfragen, 21 Sitzungen, die nie
+      // verschwanden, gemessen 25.07.2026). Beide Objekte fallen aus dem
+      // Geltungsbereich, sobald der Antwortstrom endet.
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -4249,16 +4367,18 @@ async function serveHttp(port: number): Promise<void> {
 
 async function main(): Promise<void> {
   /**
-   * Build the database and exit — the operator's counterpart to bible_setup.
+   * Baut die Datenbank auf und endet: das Gegenstück zu bible_setup für die
+   * Betreiberseite.
    *
-   * Needed because bible_setup is stdio-only (see HTTP_MODE): without this flag,
-   * setting up an HTTP endpoint would require Bun and a checkout on the host, and
-   * the whole point of the compiled binary is that neither is there.
+   * Nötig, weil es bible_setup nur über stdio gibt (siehe HTTP_MODE): Ohne dieses
+   * Flag verlangte das Einrichten eines HTTP-Endpunkts Bun und einen Checkout auf
+   * dem Zielrechner, und der ganze Sinn des kompilierten Binaries ist, dass
+   * beides dort nicht liegt.
    *
-   * The flag is read at module level (SETUP_CLI) because the startup log there
-   * has to know about it too; argv is indexed differently for `bun run server.ts`
-   * than for a compiled binary, so it is matched with `includes` rather than at a
-   * fixed position and works in both.
+   * Das Flag wird auf Modulebene gelesen (SETUP_CLI), weil das Startprotokoll
+   * dort ebenfalls davon wissen muss; argv ist bei `bun run server.ts` anders
+   * indiziert als bei einem kompilierten Binary, deshalb wird es mit `includes`
+   * gesucht statt an fester Stelle, und so trägt es in beiden Fällen.
    */
   if (SETUP_CLI) {
     // Anders als bible_setup lehnt diese Flagge bei vorhandener Datenbank nicht

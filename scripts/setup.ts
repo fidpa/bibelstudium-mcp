@@ -1,23 +1,25 @@
 #!/usr/bin/env bun
 /**
- * Build the database from inside the server, so a user who installed the MCPB
- * bundle never has to open a terminal.
+ * Baut die Datenbank aus dem Server heraus auf, damit niemand, der das
+ * MCPB-Bundle installiert hat, je ein Terminal öffnen muss.
  *
- * Run standalone:
+ * Eigenständiger Aufruf:
  *   bun run setup
  *
- * The steps are the same downloads the package.json aliases expose, in the same
- * order, each one importing the script's main() rather than spawning it: a
- * compiled binary has neither Bun nor the scripts on disk to spawn.
+ * Die Schritte sind dieselben Downloads, die die package.json-Aliase anbieten,
+ * in derselben Reihenfolge, jeder über einen Import der main() des Skripts
+ * statt über einen eigenen Prozess: Ein kompiliertes Binary hat weder Bun noch
+ * die Skripte auf der Platte, um einen zu starten.
  *
- * Partial failure is expected and handled. Every download works on a private
- * copy of the database and swaps it in atomically, so a step that fails leaves
- * the previous state untouched and cannot corrupt what earlier steps wrote.
- * Only the first step is required — without verses there is no database at all,
- * and the later steps have nothing to attach their data to. Everything after it
- * is optional: if a source is unreachable, that step is recorded as failed, the
- * remaining steps still run, and the report names which capability is missing
- * and how to add it later.
+ * Ein Teilfehler ist vorgesehen und behandelt. Jeder Download arbeitet auf
+ * einer eigenen Kopie der Datenbank und wechselt sie atomar ein; ein
+ * gescheiterter Schritt lässt den bisherigen Stand also unberührt und kann
+ * nicht beschädigen, was frühere Schritte geschrieben haben. Erforderlich ist
+ * allein der erste Schritt: Ohne Verse gibt es überhaupt keine Datenbank, und
+ * die späteren Schritte hätten nichts, woran sie ihre Daten hängen. Alles
+ * danach ist optional. Ist eine Quelle nicht erreichbar, wird der Schritt als
+ * gescheitert vermerkt, die übrigen laufen weiter, und der Bericht benennt,
+ * welche Fähigkeit fehlt und wie sie sich nachholen lässt.
  */
 
 import { main as downloadVerses } from "./download.ts";
@@ -29,13 +31,13 @@ import { main as downloadCrossrefs } from "./download-crossrefs.ts";
 import { main as downloadTagnt } from "./download-tagnt.ts";
 import { main as downloadLexicon } from "./download-lexicon.ts";
 
-/** What one step contributes, and what is lost when it fails. */
+/** Was ein Schritt beiträgt, und was fehlt, wenn er scheitert. */
 export interface SetupStep {
   readonly id: string;
   readonly label: string;
-  /** Required steps abort the run; optional ones only record their failure. */
+  /** Erforderliche Schritte brechen den Lauf ab, optionale vermerken nur ihr Scheitern. */
   readonly required: boolean;
-  /** Named in the report when the step fails, so the gap is concrete. */
+  /** Steht im Bericht, wenn der Schritt scheitert, damit die Lücke benannt ist. */
   readonly provides: string;
   readonly command: string;
   readonly run: () => Promise<void>;
@@ -113,7 +115,7 @@ export interface StepResult {
   readonly label: string;
   readonly ok: boolean;
   readonly seconds: number;
-  /** Present only on failure. */
+  /** Nur im Fehlerfall gesetzt. */
   readonly error?: string;
   readonly provides?: string;
   readonly command?: string;
@@ -121,7 +123,7 @@ export interface StepResult {
 
 export interface SetupReport {
   readonly complete: boolean;
-  /** True when the required step failed and nothing usable was built. */
+  /** Wahr, wenn der erforderliche Schritt scheiterte und nichts Brauchbares entstand. */
   readonly aborted: boolean;
   readonly steps: readonly StepResult[];
   readonly seconds: number;
@@ -129,16 +131,17 @@ export interface SetupReport {
 
 function describeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  // Keep it to one line: the report is read inside a chat answer, and a stack
-  // trace there buries the sentence that says which source was unreachable.
+  // Auf eine Zeile beschränken: Der Bericht wird in einer Chat-Antwort gelesen,
+  // und ein Stacktrace begräbt dort den Satz, der die unerreichbare Quelle nennt.
   return message.split("\n")[0] ?? message;
 }
 
 /**
- * Run all steps in order and report what succeeded.
+ * Führt alle Schritte der Reihe nach aus und berichtet, was geglückt ist.
  *
- * `onProgress` is called before each step so a caller can stream status; the
- * server uses it for its log, and the standalone run for the console.
+ * `onProgress` wird vor jedem Schritt gerufen, damit ein Aufrufer den Stand
+ * mitschreiben kann: Der Server nutzt das für sein Protokoll, der eigenständige
+ * Lauf für die Konsole.
  */
 export async function runSetup(
   onProgress?: (label: string, index: number, total: number) => void,

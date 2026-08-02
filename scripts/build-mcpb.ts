@@ -1,25 +1,27 @@
 #!/usr/bin/env bun
 /**
- * Build the MCPB bundle (.mcpb) for one-click installation in Claude Desktop.
+ * Baut das MCPB-Bundle (.mcpb) für die Installation mit einem Klick in Claude
+ * Desktop.
  *
- * Run:
- *   bun run build:mcpb                    # for the platform you are building on
- *   bun run build:mcpb bun-darwin-x64     # cross-compile for another target
+ * Aufruf:
+ *   bun run build:mcpb                    # für die Plattform, auf der gebaut wird
+ *   bun run build:mcpb bun-darwin-x64     # Übersetzung für ein anderes Ziel
  *
- * The bundle carries a standalone binary produced by `bun build --compile`, so
- * users need no Bun installation. It does NOT carry data/bible.db: the database
- * is ~145 MB, is built locally from the download scripts, and STEPBible asks
- * that their data files not be redistributed. The user picks an existing
- * bible.db during installation; Claude Desktop passes it to the server as
- * BIBLE_DB_PATH (see mcpb/manifest.json and the DB_PATH block in server.ts).
+ * Das Bundle trägt ein eigenständiges Binary aus `bun build --compile`, eine
+ * Bun-Installation braucht also niemand. Die data/bible.db trägt es NICHT: Die
+ * Datenbank ist rund 145 MB groß, entsteht lokal aus den Download-Skripten, und
+ * STEPBible bittet darum, die eigenen Dateien nicht weiterzuverbreiten. Der
+ * Nutzer wählt bei der Installation eine vorhandene bible.db; Claude Desktop
+ * reicht sie dem Server als BIBLE_DB_PATH weiter (siehe mcpb/manifest.json und
+ * den DB_PATH-Abschnitt in server.ts).
  *
- * A compiled binary is architecture-specific and this script bundles exactly
- * one, so a bundle built here runs on the target it was built for and nowhere
- * else. The manifest's compatibility.platforms is derived from the target
- * rather than claiming all three.
+ * Ein kompiliertes Binary ist architekturspezifisch, und dieses Skript packt
+ * genau eines ein; ein hier gebautes Bundle läuft also auf dem Ziel, für das es
+ * gebaut wurde, und sonst nirgends. compatibility.platforms im Manifest wird
+ * deshalb aus dem Ziel abgeleitet, statt alle drei zu behaupten.
  *
- * Output lands in tmp/ (gitignored) — the binary is 60+ MB and belongs in no
- * repository.
+ * Das Ergebnis landet in tmp/ (gitignored): Das Binary ist über 60 MB groß und
+ * gehört in kein Repository.
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
@@ -28,13 +30,14 @@ import { dirname, resolve } from "path";
 const ROOT = resolve(dirname(import.meta.path), "..");
 const STAGE_DIR = resolve(ROOT, "tmp/mcpb");
 const SERVER_DIR = resolve(STAGE_DIR, "server");
-// The compiler's scratch file must land outside the staging directory: anything
-// left inside it gets packed into the bundle. Running the compiler from the
-// staging directory (an earlier attempt at keeping the repository root clean)
-// shipped a 63 MB stray binary and doubled the bundle size.
+// Die Arbeitsdatei des Compilers muss außerhalb des Staging-Verzeichnisses
+// landen: Was dort liegen bleibt, wandert mit ins Bundle. Den Compiler aus dem
+// Staging-Verzeichnis heraus laufen zu lassen (ein früherer Versuch, das
+// Repository-Wurzelverzeichnis sauber zu halten) legte ein verirrtes Binary von
+// 63 MB bei und verdoppelte die Bundle-Größe.
 const SCRATCH_DIR = resolve(ROOT, "tmp/build-scratch");
 
-/** Bun compile targets mapped to the platform name the MCPB manifest uses. */
+/** Compile-Ziele von Bun, abgebildet auf den Plattformnamen des MCPB-Manifests. */
 const TARGET_PLATFORMS: Readonly<Record<string, string>> = {
   "bun-darwin-arm64": "darwin",
   "bun-darwin-x64": "darwin",
@@ -58,20 +61,21 @@ if (platform === undefined) {
   process.exit(1);
 }
 
-// Claude Desktop appends .exe itself on Windows, but the file has to be named
-// that way inside the bundle for the binary to be found at all.
+// Claude Desktop hängt unter Windows selbst ein .exe an; im Bundle muss die
+// Datei aber so heißen, damit das Binary überhaupt gefunden wird.
 const binaryName = platform === "win32" ? "bibelstudium-server.exe" : "bibelstudium-server";
 
-// --- Stage the bundle directory --------------------------------------------
+// --- Bundle-Verzeichnis herrichten ------------------------------------------
 rmSync(STAGE_DIR, { recursive: true, force: true });
 rmSync(SCRATCH_DIR, { recursive: true, force: true });
 mkdirSync(SERVER_DIR, { recursive: true });
 mkdirSync(SCRATCH_DIR, { recursive: true });
 
 console.log(`Compiling server for ${target} …`);
-// `bun build --compile` writes its scratch binary into the working directory
-// and leaves it behind when the outfile sits on another filesystem. Give it a
-// directory of its own, outside both the repository root and the staging tree.
+// `bun build --compile` legt sein Arbeits-Binary im Arbeitsverzeichnis ab und
+// lässt es liegen, wenn die Zieldatei auf einem anderen Dateisystem sitzt. Es
+// bekommt deshalb ein eigenes Verzeichnis, außerhalb des Repository-Wurzel-
+// verzeichnisses wie des Staging-Baums.
 const build = Bun.spawnSync(
   [
     "bun",
@@ -91,10 +95,10 @@ if (build.exitCode !== 0) {
   process.exit(1);
 }
 
-// --- Write the manifest, version taken from package.json --------------------
-// Only the fields this script rewrites are typed; everything else in the
-// manifest passes through untouched. The source file in mcpb/ is the reference
-// for the full schema — `mcpb validate` checks the result against it.
+// --- Manifest schreiben, Version aus package.json ---------------------------
+// Typisiert sind nur die Felder, die dieses Skript neu schreibt; alles Übrige
+// im Manifest geht unverändert durch. Maßgeblich für das vollständige Schema ist
+// die Quelldatei in mcpb/, und `mcpb validate` prüft das Ergebnis dagegen.
 interface Manifest {
   version: string;
   icon?: string;
@@ -106,16 +110,16 @@ interface Manifest {
   [key: string]: unknown;
 }
 
-// Keeping one version number means the bundle can never claim a release the
-// repository does not have.
+// Eine einzige Versionsnummer heißt: Das Bundle kann nie eine Fassung
+// behaupten, die es im Repository nicht gibt.
 const pkg = (await Bun.file(resolve(ROOT, "package.json")).json()) as { version: string };
 const manifest = (await Bun.file(resolve(ROOT, "mcpb/manifest.json")).json()) as Manifest;
 
 manifest.version = pkg.version;
 manifest.server.entry_point = `server/${binaryName}`;
 manifest.server.mcp_config.command = `\${__dirname}/server/${binaryName}`;
-// Derived from the compile target rather than copied: a bundle carries exactly
-// one binary and runs on exactly one platform.
+// Aus dem Compile-Ziel abgeleitet statt übernommen: Ein Bundle trägt genau ein
+// Binary und läuft auf genau einer Plattform.
 manifest.compatibility.platforms = [platform];
 
 const icon = resolve(ROOT, "mcpb/icon.png");
@@ -126,14 +130,15 @@ if (existsSync(icon)) {
 
 writeFileSync(resolve(STAGE_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-// --- Pack ------------------------------------------------------------------
-// The MCPB CLI is a Node package and is not a dependency of this repo; npx
-// fetches it on demand so the bundle stays a maintainer-only build step.
-// The architecture belongs in the filename because it fits nowhere else: the
-// manifest's compatibility.platforms only knows darwin/win32/linux, so an Intel
-// Mac would pass that check and fail later on the binary itself, with an error
-// from the operating system rather than from this bundle. The name is the only
-// warning a user gets before downloading.
+// --- Packen -----------------------------------------------------------------
+// Das MCPB-CLI ist ein Node-Paket und keine Abhängigkeit dieses Repositories;
+// npx holt es bei Bedarf, damit das Bauen des Bundles ein Schritt allein für die
+// Betreuerseite bleibt.
+// Die Architektur gehört in den Dateinamen, weil sie sonst nirgends Platz hat:
+// compatibility.platforms im Manifest kennt nur darwin/win32/linux, ein
+// Intel-Mac bestünde diese Prüfung also und scheiterte erst am Binary selbst,
+// mit einer Meldung des Betriebssystems statt einer dieses Bundles. Der Name ist
+// die einzige Warnung, die ein Nutzer vor dem Herunterladen bekommt.
 const arch = target.replace(/^bun-[^-]+-/, "");
 const outFile = resolve(ROOT, `tmp/bibelstudium-mcp-${pkg.version}-${platform}-${arch}.mcpb`);
 console.log("Packing bundle …");

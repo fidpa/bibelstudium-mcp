@@ -1,20 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Download the STEPBible TAGNT (Translators Amalgamated Greek NT) and store
- * per-word edition attestation in the local SQLite database (`tagnt_words`).
+ * Lädt das STEPBible TAGNT (Translators Amalgamated Greek NT) und legt die
+ * Bezeugung je Wort in der lokalen SQLite-Datenbank ab (`tagnt_words`).
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-tagnt.ts
  *
- * Source: https://github.com/STEPBible/STEPBible-Data (CC BY 4.0), directory
- * "Translators Amalgamated OT+NT", two files (Mat-Jhn, Act-Rev). Each data
- * row is one word of the amalgamated NT with the editions that attest it
- * (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantine) and
- * notes for significant meaning/spelling variants. `bible_compare` uses this
- * to show, per word, which editions carry it — beyond the three full editions
- * stored in `original_words`.
+ * Quelle: https://github.com/STEPBible/STEPBible-Data (CC BY 4.0), Verzeichnis
+ * "Translators Amalgamated OT+NT", zwei Dateien (Mat-Jhn, Act-Rev). Jede
+ * Datenzeile ist ein Wort des zusammengeführten NT samt den Editionen, die es
+ * bezeugen (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR,
+ * byzantinisch), dazu Notizen zu erheblichen Bedeutungs- und
+ * Schreibvarianten. `bible_compare` zeigt damit je Wort, welche Editionen es
+ * führen, über die drei vollständigen Editionen in `original_words` hinaus.
  *
- * ADDITIVE: touches only `tagnt_words`.
+ * ERGÄNZEND: fasst allein `tagnt_words` an.
  */
 
 import { dirname, resolve } from "path";
@@ -30,7 +30,7 @@ const FILES = [
   "TAGNT%20Act-Rev%20-%20Translators%20Amalgamated%20Greek%20NT%20-%20STEPBible.org%20CC-BY.txt",
 ] as const;
 
-// TAGNT book abbreviation → bolls.life book_id (40–66).
+// TAGNT-Buchabkürzung → bolls.life-book_id (40 bis 66).
 const BOOKS: Record<string, number> = {
   Mat: 40, Mrk: 41, Luk: 42, Jhn: 43, Act: 44, Rom: 45,
   "1Co": 46, "2Co": 47, Gal: 48, Eph: 49, Php: 50, Col: 51,
@@ -39,11 +39,11 @@ const BOOKS: Record<string, number> = {
   "3Jn": 64, Jud: 65, Rev: 66,
 };
 
-// Data row: "Mat.1.1#01=NKO<TAB>…" — display lines start with '#' or lack the ref.
+// Datenzeile: "Mat.1.1#01=NKO<TAB>…"; Anzeigezeilen beginnen mit '#' oder haben keinen Verweis.
 const REF_RE = /^(\d?[A-Za-z]{2,3})\.(\d+)\.(\d+)#(\d+)=(\S+)$/;
-// Greek column: "Βίβλος (Biblos)" — surface plus transliteration.
+// Griechische Spalte: "Βίβλος (Biblos)", Wortform samt Transliteration.
 const GREEK_RE = /^(.*?)\s*\(([^)]*)\)\s*$/;
-// dStrong column: "G0976=N-NSF" — letter suffix is STEPBible disambiguation.
+// dStrong-Spalte: "G0976=N-NSF"; das angehängte Zeichen ist die Unterscheidung von STEPBible.
 const STRONG_RE = /^G(\d+)[A-Z]?=(.+)$/;
 
 async function fetchText(url: string, retries = 3): Promise<string> {
@@ -87,10 +87,10 @@ export async function main(): Promise<void> {
 
       db.transaction(() => {
         for (const line of text.split("\n")) {
-          // Strip UTF-8 BOM (first line) and CR (the files use CRLF).
+          // UTF-8-BOM (erste Zeile) und CR entfernen (die Dateien nutzen CRLF).
           const cols = line.replace(/^﻿/, "").replace(/\r$/, "").split("\t");
           const ref = REF_RE.exec(cols[0] ?? "");
-          if (ref === null) continue; // header/display/blank line
+          if (ref === null) continue; // Kopf-, Anzeige- oder Leerzeile
           const bookId = BOOKS[ref[1]!];
           if (bookId === undefined) {
             throw new Error(`Unknown TAGNT book abbreviation "${ref[1]}" in row "${cols[0]}"`);
@@ -123,7 +123,7 @@ export async function main(): Promise<void> {
       console.log(`  ${fileRows} word rows imported`);
     }
 
-    // Full NT is ~141,700 rows; far fewer means a broken parse.
+    // Das vollständige NT hat rund 141 700 Zeilen; deutlich weniger heißt, das Parsen ist kaputt.
     if (total < 135000) {
       throw new Error(`Only ${total} TAGNT rows imported — format changed?`);
     }
@@ -142,8 +142,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

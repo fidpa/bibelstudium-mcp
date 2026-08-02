@@ -1,8 +1,9 @@
 /**
- * German Bible book name aliases.
+ * Aliase für die deutschen Namen der biblischen Bücher.
  *
- * Maps common German book names, abbreviations, and variants to bolls.life book IDs (1-66).
- * Includes full names, standard abbreviations, and colloquial forms.
+ * Bildet gängige deutsche Buchnamen, Abkürzungen und Schreibvarianten auf die
+ * bolls.life-Buchnummern (1 bis 66) ab: volle Namen, übliche Abkürzungen und
+ * umgangssprachliche Formen.
  */
 
 export const BOOK_ALIASES: ReadonlyArray<readonly [alias: string, bookId: number]> = [
@@ -232,9 +233,7 @@ export const BOOK_ALIASES: ReadonlyArray<readonly [alias: string, bookId: number
   ["offenbarung", 66], ["offb", 66], ["off", 66], ["apokalypse", 66],
 ];
 
-/**
- * Build a Map for O(1) lookup from the aliases array.
- */
+/** Baut aus der Aliasliste eine Map für den Zugriff in O(1). */
 export function buildAliasMap(): Map<string, number> {
   const map = new Map<string, number>();
   for (const [alias, bookId] of BOOK_ALIASES) {

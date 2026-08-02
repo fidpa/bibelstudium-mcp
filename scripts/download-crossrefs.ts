@@ -1,21 +1,24 @@
 #!/usr/bin/env bun
 /**
- * Download the OpenBible.info cross-reference dataset (R. A. Torrey's Treasury
- * of Scripture Knowledge, expanded to ~340k directed references with community
- * votes) into the local SQLite database (table `cross_references`).
+ * Lädt den Querverweis-Datensatz von OpenBible.info (R. A. Torreys Treasury of
+ * Scripture Knowledge, erweitert auf rund 340 000 gerichtete Verweise mit
+ * Gemeinschaftsbewertungen) in die lokale SQLite-Datenbank (Tabelle
+ * `cross_references`).
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-crossrefs.ts
  *
- * Source: https://www.openbible.info/labs/cross-references/
- *   License: Creative Commons Attribution (CC-BY). Data file is a zip with one
- *   TSV: "From Verse<TAB>To Verse<TAB>Votes"; refs are OSIS-style ("Gen.1.1"),
- *   targets may be ranges ("Ps.148.4-Ps.148.5"). Votes can be negative.
+ * Quelle: https://www.openbible.info/labs/cross-references/
+ *   Lizenz: Creative Commons Attribution (CC-BY). Die Datei ist ein Zip mit
+ *   einer TSV: "From Verse<TAB>To Verse<TAB>Votes"; Verweise folgen OSIS
+ *   ("Gen.1.1"), Ziele können Bereiche sein ("Ps.148.4-Ps.148.5"). Die
+ *   Bewertungen können negativ sein.
  *
- * Unzipping shells out to the system `unzip` (present on macOS/Linux); Bun has
- * no built-in zip support and this repo deliberately adds no dependency for it.
+ * Entpackt wird über das `unzip` des Systems (auf macOS und Linux vorhanden):
+ * Bun bringt keine Zip-Unterstützung mit, und dieses Repository nimmt dafür
+ * bewusst keine Abhängigkeit auf.
  *
- * ADDITIVE: touches only `cross_references`.
+ * ERGÄNZEND: fasst allein `cross_references` an.
  */
 
 import { dirname, resolve } from "path";
@@ -27,8 +30,8 @@ import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
 const ZIP_URL = "https://a.openbible.info/data/cross-references.zip";
 
-// OSIS book abbreviation → bolls.life book_id (1–66). The OT part matches the
-// names used by morphhb (see download-heb.ts); NT names per OSIS standard.
+// OSIS-Buchabkürzung → bolls.life-book_id (1 bis 66). Der AT-Teil entspricht den
+// Namen von morphhb (siehe download-heb.ts), die NT-Namen folgen dem OSIS-Standard.
 const BOOKS: Record<string, number> = {
   Gen: 1, Exod: 2, Lev: 3, Num: 4, Deut: 5, Josh: 6, Judg: 7, Ruth: 8,
   "1Sam": 9, "2Sam": 10, "1Kgs": 11, "2Kgs": 12, "1Chr": 13, "2Chr": 14,
@@ -48,7 +51,7 @@ interface Ref {
   verse: number;
 }
 
-/** Parse one OSIS-style ref ("Gen.1.1"); null if malformed or unknown book. */
+/** Liest einen Verweis in OSIS-Form ("Gen.1.1"); null bei Formfehler oder unbekanntem Buch. */
 function parseRef(ref: string): Ref | null {
   const p = ref.split(".");
   if (p.length !== 3) return null;
@@ -77,9 +80,9 @@ async function fetchZip(url: string, retries = 3): Promise<ArrayBuffer> {
 }
 
 /**
- * Fail before the download if `unzip` is missing. Minimal Linux images ship
- * without it, and Bun.spawnSync would otherwise throw a bare "Executable not
- * found in $PATH" — after 5 MB have already been fetched.
+ * Scheitert vor dem Download, wenn `unzip` fehlt. Schlanke Linux-Abbilder
+ * bringen es nicht mit, und Bun.spawnSync würde sonst ein nacktes „Executable
+ * not found in $PATH" werfen, nachdem bereits 5 MB geladen sind.
  */
 function requireUnzip(): void {
   if (Bun.which("unzip") === null) {
@@ -138,7 +141,7 @@ export async function main(): Promise<void> {
         const from = parseRef(f[0]!);
         if (from === null) { if (f[0] !== "From Verse") skipped++; continue; }
 
-        // Target may be a range "A-B"; both ends are full OSIS refs.
+        // Das Ziel kann ein Bereich "A-B" sein; beide Enden sind volle OSIS-Verweise.
         const dash = f[1]!.indexOf("-");
         const toStart = parseRef(dash < 0 ? f[1]! : f[1]!.slice(0, dash));
         const toEnd = dash < 0 ? toStart : parseRef(f[1]!.slice(dash + 1));
@@ -147,7 +150,7 @@ export async function main(): Promise<void> {
           skipped++;
           continue;
         }
-        if (toEnd.book !== toStart.book) { skipped++; continue; } // cross-book range: not expected
+        if (toEnd.book !== toStart.book) { skipped++; continue; } // Bereich über Buchgrenze: nicht vorgesehen
 
         insert.run(
           from.book, from.chapter, from.verse,
@@ -176,8 +179,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

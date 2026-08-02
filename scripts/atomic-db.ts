@@ -5,61 +5,64 @@ import {
 } from "fs";
 
 /**
- * Atomic writer for the shared bible.db.
+ * Atomarer Schreiber für die geteilte bible.db.
  *
- * Downloads must never modify the live database file in place: another session's
- * read-only MCP server may hold it open, and rewriting it (or deleting its WAL
- * sidecars) mid-flight causes "disk I/O error" for that reader.
+ * Ein Download darf die laufende Datenbankdatei niemals an Ort und Stelle
+ * ändern: Der nur lesende MCP-Server einer anderen Sitzung hält sie womöglich
+ * offen, und sie mitten im Betrieb zu überschreiben oder ihre WAL-Sidecars zu
+ * löschen erzeugt dort einen „disk I/O error".
  *
- * Instead we work on a private temporary copy and swap it in with a single
- * rename(2), which is atomic on the same filesystem. A concurrent reader keeps
- * a consistent view of the old file (via its open fd) until it reopens; new
- * connections see the fully-written new file. Nothing ever observes a partial
- * state.
+ * Gearbeitet wird deshalb auf einer eigenen temporären Kopie, die ein einzelnes
+ * rename(2) einwechselt, auf demselben Dateisystem atomar. Ein gleichzeitiger
+ * Leser behält über seinen offenen Dateideskriptor eine in sich stimmige Sicht
+ * auf die alte Datei, bis er neu öffnet; neue Verbindungen sehen die fertig
+ * geschriebene neue Datei. Einen Zwischenzustand sieht niemand.
  *
- * The published file is left in rollback (DELETE) journal mode — self-contained,
- * needing no -wal/-shm sidecars — so read-only readers never have to create
- * sidecar files at all.
+ * Die veröffentlichte Datei bleibt im Rollback-Journalmodus (DELETE): Sie ist
+ * damit selbstgenügsam, braucht keine -wal/-shm-Sidecars, und nur lesende Leser
+ * müssen gar keine solchen Dateien anlegen.
  *
- * NOTE: download scripts append to the same file and must be run sequentially
- * (each starts from a copy of the current DB); running two at once would let the
- * later rename clobber the earlier one's edition.
+ * ACHTUNG: Die Download-Skripte ergänzen dieselbe Datei und müssen nacheinander
+ * laufen, denn jedes startet von einer Kopie der aktuellen Datenbank. Bei zwei
+ * gleichzeitigen Läufen überschreibt das spätere rename die Edition des
+ * früheren.
  */
 export interface AtomicDb {
   db: Database;
-  /** Finalize: checkpoint, fold WAL back, atomically replace the live file. */
+  /** Abschluss: Checkpoint, WAL zurückfalten, laufende Datei atomar ersetzen. */
   commit(): void;
-  /** Discard the temp copy; leave the live file untouched. */
+  /** Temporäre Kopie verwerfen, die laufende Datei bleibt unberührt. */
   abort(): void;
 }
 
 function removeSidecars(path: string): void {
   for (const suffix of ["-wal", "-shm"]) {
-    try { unlinkSync(path + suffix); } catch { /* may not exist */ }
+    try { unlinkSync(path + suffix); } catch { /* gibt es womöglich nicht */ }
   }
 }
 
 /**
- * Open a temp copy of `dbPath` for writing. With `fresh: true` (or when the file
- * does not yet exist) it starts from an empty database instead of copying.
+ * Öffnet eine temporäre Kopie von `dbPath` zum Schreiben. Mit `fresh: true`
+ * (oder wenn die Datei noch nicht existiert) beginnt sie mit einer leeren
+ * Datenbank, statt zu kopieren.
  */
 export function openAtomicDb(dbPath: string, opts: { fresh?: boolean } = {}): AtomicDb {
   const dir = dirname(dbPath);
-  // Ensure the data directory exists — it is gitignored, so a fresh clone has
-  // no data/ folder until the first download runs.
+  // Datenverzeichnis sicherstellen: Es ist gitignored, ein frischer Klon hat
+  // also kein data/, bis der erste Download läuft.
   mkdirSync(dir, { recursive: true });
   const tmpPath = resolve(dir, `.${basename(dbPath)}.${process.pid}.tmp`);
 
-  // Clean any leftover temp from a previous crashed run.
+  // Reste eines früheren, abgestürzten Laufs wegräumen.
   removeSidecars(tmpPath);
-  try { unlinkSync(tmpPath); } catch { /* none */ }
+  try { unlinkSync(tmpPath); } catch { /* keine da */ }
 
   if (!opts.fresh && existsSync(dbPath)) {
     copyFileSync(dbPath, tmpPath);
   }
 
   const db = new Database(tmpPath, { create: true });
-  db.exec("PRAGMA journal_mode = WAL"); // fast bulk load on the private copy
+  db.exec("PRAGMA journal_mode = WAL"); // schnelles Massenladen auf der eigenen Kopie
   db.exec("PRAGMA synchronous = NORMAL");
 
   let finalized = false;
@@ -67,21 +70,21 @@ export function openAtomicDb(dbPath: string, opts: { fresh?: boolean } = {}): At
   const abort = (): void => {
     if (finalized) return;
     finalized = true;
-    try { db.close(); } catch { /* already closed */ }
+    try { db.close(); } catch { /* schon geschlossen */ }
     removeSidecars(tmpPath);
-    try { unlinkSync(tmpPath); } catch { /* none */ }
+    try { unlinkSync(tmpPath); } catch { /* keine da */ }
   };
 
   const commit = (): void => {
     if (finalized) throw new Error("atomic db already finalized");
     finalized = true;
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    db.exec("PRAGMA journal_mode = DELETE"); // publish a self-contained file
+    db.exec("PRAGMA journal_mode = DELETE"); // selbstgenügsame Datei veröffentlichen
     db.close();
-    removeSidecars(tmpPath); // safe: temp is private, no other reader
-    renameSync(tmpPath, dbPath); // atomic swap
-    chmodSync(dbPath, 0o600); // restrict the DB file itself (security-relevant)
-    try { chmodSync(dir, 0o700); } catch { /* best effort; parent dir may not be ours */ }
+    removeSidecars(tmpPath); // gefahrlos: die Kopie ist privat, kein zweiter Leser
+    renameSync(tmpPath, dbPath); // atomarer Tausch
+    chmodSync(dbPath, 0o600); // die Datenbankdatei selbst beschränken (sicherheitsrelevant)
+    try { chmodSync(dir, 0o700); } catch { /* nach Möglichkeit; das Elternverzeichnis gehört uns womöglich nicht */ }
   };
 
   return { db, commit, abort };

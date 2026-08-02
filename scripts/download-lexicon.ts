@@ -1,26 +1,28 @@
 #!/usr/bin/env bun
 /**
- * Download the Open Scriptures Strong's dictionaries (Greek + Hebrew) and store
- * the full entries — lemma, transliteration, definition, KJV glosses — in the
- * local SQLite database (table `strong_defs`).
+ * Lädt die Strong-Wörterbücher von Open Scriptures (Griechisch und Hebräisch)
+ * und legt die vollständigen Einträge in der lokalen SQLite-Datenbank ab
+ * (Tabelle `strong_defs`): Lemma, Transliteration, Definition, KJV-Glossen.
  *
- * Run (after download.ts has built bible.db):
+ * Aufruf (nachdem download.ts die bible.db gebaut hat):
  *   bun run download-lexicon.ts
  *
- * Source: https://github.com/openscriptures/strongs (CC-BY-SA).
- * The same files are fetched by download-byz.ts / download-heb.ts, but those
- * only extract the lemma for `original_words`; this script keeps the English
- * definitions so `bible_concordance` can show word meanings.
+ * Quelle: https://github.com/openscriptures/strongs (CC-BY-SA).
+ * Dieselben Dateien holen auch download-byz.ts und download-heb.ts, die daraus
+ * aber nur das Lemma für `original_words` ziehen; dieses Skript behält die
+ * englischen Definitionen, damit `bible_concordance` Wortbedeutungen zeigen
+ * kann.
  *
- * Additionally enriches each entry from the STEPBible brief lexicons
+ * Zusätzlich reichert es jeden Eintrag aus den Kurzlexika von STEPBible an
  * (https://github.com/STEPBible/STEPBible-Data, CC BY 4.0):
- *   - TBESG (Greek):  Tyndale gloss + full Abbott-Smith entry (`meaning`)
- *   - TBESH (Hebrew): Tyndale gloss ONLY — the TBESH meaning field is
- *     "Abridged BDB by Online Bible, © Larry Pierce" and requires permission
- *     ("Permission should be gained from Online Bible", file header), so it
- *     is deliberately not stored.
+ *   - TBESG (Griechisch): Tyndale-Glosse und vollständiger
+ *     Abbott-Smith-Eintrag (`meaning`)
+ *   - TBESH (Hebräisch): NUR die Tyndale-Glosse. Das TBESH-Bedeutungsfeld ist
+ *     "Abridged BDB by Online Bible, © Larry Pierce" und verlangt eine
+ *     Erlaubnis („Permission should be gained from Online Bible", Dateikopf);
+ *     es wird deshalb bewusst nicht gespeichert.
  *
- * ADDITIVE: touches only `strong_defs`.
+ * ERGÄNZEND: fasst allein `strong_defs` an.
  */
 
 import { dirname, resolve } from "path";
@@ -35,7 +37,8 @@ const DICTS: ReadonlyArray<readonly [prefix: "G" | "H", url: string]> = [
 ];
 const STEP_BASE =
   "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Lexicons/";
-// [prefix, url, includeMeaning] — TBESH meaning is © Online Bible, gloss only.
+// [Präfix, URL, includeMeaning]: Das TBESH-Bedeutungsfeld ist © Online Bible,
+// deshalb nur die Glosse.
 const STEP_LEXICONS: ReadonlyArray<readonly [prefix: "G" | "H", url: string, includeMeaning: boolean]> = [
   ["G", STEP_BASE + "TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt", true],
   ["H", STEP_BASE + "TBESH%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Hebrew%20-%20STEPBible.org%20CC%20BY.txt", false],
@@ -43,8 +46,8 @@ const STEP_LEXICONS: ReadonlyArray<readonly [prefix: "G" | "H", url: string, inc
 
 interface DictEntry {
   readonly lemma?: string;
-  readonly translit?: string; // Greek dictionary
-  readonly xlit?: string; // Hebrew dictionary
+  readonly translit?: string; // griechisches Wörterbuch
+  readonly xlit?: string; // hebräisches Wörterbuch
   readonly strongs_def?: string;
   readonly kjv_def?: string;
 }
@@ -63,7 +66,7 @@ async function fetchText(url: string, retries = 3): Promise<string> {
   throw new Error(`Failed: ${url}`);
 }
 
-/** Extract the JS object literal from `var strongsXxxDictionary = {...};` and parse it. */
+/** Löst das JS-Objektliteral aus `var strongsXxxDictionary = {...};` heraus und parst es. */
 function parseDict(js: string): Record<string, DictEntry> {
   const start = js.indexOf("{", js.indexOf("="));
   const end = js.lastIndexOf("};") + 1;
@@ -71,7 +74,7 @@ function parseDict(js: string): Record<string, DictEntry> {
   return JSON.parse(js.slice(start, end)) as Record<string, DictEntry>;
 }
 
-/** Flatten STEPBible lexicon HTML (<b>, <i>, <BR/>, <ref='…'>) to plain text. */
+/** Glättet das Lexikon-HTML von STEPBible (<b>, <i>, <BR/>, <ref='…'>) zu reinem Text. */
 function cleanStepHtml(html: string): string {
   return html
     .replace(/<\/?ref[^>]*>/gi, "")
@@ -83,11 +86,12 @@ function cleanStepHtml(html: string): string {
 }
 
 /**
- * Parse a STEPBible brief lexicon (TBESG/TBESH). Data rows are TSV:
- * eStrong, dStrong-relation, uStrong, lemma, translit, morph, gloss, meaning.
- * One Strong's number spans several disambiguation rows (G0040G, G0040H, …)
- * and may carry an a/b subdivision suffix (H0671a); the first row per plain
- * number is the base sense — later rows are skipped.
+ * Liest ein Kurzlexikon von STEPBible (TBESG/TBESH). Die Datenzeilen sind TSV:
+ * eStrong, dStrong-Bezug, uStrong, Lemma, Transliteration, Morphologie, Glosse,
+ * Bedeutung. Eine Strong-Nummer verteilt sich über mehrere Unterscheidungs-
+ * zeilen (G0040G, G0040H, …) und kann eine Unterteilung a/b tragen (H0671a).
+ * Die erste Zeile je schlichter Nummer ist die Grundbedeutung, spätere Zeilen
+ * werden übergangen.
  */
 function parseStepLexicon(
   text: string,
@@ -150,9 +154,9 @@ export async function main(): Promise<void> {
       console.log(`  ${count} ${prefix}-entries stored`);
     }
 
-    // Enrich with the STEPBible glosses/meanings (only rows whose Strong's
-    // number exists above — extended eStrong numbers G6000+ etc. are never
-    // referenced by original_words and are skipped).
+    // Mit Glossen und Bedeutungen von STEPBible anreichern, und zwar nur für
+    // Zeilen, deren Strong-Nummer oben vorkommt: Die erweiterten eStrong-Nummern
+    // ab G6000 werden von original_words nie referenziert und fallen weg.
     const update = db.prepare(
       "UPDATE strong_defs SET gloss = ?, meaning = ? WHERE strong = ?"
     );
@@ -192,8 +196,9 @@ export async function main(): Promise<void> {
   console.log(`Database size now: ${sizeMB} MB`);
 }
 
-// Run only when invoked directly. setup.ts imports main() so the server can
-// build the database itself; an import must not start a download.
+// Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
+// Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
+// starten.
 if (import.meta.main) {
   main().catch((error) => {
     console.error("Download failed:", error);

@@ -1,23 +1,25 @@
 /**
- * Where the database lives — the one answer shared by the server and every
- * data-building script.
+ * Wo die Datenbank liegt: die eine Antwort, die sich der Server und jedes
+ * Skript des Datenaufbaus teilen.
  *
- * This used to be resolved separately in each file, which was harmless while the
- * scripts only ever ran from a checkout. It stopped being harmless when the
- * server gained bible_setup: the server would honour BIBLE_DB_PATH while the
- * scripts it calls wrote next to their own source, so a bundle install would
- * download into a directory nobody reads. Both sides now ask here.
+ * Früher löste jede Datei den Pfad für sich auf. Harmlos war das, solange die
+ * Skripte nur aus einem Checkout liefen; mit `bible_setup` war es das nicht
+ * mehr. Der Server befolgte BIBLE_DB_PATH, die von ihm gerufenen Skripte
+ * schrieben neben den eigenen Quelltext, und eine Bundle-Installation lud
+ * damit in ein Verzeichnis, in das niemand sieht. Beide Seiten fragen jetzt
+ * hier.
  *
- * Resolution order:
- *   1. BIBLE_DB_PATH, when set to a non-empty value. An entry left blank in an
- *      installer dialog arrives as "" and must not count as a configured path.
- *   2. A per-user data directory, when running as a `bun build --compile`
- *      binary. `import.meta.path` then points into Bun's virtual filesystem,
- *      which does not exist on disk — that is how the case is detected, rather
- *      than by hardcoding Bun's internal path. The database must not live next
- *      to the binary: an installed bundle sits in a directory the host replaces
- *      wholesale on update, which would silently discard the downloaded data.
- *   3. The repository's data/ directory, for an ordinary checkout.
+ * Reihenfolge der Auflösung:
+ *   1. BIBLE_DB_PATH, sofern nicht leer. Ein im Installationsdialog leer
+ *      gelassenes Feld kommt als "" an und zählt nicht als gesetzter Pfad.
+ *   2. Ein Datenverzeichnis je Benutzer, wenn der Lauf ein `bun build
+ *      --compile`-Binary ist. `import.meta.path` zeigt dann in Buns virtuelles
+ *      Dateisystem, das auf der Platte nicht existiert; daran wird der Fall
+ *      erkannt, statt Buns internen Pfad fest zu verdrahten. Neben dem Binary
+ *      darf die Datenbank nicht liegen: Das Verzeichnis einer installierten
+ *      Erweiterung ersetzt der Host beim Update vollständig, und die geladenen
+ *      Daten wären still verloren.
+ *   3. Das Verzeichnis data/ des Repositories, für einen gewöhnlichen Checkout.
  */
 
 import { existsSync } from "fs";
@@ -27,7 +29,7 @@ import { homedir } from "os";
 const MODULE_DIR = dirname(import.meta.path);
 const APP_DIR = "bibelstudium-mcp";
 
-/** Where a packaged install keeps its data, per platform convention. */
+/** Wo eine paketierte Installation ihre Daten hält, je Plattformkonvention. */
 function userDataDir(): string {
   if (process.platform === "darwin") {
     return resolve(homedir(), "Library/Application Support", APP_DIR);
@@ -45,14 +47,16 @@ function userDataDir(): string {
 }
 
 /**
- * True for a value the host left unsubstituted, e.g. "${user_config.db_path}".
+ * Wahr für einen Wert, den der Host nicht ersetzt hat, etwa
+ * "${user_config.db_path}".
  *
- * Measured on 25.07.2026: Claude Desktop passes the literal placeholder through
- * when an optional user_config field is left empty, rather than substituting an
- * empty string. Without this check the download ran to completion and then
- * failed writing to a file called "${user_config.db_path}" — and the reported
- * SQLite error ("unable to open database file") reads like a network problem,
- * which is exactly how it was misdiagnosed.
+ * Gemessen am 25.07.2026: Claude Desktop reicht den Platzhalter wörtlich
+ * durch, wenn ein optionales user_config-Feld leer bleibt, statt eine leere
+ * Zeichenkette einzusetzen. Ohne diese Prüfung lief der Download vollständig
+ * durch und scheiterte erst beim Schreiben in eine Datei namens
+ * "${user_config.db_path}". Die gemeldete SQLite-Meldung („unable to open
+ * database file") liest sich dabei wie ein Netzwerkproblem, und genau so wurde
+ * sie auch gedeutet.
  */
 function isUnresolvedPlaceholder(value: string): boolean {
   return value.includes("${") && value.includes("}");
