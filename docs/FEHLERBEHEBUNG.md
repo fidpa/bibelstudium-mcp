@@ -165,7 +165,9 @@ ist es nicht gemessen.
 ## HTTP-Modus
 
 Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne
-`MCP_HTTP_HOST` an `127.0.0.1`. Zwei Endpunkte: `/mcp` und `/health`.
+`MCP_HTTP_HOST` an `127.0.0.1`. Zwei Endpunkte: `/mcp` (nur `POST`, dazu
+`OPTIONS`) und `/health` (nur `GET` und `HEAD`, dazu `OPTIONS`). Jede andere
+Methode antwortet mit 405 und nennt die erlaubten in der Kopfzeile `Allow`.
 
 ### `/health` antwortet mit 503
 
@@ -180,7 +182,12 @@ Der Prozess läuft, die Datenbank nicht. Der Grund steht im Rumpf:
 | `Die Datenbank antwortet, enthält aber keine Bücher.` | `bun run download` |
 | `Die Datenbank ist nicht lesbar: …` | Datei beschädigt oder halb geschrieben; neu aufbauen |
 
-Das sind alle Gründe, die der Server erzeugen kann.
+Das sind alle Gründe, die der Server für eine **503** erzeugen kann.
+
+Zwei andere Antworten auf `/health` haben nichts mit der Datenbank zu tun und
+stehen seit 0.5.15 unter eigenen Punkten weiter unten: **405**, wenn eine andere
+Methode als `GET` oder `HEAD` verwendet wird, und **403**, wenn der Aufrufer
+einen nicht freigegebenen `Origin`-Kopf schickt.
 
 `/health` fragt die Datenbank bei jedem Aufruf, nicht nur beim Start: Ein Schaden
 im laufenden Betrieb wird deshalb sichtbar. Nach einem Neuaufbau ist ein Neustart
@@ -211,6 +218,31 @@ browserbasierten Client die erlaubten Herkünfte ausdrücklich freigeben:
 ```bash
 MCP_HTTP_ALLOWED_ORIGINS=https://example.com MCP_HTTP_PORT=8931 bun run server.ts
 ```
+
+**Seit 0.5.15 gilt die Prüfung für beide Pfade**, also auch für `/health` und
+für unbekannte Pfade. Vorher wurde `/health` beantwortet, bevor der Origin
+geprüft war; damit konnte jede beliebige Webseite per JavaScript erfahren, dass
+auf einem lokalen Port dieser Server läuft, und seinen Zustand auslesen. Die
+Spezifikation verlangt die Prüfung ausdrücklich für **alle** eingehenden
+Verbindungen.
+
+Aufrufe ohne `Origin`-Kopf sind unverändert: Wer `/health` mit `curl`, aus einem
+Skript oder durch Eintippen im Browser abfragt, schickt keinen und bekommt
+weiterhin 200 oder 503. Betroffen ist allein `fetch()` aus einer fremden
+Webseite heraus.
+
+### `/health` antwortet mit `405 Method Not Allowed`
+
+Seit 0.5.15 nimmt die Zustandsauskunft nur `GET` und `HEAD` an, dazu `OPTIONS`
+für die CORS-Vorabanfrage. Vorher beantwortete sie jede Methode mit 200, ein
+`DELETE` eingeschlossen. Die erlaubten Methoden stehen in der Kopfzeile `Allow`
+der Antwort.
+
+Dasselbe gilt auf `/mcp` für alles ausser `POST` und `OPTIONS`: `GET`, `HEAD`,
+`PUT`, `PATCH` und `DELETE` antworten mit 405 und `Allow: POST, OPTIONS`. Der
+GET-Kanal für server-initiierte Nachrichten wird von diesem Server nicht
+angeboten, weil er zustandslos ist und nichts von sich aus sendet; die
+Spezifikation sieht für diesen Fall genau diese Antwort vor.
 
 ### `413` bei einer großen Anfrage
 

@@ -6,6 +6,20 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.15] - 2026-08-03
+
+### Behoben
+
+- **Die Origin-Prüfung gilt jetzt für alle Pfade.** Sie stand hinter `/health` und hinter der Pfadprüfung und war damit für `/health` wirkungslos: Eine beliebige Webseite konnte per JavaScript erfahren, dass auf einem lokalen Port dieser Server läuft, und seinen Zustand samt Störungsgrund auslesen. Die Spezifikation verlangt die Prüfung für **alle** eingehenden Verbindungen. Aufrufe ohne `Origin`-Kopf sind unverändert, betroffen ist allein `fetch()` aus fremder Seite.
+
+- **`/mcp` und `/health` nehmen nur noch die Methoden an, die sie brauchen.** Auf `/mcp` antwortet alles ausser `POST` und `OPTIONS` mit 405 und `Allow: POST, OPTIONS`; auf `/health` gilt dasselbe für alles ausser `GET`, `HEAD` und `OPTIONS`. Vorher meldete derselbe Pfad dreierlei: `GET` bekam `Allow: POST, OPTIONS`, `HEAD`, `PUT` und `PATCH` bekamen aus dem SDK `Allow: GET, POST, DELETE`, und `DELETE` bekam 200. **`DELETE /mcp` liefert deshalb 405 statt 200**; ein zustandsloser Server hat keine Sitzung zu beenden, und die Spezifikation erlaubt die Antwort ausdrücklich.
+
+- **`access-control-allow-methods` wird je Pfad gesetzt** statt global, und aus derselben Konstante wie die `Allow`-Kopfzeile, damit beide nicht auseinanderlaufen können. Die Vorabanfrage steht jetzt hinter der Pfadprüfung: Auf einen unbekannten Pfad antwortet sie mit 404 statt mit 204 und einer Methodenliste. `access-control-allow-origin: *` ist unverändert.
+
+### Hinzugefügt
+
+- **`bun run test:http`** (`tests/test-http.ts`), 47 Zusicherungen über den HTTP-Transport: Statuscodes je Methode, die Werte der `Allow`-Kopfzeilen, Origin in beiden Richtungen, Vorabanfrage, Zustandsauskunft, unbekannte Pfade. Braucht **keine** Datenbank, anders als `bun run test`.
+
 ## [0.5.14] - 2026-08-03
 
 ### Behoben

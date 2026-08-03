@@ -4067,11 +4067,29 @@ function createServer(): Server {
 // streicht ("do not mint or echo session IDs").
 const CORS_HEADERS: Readonly<Record<string, string>> = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
   "access-control-allow-headers": "content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id",
   "access-control-expose-headers": "mcp-session-id",
   "access-control-max-age": "86400",
 };
+
+/**
+ * Die erlaubten Methoden je Pfad, und zwar genau einmal hingeschrieben.
+ *
+ * Sie erscheinen an zwei Stellen, die auseinanderlaufen können und es hier
+ * bereits taten: in `Allow` einer 405 (von RFC 9110 verlangt) und in
+ * `access-control-allow-methods` der Vorabanfrage. Am 03.08.2026 meldete
+ * derselbe Pfad drei verschiedene Listen: `GET /mcp` antwortete mit
+ * `Allow: POST, OPTIONS`, `PUT` und `PATCH` bekamen vom SDK
+ * `Allow: GET, POST, DELETE`, und die Vorabanfrage nannte
+ * `GET, POST, DELETE, OPTIONS`. Aus einer Konstante gespeist kann das nicht
+ * wieder vorkommen.
+ *
+ * Deshalb steht die Angabe auch nicht mehr in CORS_HEADERS: Die gilt für jede
+ * Antwort, die Methodenliste aber je Pfad. Global gesetzt behauptete sie
+ * zwangsläufig für einen der beiden Pfade etwas Falsches.
+ */
+const METHODS_MCP = "POST, OPTIONS";
+const METHODS_HEALTH = "GET, HEAD, OPTIONS";
 
 /**
  * Warum /health die Datenbank abfragt, statt `dataMissing` zu melden.
@@ -4098,9 +4116,20 @@ function healthProblem(): string | null {
   }
 }
 
-function withCors(response: Response): Response {
+/**
+ * `methods` ist Pflicht und hat bewusst keinen Vorgabewert.
+ *
+ * Ein Vorgabewert würde genau den Fehler konservieren, den die Aufteilung
+ * behebt: Eine vergessene Aufrufstelle bekäme stillschweigend eine
+ * Methodenliste, die für ihren Pfad nicht gilt. So scheitert stattdessen der
+ * Typecheck. `null` heißt „für diese Antwort gibt es keine Methodenliste" und
+ * lässt die Kopfzeile weg; das ist der richtige Wert für 403 und 404, wo es
+ * entweder keinen Pfad gibt oder der Aufrufer ihn nicht sehen soll.
+ */
+function withCors(response: Response, methods: string | null): Response {
   const headers = new Headers(response.headers);
   for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  if (methods !== null) headers.set("access-control-allow-methods", methods);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -4282,9 +4311,30 @@ async function serveHttp(port: number): Promise<void> {
     async fetch(request) {
       const url = new URL(request.url);
 
-      if (request.method === "OPTIONS") {
-        return withCors(new Response(null, { status: 204 }));
+      // Spezifikation: Server MÜSSEN den Origin prüfen, und zwar „on all
+      // incoming connections". Die eigene Option des SDK dafür gilt als
+      // überholt, zugunsten genau dieser Art äußerer Prüfung.
+      //
+      // Sie steht vor allem anderen, seit dem 03.08.2026. Vorher lag sie hinter
+      // `/health` und hinter der Pfadprüfung, und damit war sie für `/health`
+      // gar nicht wirksam: Eine beliebige Webseite konnte per JavaScript
+      // erfahren, dass auf einem lokalen Port dieser Server läuft, und seinen
+      // Zustand auslesen, den Grund einer Störung eingeschlossen. Genau das
+      // Muster, gegen das die Prüfung in der Spezifikation steht.
+      //
+      // Am öffentlichen Endpunkt schützt sie wenig: Der ist absichtlich
+      // authlos, es gibt kein Geheimnis zu erraten und keine Anmeldung, die
+      // eine fremde Seite missbrauchen könnte. Ihr Wert liegt beim lokalen
+      // Betrieb, den MCP_HTTP_PORT jederzeit erlaubt, und dort war ausgerechnet
+      // der Pfad ungeschützt, den ein Fremder zuerst probiert.
+      const origin = request.headers.get("origin");
+      if (origin !== null && !allowedOrigins.includes(origin)) {
+        // Kein `access-control-allow-methods`: Diese Antwort gehört zu keinem
+        // Pfad, für den eine Methodenliste gälte, und einem abgewiesenen
+        // Aufrufer ist über den Endpunkt nichts mitzuteilen.
+        return withCors(new Response("Forbidden origin", { status: 403 }), null);
       }
+
       if (url.pathname === "/health") {
         // Meldet, ob der Dienst funktioniert, und nicht bloß, dass der Prozess
         // läuft. An einem HTTP-Endpunkt sieht kein Terminal auf stderr, und ohne
@@ -4292,6 +4342,19 @@ async function serveHttp(port: number): Promise<void> {
         // kaputte Datenbank zu bemerken: Jedes Werkzeug wiese einfach ab, eines
         // nach dem anderen. 503 statt 200, damit eine Überwachung es sieht, ohne
         // den Rumpf zu zerlegen.
+        if (request.method === "OPTIONS") {
+          return withCors(new Response(null, { status: 204 }), METHODS_HEALTH);
+        }
+        // HEAD gehört dazu: Eine Überwachung, die nur den Status will, darf den
+        // Rumpf sparen. Alles andere ist auf einer Zustandsauskunft sinnlos und
+        // wurde bis zum 03.08.2026 trotzdem mit 200 beantwortet, ein DELETE
+        // eingeschlossen.
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return withCors(
+            new Response(null, { status: 405, headers: { allow: METHODS_HEALTH } }),
+            METHODS_HEALTH
+          );
+        }
         const problem = healthProblem();
         return withCors(
           new Response(
@@ -4300,18 +4363,41 @@ async function serveHttp(port: number): Promise<void> {
               status: problem === null ? 200 : 503,
               headers: { "content-type": "application/json" },
             }
-          )
+          ),
+          METHODS_HEALTH
         );
       }
-      if (url.pathname !== "/mcp") return withCors(new Response("Not found", { status: 404 }));
 
-      // Spezifikation: Server MÜSSEN den Origin prüfen. Die eigene Option des SDK
-      // dafür gilt als überholt, zugunsten genau dieser Art äußerer Prüfung.
-      const origin = request.headers.get("origin");
-      if (origin !== null && !allowedOrigins.includes(origin)) {
-        return withCors(new Response("Forbidden origin", { status: 403 }));
+      if (url.pathname !== "/mcp") {
+        return withCors(new Response("Not found", { status: 404 }), null);
       }
 
+      // Die Vorabanfrage steht hinter der Pfadprüfung, damit sie nur für einen
+      // Pfad zusagt, den es gibt. Davor beantwortete sie jede Adresse mit 204
+      // und einer Methodenliste, auch eine, die anschließend 404 lieferte.
+      if (request.method === "OPTIONS") {
+        return withCors(new Response(null, { status: 204 }), METHODS_MCP);
+      }
+
+      // Eine Weiche für alle Methoden, nicht nur für GET.
+      //
+      // Bis zum 03.08.2026 fing dieser Handler allein GET ab und überließ den
+      // Rest dem Transport. Das ergab auf ein und demselben Pfad drei
+      // Auskünfte: `GET` bekam `Allow: POST, OPTIONS`, `HEAD`, `PUT` und
+      // `PATCH` bekamen vom SDK `Allow: GET, POST, DELETE`, und `DELETE`
+      // bekam 200, weil `validateSession` im zustandslosen Betrieb nichts zu
+      // prüfen hat. `withCors` überschreibt nur die `access-control`-Felder,
+      // der fremde `Allow` blieb also stehen. Wer bloß die Vorabanfrage
+      // richtiggestellt hätte, hätte eine Falschaussage gegen die nächste
+      // getauscht.
+      //
+      // `DELETE` antwortet deshalb seit dem 03.08.2026 mit 405 statt 200. Die
+      // Spezifikation erlaubt das an dieser Stelle ausdrücklich (MAY), und ein
+      // Server ohne Sitzung hat nichts zu beenden. Die frühere Entscheidung,
+      // es beim 200 des SDK zu belassen, stand unter der Annahme, dass keine
+      // Kopfzeile etwas anderes behauptet; mit einer Methodenliste je Pfad
+      // gilt die nicht mehr.
+      //
       // GET wird beantwortet, aber nicht offengehalten.
       //
       // Der GET-Kanal dient server-initiierten Nachrichten. Dieser Server sendet
@@ -4349,8 +4435,11 @@ async function serveHttp(port: number): Promise<void> {
       //
       // `Allow` gehört zwingend dazu, RFC 9110 verlangt es bei 405, und es ist
       // die eigentliche Auskunft: nur POST, absichtlich so.
-      if (request.method === "GET") {
-        return withCors(new Response(null, { status: 405, headers: { allow: "POST, OPTIONS" } }));
+      if (request.method !== "POST") {
+        return withCors(
+          new Response(null, { status: 405, headers: { allow: METHODS_MCP } }),
+          METHODS_MCP
+        );
       }
 
       // Hält die Protokollrevision des Aufrufers fest, höchstens eine Zeile je
@@ -4371,7 +4460,7 @@ async function serveHttp(port: number): Promise<void> {
         sessionIdGenerator: undefined,
       });
       await createServer().connect(transport);
-      return withCors(await transport.handleRequest(request));
+      return withCors(await transport.handleRequest(request), METHODS_MCP);
     },
   });
 

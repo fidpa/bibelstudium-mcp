@@ -18,6 +18,104 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-03: Die Origin-Prüfung steht jetzt vorn, und `/mcp` hat eine Methodenweiche
+
+Nachlese zum 405-Fund vom selben Tag. Weil jener Fehler dort saß, wo eigener
+Code eine Anfrage abfängt, **bevor** das SDK sie sieht, wurde diese Zone
+vollständig durchgemessen. Sie umfasst sechs Stellen: `OPTIONS`, `/health`,
+Fremdpfade, Origin-Prüfung, die Methodenbehandlung und `noteProtocolVersion`.
+
+Die Spec-Konformität selbst war in Ordnung: Vorschrift für Vorschrift geprüft
+(Benachrichtigung 202, fehlender `Accept` 406, fehlerhaftes JSON 400, unbekannte
+Protokollrevision 400, unbekannte Pfade 404) stimmte alles, und das meiste davon
+leistet das SDK. Drei Abweichungen lagen ausschließlich im eigenen Vorfeld.
+
+### Die Prüfung galt nicht für den Pfad, den ein Fremder zuerst probiert
+
+`/health` wurde beantwortet, bevor der Origin geprüft war. Damit konnte eine
+beliebige Webseite per JavaScript erfahren, dass auf einem lokalen Port dieser
+Server läuft, und seinen Zustand samt Störungsgrund auslesen. Die Spezifikation
+verlangt die Prüfung „on all incoming connections"; sie stand hinter zwei
+Weichen.
+
+Die Prüfung ist deshalb an den Anfang des Handlers gewandert und erfasst damit
+in einem Schritt `/health`, die Vorabanfrage und unbekannte Pfade.
+
+**Die Lage ist dabei beinahe invertiert, und das ist der Teil, der für künftige
+Entscheidungen zählt.** Am öffentlichen, authlosen Endpunkt schützt die
+Origin-Prüfung fast nichts: Es gibt keine Anmeldung, die eine fremde Seite im
+Namen eines Nutzers missbrauchen könnte, und der Dienst steht ohnehin jedem
+offen. Dort ist sie überwiegend ein Ausfallrisiko, denn ein Broker, der eines
+Tages einen `Origin` schickte, liefe in 403, ohne dass irgendein Log es sagte.
+Ihr Wert liegt beim lokalen Betrieb, den `MCP_HTTP_PORT` jederzeit erlaubt, und
+genau dort hatte sie ihr Loch. Sie saß am schwächeren Ende scharf und am
+stärkeren durchlässig.
+
+Die Antwort auf beides ist verschieden: vorn die Prüfung schließen, hinten die
+erlaubten Herkünfte im Betrieb vorsorglich eintragen.
+
+### Eine Methodenweiche, weil ein Pfad nicht drei Auskünfte geben darf
+
+`access-control-allow-methods` stand global in `CORS_HEADERS` und nannte
+`GET, POST, DELETE, OPTIONS`. Es genügte nicht, das auf `POST, OPTIONS` zu
+setzen, denn gemessen antwortete derselbe Pfad dreifach verschieden:
+
+| Anfrage | vorher |
+|---|---|
+| `GET /mcp` | 405, `Allow: POST, OPTIONS` (eigener Code) |
+| `HEAD`, `PUT`, `PATCH` | 405, `Allow: GET, POST, DELETE` (SDK) |
+| `DELETE /mcp` | **200** (SDK; `validateSession` prüft im zustandslosen Betrieb nichts) |
+
+`withCors` überschreibt nur die `access-control`-Felder, der fremde `Allow`
+blieb also stehen. Wer bloß die Vorabanfrage richtiggestellt hätte, hätte eine
+Falschaussage gegen die nächste getauscht, und die Prüfung wäre grün gewesen.
+
+Jetzt entscheidet eine Weiche im eigenen Handler: alles ausser `POST` und
+`OPTIONS` bekommt 405 mit `Allow: POST, OPTIONS`. Die Methodenlisten stehen als
+`METHODS_MCP` und `METHODS_HEALTH` an genau einer Stelle und speisen beide
+Kopfzeilen, damit sie nicht wieder auseinanderlaufen können. `withCors` bekam
+dafür einen Pflichtparameter ohne Vorgabewert: Ein Default hätte genau den
+Fehler konserviert, den die Aufteilung behebt.
+
+**Damit ist die Entscheidung von 0.5.13 zu `DELETE` umgekehrt.** Sie lautete,
+es beim 200 des SDK zu belassen, weil die Spezifikation dort nur ein MAY kennt.
+Das stand unter der Annahme, dass keine Kopfzeile etwas Gegenteiliges behauptet;
+mit einer Methodenliste je Pfad gilt sie nicht mehr. Ein Server ohne Sitzung hat
+nichts zu beenden, und 405 ist ausdrücklich erlaubt.
+
+Dazu, klein und derselben Art: `/health` nahm jede Methode an und antwortete
+mit 200, ein `DELETE` eingeschlossen. Jetzt `GET`, `HEAD` und `OPTIONS`, sonst
+405.
+
+### Was das kostet und was es nicht kostet
+
+`access-control-allow-origin: *` bleibt unverändert. Das ist der Teil des
+Antwortprofils, der als von claude.ai akzeptiert gemessen ist, und er wird nicht
+wegen einer Aufräumarbeit angefasst.
+
+Die Website musste nicht nachgezogen werden, obwohl `einrichten.html` die
+Abfrage von `/health` ausdrücklich zusagt. Der Abschnitt heißt „Für Programme",
+und Programme schicken keinen `Origin`; ebenso wenig ein Browser, der die
+Adresse direkt aufruft. Betroffen ist allein `fetch()` aus fremder Seite, also
+genau der Fall, den die Prüfung schließen soll. Geprüft, nicht angenommen.
+
+### Der eigentliche Ertrag ist der Test
+
+Bis dahin prüfte `test-golden.ts` alles, was der Server *sagt*, und nichts
+davon, wie er *antwortet*. Der Guard in `lint.yml` deckt eine einzelne Frage ab
+(`bible_setup` darf im HTTP-Modus nicht erscheinen), nicht das
+Transportverhalten. Beide Funde dieses Tages wären in einem solchen Test
+aufgeschlagen.
+
+`tests/test-http.ts` schließt das: Statuscodes je Methode, die **Werte** der
+`Allow`-Kopfzeilen, Origin in beiden Richtungen, Vorabanfrage, Zustandsauskunft,
+unbekannte Pfade. Er ist datenunabhängig und braucht deshalb, anders als die
+Golden-Tests, keine gebaute Datenbank; die einzige datenabhängige Zusicherung
+lautet „200 oder 503". Dass er misst und nicht durchwinkt, ist geprüft: Mit
+absichtlich falscher Methodenliste fällt er von 47 auf 40 bestandene Prüfungen.
+
+---
+
 ## 2026-08-03: `GET /mcp` antwortet 405, weil die 200 eine Wiederverbindungsschleife fütterte
 
 Vom 1. August an zeigte die Nutzungsansicht ein Plateau, das kein Nutzungsprofil
@@ -220,12 +318,15 @@ weil das die gemessene Angleichung an claude.ai ist. Den weicheren Fall aus
 Formtreue umzubauen, während der härtere aus Vorsicht bleibt, wäre die
 inkonsistenteste der drei Kombinationen.
 
-**Überholt am 03.08.2026, soweit es `GET` betrifft** (siehe den Eintrag von
-diesem Tag): Der harte Fall steht jetzt auf 405, weil die 200 nachweislich eine
-Wiederverbindungsschleife fütterte. Die Abwägung hier bleibt für `DELETE`
-gültig, das weiter mit 200 antwortet. Der damals notierte Wert
-`Allow: GET, POST, DELETE` gilt nicht mehr, der Endpunkt meldet
-`Allow: POST, OPTIONS`.
+**Vollständig überholt am 03.08.2026**, siehe die beiden Einträge von diesem
+Tag. `GET` steht auf 405, weil die 200 nachweislich eine
+Wiederverbindungsschleife fütterte; `DELETE` steht seit der Methodenweiche
+ebenfalls auf 405. Die Abwägung hier ist damit nicht widerlegt, sondern ihre
+Prämisse ist entfallen: Sie ging davon aus, dass keine Kopfzeile etwas
+Gegenteiliges behauptet, und seit `access-control-allow-methods` je Pfad gesetzt
+wird, tut genau das eine. Auch der damals notierte Wert
+`Allow: GET, POST, DELETE` gilt nicht mehr; der Endpunkt meldet
+`Allow: POST, OPTIONS` auf `/mcp` und `GET, HEAD, OPTIONS` auf `/health`.
 
 ---
 
