@@ -4323,15 +4323,34 @@ async function serveHttp(port: number): Promise<void> {
       // Endpunkt ist das ein kostenloser Verbindungshalter, und eine
       // Ratenbegrenzung davor greift bei offenen Verbindungen schlecht.
       //
-      // Warum 200 und nicht 405, das die Spezifikation ausdrücklich erlaubt: Der
-      // einzige fremde Endpunkt, der als authloser Custom Connector in claude.ai
-      // nachweislich funktioniert, antwortet auf GET mit 200, und dieser Server
-      // wurde am 25.07.2026 eigens darauf angeglichen (vorher 400). Ob claude.ai
-      // den Status überhaupt auswertet, ist unbelegt (n=1). Solange das offen
-      // ist, wird die gemessene Angleichung nicht wegen einer Stilfrage
-      // aufgegeben: 200 bleibt, der Stream entfällt.
+      // Warum 405 und nicht 200: Die Spezifikation lässt auf diesen GET genau
+      // zwei Antworten zu, `text/event-stream` oder 405. Eine 200 mit leerem
+      // Rumpf ist keine davon, und der Aufrufer kann sie nur als eröffneten
+      // Strom lesen. Im SDK-Client ist `response.ok` dann wahr, er geht in
+      // `_handleSseStream`, der Rumpf endet sofort, und die Wiederverbindung
+      // greift mit `initialReconnectionDelay: 1000`. `maxRetries: 2` fängt das
+      // nicht: Der Zähler gilt gescheiterten Verbindungen, eine 200 gilt als
+      // geglückt und setzt ihn zurück. Das Ergebnis ist eine Schleife ohne Ende,
+      // im Sekundentakt.
+      //
+      // Gemessen am 03.08.2026 am laufenden Dienst: 41 430 GET gegen 389 POST
+      // binnen 24 Stunden, 0,93 Anfragen je Sekunde durchgehend (1000 ms Takt
+      // plus Umlaufzeit), rund 40 000 Anfragen am Tag ohne jede Nutzlast. Die
+      // mittlere Antwort war mit 797 Byte kleiner als ein einzelner Vers, es
+      // wurde also nichts abgerufen. Auf 405 kehrt derselbe Client wortlos
+      // zurück ("This is an expected case that should not trigger an error") und
+      // arbeitet mit POST weiter.
+      //
+      // Die frühere Begründung, 200 sei an den einzigen nachweislich
+      // funktionierenden fremden Connector angeglichen, stützte sich auf eine
+      // Beobachtung an fremdem Gerät (n=1) und nicht darauf, dass claude.ai die
+      // 200 braucht; die Fehlersuche-Anleitung von Claude nennt 405 beim
+      // Erreichbarkeitstest ausdrücklich als unbedenklich.
+      //
+      // `Allow` gehört zwingend dazu, RFC 9110 verlangt es bei 405, und es ist
+      // die eigentliche Auskunft: nur POST, absichtlich so.
       if (request.method === "GET") {
-        return withCors(new Response(null, { status: 200 }));
+        return withCors(new Response(null, { status: 405, headers: { allow: "POST, OPTIONS" } }));
       }
 
       // Hält die Protokollrevision des Aufrufers fest, höchstens eine Zeile je

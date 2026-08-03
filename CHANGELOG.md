@@ -6,6 +6,16 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.14] - 2026-08-03
+
+### Behoben
+
+- **`GET /mcp` antwortet mit 405 statt 200** und trägt `Allow: POST, OPTIONS`. Die 200 mit leerem Rumpf war keine der beiden Antworten, die die Spezifikation an dieser Stelle zulässt, und der SDK-Client konnte sie nur als eröffneten Strom lesen: Er übergab an den Stream-Handler, der Rumpf endete sofort, und die Wiederverbindung lief mit ihrem Grundwert von 1000 ms endlos weiter. `maxRetries: 2` griff nicht, weil der Zähler gescheiterten Verbindungen gilt und eine 200 als geglückt zählt.
+
+  Gemessen am laufenden Endpunkt: 41 430 GET gegen 389 POST binnen 24 Stunden, 0,93 Anfragen je Sekunde durchgehend, rund 40 000 Anfragen am Tag ohne jede Nutzlast. Die mittlere Antwort war mit 797 Byte kleiner als ein einzelner Vers, es wurde also nichts abgerufen.
+
+  **Für Clients ändert sich nichts an den Werkzeugen.** Der GET-Kanal ist laut Spezifikation eine Kann-Bestimmung; dieser Server sendet ohnehin keine server-initiierten Nachrichten, und der SDK-Client behandelt 405 ausdrücklich als erwarteten Fall und arbeitet mit POST weiter. Betroffen ist allein der HTTP-Modus, stdio ist unberührt.
+
 ## [0.5.13] - 2026-08-03
 
 ### Geändert (Dokumentation)

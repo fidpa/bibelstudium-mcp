@@ -18,6 +18,92 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-03: `GET /mcp` antwortet 405, weil die 200 eine Wiederverbindungsschleife fütterte
+
+Vom 1. August an zeigte die Nutzungsansicht ein Plateau, das kein Nutzungsprofil
+ist: über elf Stunden am Stück eine gleichbleibende Rate, fast ausschließlich
+Status 200. Der naheliegende Verdacht war ein Bot, der den authlosen Endpunkt
+gefunden hat, und die naheliegende Antwort eine Sperre. Beides war falsch.
+
+### Was gemessen wurde
+
+Am 03.08.2026 am laufenden Dienst, gegen die Zähler von `cloudflared` und die
+Sicherheitsansicht der Zone:
+
+| Größe | Wert |
+|-------|------|
+| Anfragerate, laufend | 56 Anfragen in 60 s, also 0,93 je Sekunde |
+| Methoden binnen 24 h | **GET 41 430**, POST 389, DELETE 2 |
+| Status 404 | 22 von 106 466 |
+| Von Cloudflare abgewehrt | 7 von 41 820 |
+| Mittlere Antwortgröße | 797 Byte |
+| Vollständige Handschläge | 149 auf 106 466 Anfragen |
+
+Drei Schlüsse daraus, jeder für sich tragend. Es ist **kein Pfadsucher**: 22
+Antworten mit 404 sind das Gegenteil davon. Es wird **nichts abgerufen**: Die
+mittlere Antwort ist kleiner als ein einzelner Vers (1245 Byte); wäre es
+`tools/list` gewesen, hätten bei 15 266 Byte je Antwort rund 650 MB fließen
+müssen statt der gemessenen 34 MB. Und **99,1 Prozent sind GET**, ein Kanal, über
+den dieser Server nie etwas ausliefert.
+
+### Die Ursache stand im eigenen Code
+
+Die Spezifikation lässt auf diesen GET genau zwei Antworten zu, einen Strom mit
+`text/event-stream` oder 405. Die 200 mit leerem Rumpf ist keine von beiden, und
+der Aufrufer kann sie nur als eröffneten Strom lesen. Im SDK-Client ist
+`response.ok` dann wahr, er übergibt an `_handleSseStream`, der Rumpf endet
+sofort, und die Wiederverbindung greift mit `initialReconnectionDelay: 1000`.
+
+`maxRetries: 2` fängt das nicht ab, und das ist der Teil, der beim Lesen des
+Codes nicht ins Auge springt: Der Zähler gilt **gescheiterten** Verbindungen.
+Eine 200 gilt als geglückt und setzt ihn zurück. Damit läuft die Schleife ohne
+Ende, im Takt von 1000 ms zuzüglich Umlaufzeit. Gemessen 0,93 Anfragen je
+Sekunde, was auf die Nachkommastelle zusammenfällt.
+
+Auf 405 kehrt derselbe Client wortlos zurück; der Kommentar an der Stelle nennt
+es „an expected case that should not trigger an error", und der Aufrufer arbeitet
+mit POST weiter. Der Kanal ist ohnehin nur eine Kann-Bestimmung.
+
+### Verworfen: den GET an den Transport durchreichen
+
+Naheliegend, weil `handleGetRequest()` im SDK die formtreue Antwort selbst
+kennte. Sie ist hier die falsche: Der Transport liefert einen **offengehaltenen**
+Strom (`keep-alive`, `no-transform`). Das ist genau der Verbindungshalter, der am
+25.07.2026 gemessen und mit diesem Zweig abgestellt wurde (30 gleichzeitige GET
+banden 30 Dateideskriptoren samt je einer Serverinstanz, 120 s je Verbindung).
+Für einen authlosen Endpunkt wäre das ein Rückschritt, und eine Ratenbegrenzung
+davor greift bei offenen Verbindungen schlecht.
+
+### Verworfen: sperren
+
+Der Verkehr kam aus Anschlussnetzen eines Endkundenanbieters, nicht aus einem
+Rechenzentrum, mit Lücken im Tagesverlauf, wie sie ein Gerät erzeugt, das an- und
+ausgeschaltet wird. Eine Sperre hätte einen **rechtmäßigen Client** ausgesperrt
+und die Ursache unberührt gelassen. Das ist die eigentliche Lehre des Vorgangs:
+Der Befund sah nach Angriff aus, und die Maßnahme gegen Angriffe hätte den
+Schaden vergrößert. Diagnose vor Therapie, auch wenn die Therapie billig ist.
+
+Nebenbefund, der die Betriebsdoku berührt: Von 41 820 Anfragen hat die
+Ratenbegrenzung **7** abgewehrt. Sie wirkt gegen Stöße, wie beim Setzen
+nachgewiesen, aber das reale Aufkommen lag stets unter ihrer Schwelle. Für dieses
+Plateau war sie nie zuständig.
+
+### Warum die frühere Begründung fiel
+
+An der Stelle stand, 200 sei die gemessene Angleichung an den einzigen
+nachweislich funktionierenden fremden Connector. Das war eine Beobachtung an
+fremdem Gerät (n=1) und nie ein Beleg, dass claude.ai die 200 **braucht**; die
+Fehlersuche-Anleitung von Claude nennt 405 beim Erreichbarkeitstest ausdrücklich
+als unbedenklich. Was fehlte, war der Preis der Vorsicht, und der ist jetzt
+beziffert: rund 40 000 Anfragen am Tag ohne jede Nutzlast.
+
+`Allow: POST, OPTIONS` gehört zwingend dazu, RFC 9110 verlangt den Kopf bei 405.
+Er ist zugleich die eigentliche Auskunft an den Aufrufer: nur POST, absichtlich
+so. Der Wert weicht von der früher hier notierten Empfehlung
+`Allow: GET, POST, DELETE` ab, weil GET nun eben nicht mehr erlaubt ist.
+
+---
+
 ## 2026-08-02: Ein Aufruferfehler ist kein interner Fehler, und `McpError` ist der falsche Weg dorthin
 
 Bis 0.5.10 verließ jede Ablehnung, die über den JSON-RPC-Kanal ging, den Server
@@ -129,12 +215,17 @@ dem Transport des SDK (`webStandardStreamableHttp.js:565 ff.`): Im zustandslosen
 Betrieb entfällt die Sitzungsprüfung, `close()` läuft, 200. Die Spezifikation
 führt 405 hier nur als **MAY** („The server MAY respond to this request with
 HTTP 405"), verlangt also nichts. Bei `GET` verlangt dieselbe Stelle ein MUST
-(`text/event-stream` oder 405), und dort steht dieser Server bewusst auf 200,
+(`text/event-stream` oder 405), und dort stand dieser Server bewusst auf 200,
 weil das die gemessene Angleichung an claude.ai ist. Den weicheren Fall aus
 Formtreue umzubauen, während der härtere aus Vorsicht bleibt, wäre die
-inkonsistenteste der drei Kombinationen. Falls es später doch geschieht:
-`Allow: GET, POST, DELETE`, denn genau das meldet der Endpunkt heute schon auf
-ein `PUT`.
+inkonsistenteste der drei Kombinationen.
+
+**Überholt am 03.08.2026, soweit es `GET` betrifft** (siehe den Eintrag von
+diesem Tag): Der harte Fall steht jetzt auf 405, weil die 200 nachweislich eine
+Wiederverbindungsschleife fütterte. Die Abwägung hier bleibt für `DELETE`
+gültig, das weiter mit 200 antwortet. Der damals notierte Wert
+`Allow: GET, POST, DELETE` gilt nicht mehr, der Endpunkt meldet
+`Allow: POST, OPTIONS`.
 
 ---
 
