@@ -5,7 +5,7 @@ import type { Database } from "bun:sqlite";
  * existiert (gefüllt von download.ts).
  *
  * Eine Zeile je Übersetzung und Vers; `translation` ist ein Kürzel aus
- * translations.ts (LUT/SCH/ELB/MB).
+ * translations.ts.
  *
  * Einmalige Migration: Eine ältere Tabelle für eine einzige Übersetzung (ohne
  * die Spalte `translation`, etwa eine aus einem Layout vor 1.0 kopierte
@@ -28,6 +28,40 @@ export function ensureVersesSchema(db: Database): void {
       verse       INTEGER NOT NULL,
       text        TEXT    NOT NULL,
       PRIMARY KEY (translation, book_id, chapter, verse)
+    )
+  `);
+}
+
+/**
+ * Stellt sicher, dass `verse_notes` existiert: der Anmerkungsapparat einer
+ * Ausgabe, eine Zeile je Fußnote.
+ *
+ *   translation – Kürzel aus translations.ts, also eine **Spalte** und nicht
+ *                 Teil des Tabellennamens: Eine zweite Ausgabe mit eigenem
+ *                 Apparat soll dieselbe Tabelle benutzen können.
+ *   seq         – laufende Nummer innerhalb des Verses, in Quellreihenfolge. Ein
+ *                 Vers trägt bis zu drei Noten, und ihre Reihenfolge gehört zur
+ *                 Aussage; ohne sie wäre der Primärschlüssel nicht eindeutig.
+ *   ref         – Stellenangabe der Ausgabe selbst ("3,16"), nicht die des
+ *                 Servers. Sie steht dabei, weil sie im Druck bei der Note steht.
+ *   text        – der Notentext ohne Auszeichnung.
+ *
+ * Kein Zusatzindex: Der Primärschlüssel erzeugt einen Autoindex, dessen Präfix
+ * genau die Abfrage von `bible_lookup` bedient (translation, book_id, chapter),
+ * und `ORDER BY verse, seq` fällt dabei mit ab. `verses` hat aus demselben Grund
+ * keinen; `cross_references` hat einen, weil es dort keinen Primärschlüssel gibt.
+ */
+export function ensureVerseNotesSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verse_notes (
+      translation TEXT    NOT NULL,
+      book_id     INTEGER NOT NULL,
+      chapter     INTEGER NOT NULL,
+      verse       INTEGER NOT NULL,
+      seq         INTEGER NOT NULL,
+      ref         TEXT    NOT NULL,
+      text        TEXT    NOT NULL,
+      PRIMARY KEY (translation, book_id, chapter, verse, seq)
     )
   `);
 }

@@ -406,8 +406,8 @@ const OCCURRENCE_SCAN_LIMIT = 1000;
 // stößt mit den eigenen Anführungszeichen der Übersetzungen zusammen: Menge
 // führt sie in 8339 Versen, Schlachter in 887, und sie verschachteln andersherum
 // (»Zitat«), sodass ein schließendes « sowohl für eine Zählung als auch für
-// einen Menschen wie ein Marker aussieht. ⟦⟧ kommt in keiner der vier
-// Übersetzungen vor (geprüft 25.07.2026).
+// einen Menschen wie ein Marker aussieht. ⟦⟧ kommt in keiner der geführten
+// Übersetzungen vor (geprüft 25.07.2026 an vieren, 05.08.2026 an Schlachter 2000).
 // Muss mit den Trennzeichen der beiden `highlight()`-Aufrufe oben übereinstimmen.
 const HIT_OPEN = "⟦";
 
@@ -434,6 +434,29 @@ const stmtXrefs = hasXrefs
       "SELECT to_book, to_chapter, to_verse, to_chapter_end, to_verse_end, votes " +
         "FROM cross_references WHERE from_book = ? AND from_chapter = ? AND from_verse = ? " +
         "ORDER BY votes DESC LIMIT ?"
+    )
+  : null;
+
+// --- Fußnoten der Ausgaben (optionale Tabelle, import-schlachter2000.ts) ---
+// Der Anmerkungsapparat einer gedruckten Ausgabe: wo sie selbst sagt, dass ihre
+// Wiedergabe eine Wahl unter mehreren ist. Optional wie die übrigen
+// Zusatztabellen, denn er kommt nicht aus dem freien Erstaufbau.
+//
+// Kapitelweise abgefragt, weil `bible_lookup` seine Verse ohnehin kapitelweise
+// holt: Eine Abfrage je Vers wäre bei einem ganzen Kapitel bis zu 176 Abfragen
+// für im Schnitt vier Treffer.
+const hasVerseNotes =
+  db
+    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verse_notes'")
+    .get() !== null;
+
+const stmtVerseNotes = hasVerseNotes
+  ? db.prepare<
+      { verse: number; ref: string; text: string },
+      [string, number, number]
+    >(
+      "SELECT verse, ref, text FROM verse_notes " +
+        "WHERE translation = ? AND book_id = ? AND chapter = ? ORDER BY verse, seq"
     )
   : null;
 
@@ -928,8 +951,9 @@ function rpcError(code: ErrorCode, message: string): Error {
 /**
  * Entfernt übrig gebliebene HTML-Auszeichnungen. Vorsorge, kein laufendes
  * Geschäft: `download.ts` entfernt sie bereits beim Einfügen, und `verses`
- * enthält in keiner der vier Übersetzungen überhaupt ein "<" (gemessen
- * 26.07.2026). Ebenso bei unsichtbaren Zeichen: kein weiches Trennzeichen
+ * enthält in keiner der geführten Übersetzungen überhaupt ein "<" (gemessen
+ * 26.07.2026 an vieren, 05.08.2026 an Schlachter 2000, dort auch keine
+ * XML-Entities). Ebenso bei unsichtbaren Zeichen: kein weiches Trennzeichen
  * (U+00AD), kein NBSP, kein ZWSP in irgendeiner Zeile. Deshalb wird hier sonst
  * nichts entfernt; was künftig entfernt würde, muss mit `rebuildVersesFts`
  * Schritt halten, sonst laufen Suchausgabe und Zitat auseinander.
@@ -940,9 +964,12 @@ function stripHtml(text: string): string {
 
 // Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und sind nichts,
 // was dieser Server ergänzt hätte: Menge setzt erklärende Einschübe so (137
-// Verse; die anderen drei Übersetzungen verwenden keine, und keine der vier
-// trägt Fußnotenziffern, es gibt hier also kein numerisches Gegenstück zu
-// unterscheiden). Gemessen im Ursprungs-Repo am 25.07.2026: Nach einem Vers mit
+// Verse), Schlachter 2000 ebenfalls (1925 Verse, gemessen 05.08.2026); Luther,
+// Schlachter 1951 und Elberfelder verwenden keine, und keine der geführten
+// Ausgaben trägt Fußnotenziffern im Verstext, es gibt hier also kein
+// numerisches Gegenstück zu unterscheiden. Der Apparat der Schlachter 2000 ist
+// ein eigenes Feld (`fussnoten`) und steht nicht im Text.
+// Gemessen im Ursprungs-Repo am 25.07.2026: Nach einem Vers mit
 // solchen Klammern gefragt, entfernte ein Client, der das Werkzeug aufgerufen
 // hatte, sie beim Wiedergeben, und aus dem Einschub der Ausgabe wurde
 // gewöhnlicher Text. Bewusst kein Beispielwort im Hinweis: Ein konkretes
@@ -1246,28 +1273,70 @@ function formatVerseReference(verses: number[]): string {
 /**
  * Löst ein `translation`-Argument zu einem geladenen Übersetzungskürzel auf,
  * oder zu einer Meldung, die der Aufrufer zurückgibt.
+ *
+ * Beide Meldungen nennen ausschließlich **geladene** Ausgaben. Die Registry
+ * kennt auch solche, deren Quelldateien nur beim Betreiber liegen
+ * (`quelle: "lokal"`); wer sie hier aufzählte, böte an einem authlosen Endpunkt
+ * einen Wert an, den dieser Server nicht liefern kann, und nennte die Ausgabe
+ * obendrein dort, wo sie nichts zu suchen hat.
+ *
+ * Der Reparaturhinweis hängt aus demselben Grund an `quelle`: „bun run download"
+ * ist ein Weg für eine Ausgabe von bolls.life und für keine andere. Eine
+ * Aufforderung, die der Aufrufer nicht befolgen kann, ist keine Hilfe, sondern
+ * eine Einladung zur Wiederholung (Hausregel „Fehlermeldungen brauchen einen
+ * Ausweg", und im HTTP-Modus sitzt am anderen Ende nicht der Betreiber).
  */
 function requireTranslation(input: unknown): { code: TranslationCode } | { error: string } {
+  const geladen = (Object.keys(TRANSLATIONS) as TranslationCode[]).filter((c) =>
+    availableTranslations.has(c)
+  );
   const code = resolveTranslation(input);
   if (code === null) {
     return {
       error:
         `Error: Unknown translation "${String(input)}". Allowed: ` +
-        Object.entries(TRANSLATIONS)
-          .map(([c, m]) => `"${c}" (${m.name})`)
-          .join(", ") +
+        (geladen.map((c) => `"${c}" (${TRANSLATIONS[c].name})`).join(", ") || "none loaded") +
         ".",
     };
   }
   if (!availableTranslations.has(code)) {
+    const ausweg =
+      TRANSLATIONS[code].quelle === "bolls"
+        ? `Bitte 'bun run download ${code}' ausführen. `
+        : `Ihre Quelldateien werden nicht mitgeliefert, das lässt sich hier nicht nachholen. `;
     return {
       error:
-        `Übersetzung "${code}" (${TRANSLATIONS[code].name}) ist nicht geladen. ` +
-        `Bitte 'bun run download ${code}' ausführen. Geladen: ` +
-        `${[...availableTranslations].join(", ") || "keine"}.`,
+        `Übersetzung "${code}" ist auf diesem Server nicht geladen. ` +
+        ausweg +
+        `Geladen: ${geladen.join(", ") || "keine"}.`,
     };
   }
   return { code };
+}
+
+/**
+ * Die Fußnoten der Ausgabe zu den gelieferten Versen, in Quellreihenfolge.
+ *
+ * Das Feld heißt `fussnoten` und nicht `hinweis`, weil die beiden verschiedene
+ * Sprecher haben: `hinweis` sagt der Server, eine Fußnote sagt die Ausgabe. Sie
+ * trägt deshalb die Stellenangabe mit, die im Druck bei ihr steht (`stelle`,
+ * etwa „3,16"), statt dass der Server sie neu formulierte.
+ *
+ * Nur eine der geführten Ausgaben hat einen Apparat, und sie hat ihn an 1134
+ * ihrer 31 171 Verse (rund 3,6 %). Das Feld fehlt also im Regelfall, und genau
+ * deshalb steht es nicht in `required`.
+ */
+function verseNotes(
+  code: TranslationCode,
+  bookId: number,
+  chapter: number,
+  verses: ReadonlySet<number>
+): Array<{ vers: number; stelle: string; text: string }> {
+  if (stmtVerseNotes === null) return [];
+  return stmtVerseNotes
+    .all(code, bookId, chapter)
+    .filter((r) => verses.has(r.verse))
+    .map((r) => ({ vers: r.verse, stelle: r.ref, text: r.text }));
 }
 
 /**
@@ -1303,6 +1372,12 @@ function lookupPayload(
     `${getBookDisplayName(bookId)} ${chapter},` +
     formatVerseReference(verse_einzeln.map((r) => r.verse));
   const hinweise = bracketHints(verse_einzeln.map((r) => r.text));
+  const fussnoten = verseNotes(
+    code,
+    bookId,
+    chapter,
+    new Set(verse_einzeln.map((r) => r.verse))
+  );
 
   return {
     reference,
@@ -1315,6 +1390,7 @@ function lookupPayload(
         }
       : { verse_einzeln }),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
+    ...(fussnoten.length > 0 ? { fussnoten } : {}),
     quellen: quellen(translationQuelle(code)),
   };
 }
@@ -1675,8 +1751,12 @@ const QUELLEN_SCHEMA = {
   },
 };
 
-/** Bedingt: `hinweis`, nur wenn der Text Wörter in Klammern trägt (Menge hat
- *  137 solche Verse, die anderen drei Übersetzungen keine). */
+/** Bedingt, zwei Felder:
+ *  `hinweis`, nur wenn der Text Wörter in Klammern trägt (Menge 137 Verse,
+ *  Schlachter 2000 1925; Luther, Schlachter 1951 und Elberfelder keine).
+ *  `fussnoten`, nur wenn die Ausgabe zu einem der gelieferten Verse eine
+ *  Anmerkung führt: allein Schlachter 2000, dort an 1134 von 31 171 Versen
+ *  (rund 3,6 %, gemessen 05.08.2026). */
 const LOOKUP_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1684,6 +1764,18 @@ const LOOKUP_OUTPUT = {
     translation: { type: "string" },
     text: { type: "string" },
     hinweis: { type: "string" },
+    fussnoten: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          vers: { type: "number" },
+          stelle: { type: "string" },
+          text: { type: "string" },
+        },
+        required: ["vers", "stelle", "text"],
+      },
+    },
     quellen: QUELLEN_SCHEMA,
   },
   required: ["reference", "translation", "text", "quellen"],
@@ -1982,10 +2074,11 @@ const SERVER_INFO_OUTPUT = {
         editionsbezeugung: { type: "boolean" },
         querverweise: { type: "boolean" },
         volltextsuche: { type: "boolean" },
+        fussnoten: { type: "boolean" },
       },
       required: [
         "strong_lexikon", "strong_lexikon_vollstaendig", "editionsbezeugung",
-        "querverweise", "volltextsuche",
+        "querverweise", "volltextsuche", "fussnoten",
       ],
     },
     ressourcen: {
@@ -2074,9 +2167,12 @@ const handleListTools = async () => ({
       // deshalb kein Zitat erwartet wurde (25.07.2026). Fragen nach Existenz und
       // Kanon sind genau die, die der Server klären kann; das gehört gesagt.
       description:
-        "Look up Bible verses by reference. Returns exact text from a freely licensed German " +
+        "Look up Bible verses by reference. Returns exact text from a licensed German " +
         "translation (default: Luther 1912). Use this for ALL Bible quotes — never quote " +
         "from memory. " +
+        "When the edition carries footnotes for the requested verses, the field 'fussnoten' " +
+        "holds them verbatim: these are the publisher's own notes, not this server's, and " +
+        "they typically record an alternative rendering the edition weighed. " +
         "Also call it when a book or reference looks unfamiliar, misspelled or made up, " +
         "and before answering whether a book exists or belongs to the canon: the error " +
         "names the nearest known book and states which canon this database covers. " +
@@ -2103,7 +2199,8 @@ const handleListTools = async () => ({
             type: "string",
             description:
               'Translation: "LUT" (Luther 1912, default), "SCH" (Schlachter 1951), ' +
-              '"ELB" (Elberfelder 1871), "MB" (Menge 1939). Aliases like "luther", "schlachter" accepted.',
+              '"ELB" (Elberfelder 1871), "MB" (Menge 1939), "SLT" (Schlachter 2000). ' +
+              'Aliases like "luther", "schlachter" accepted.',
             default: "LUT",
           },
         },
@@ -2170,7 +2267,7 @@ const handleListTools = async () => ({
           translation: {
             type: "string",
             description:
-              'Translation for the quoted target texts: "LUT" (default), "SCH", "ELB", "MB".',
+              'Translation for the quoted target texts: "LUT" (default), "SCH", "ELB", "MB", "SLT".',
             default: "LUT",
           },
         },
@@ -2244,7 +2341,7 @@ const handleListTools = async () => ({
           },
           translation: {
             type: "string",
-            description: 'Translation to search: "LUT" (default), "SCH", "ELB", "MB".',
+            description: 'Translation to search: "LUT" (default), "SCH", "ELB", "MB", "SLT".',
             default: "LUT",
           },
         },
@@ -2470,18 +2567,28 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   } else if (name === "translation-compare") {
     const ref = promptArg(args, "reference", true);
     const liste = loadedTranslationList();
-    // Menge setzt erklärende Einschübe in eckige Klammern (137 Verse, und nur
-    // dort). Vorab benannt statt auf den Hinweis in der Antwort verlassen: Der
-    // ganze Sinn dieses Prompts ist der Vergleich Wort für Wort, und genau dort
-    // liest sich ein aus den Klammern genommener Einschub wie der Wortlaut der
-    // Ausgabe selbst.
-    const klammern = availableTranslations.has("MB")
+    // Menge und Schlachter 2000 setzen erklärende Einschübe in eckige Klammern
+    // (137 bzw. 1925 Verse, gemessen 05.08.2026), die übrigen nicht. Vorab
+    // benannt statt auf den Hinweis in der Antwort verlassen: Der ganze Sinn
+    // dieses Prompts ist der Vergleich Wort für Wort, und genau dort liest sich
+    // ein aus den Klammern genommener Einschub wie der Wortlaut der Ausgabe
+    // selbst. Die Bedingung fragt beide Ausgaben ab; hinge sie weiter allein an
+    // Menge, fiele der Satz in einer Datenbank mit Schlachter 2000 und ohne
+    // Menge weg, obwohl es dort 1925 Klammerverse gibt.
+    const mitKlammern = ["MB", "SLT"].some((c) => availableTranslations.has(c));
+    const klammern = mitKlammern
       ? " Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und bleiben beim Zitieren stehen; sie sind keine Einfügung dieses Servers."
+      : "";
+    // Der Anmerkungsapparat ist der zweite Ort, an dem eine Ausgabe selbst über
+    // ihre Wiedergabe spricht, und er ist für diesen Prompt einschlägiger als
+    // jedes andere Feld: Er nennt die Alternative, die der Vergleich sucht.
+    const apparat = hasVerseNotes
+      ? " Trägt eine Antwort das Feld 'fussnoten', gehört es in den Vergleich: Dort sagt die Ausgabe selbst, welche andere Wiedergabe sie erwogen hat."
       : "";
     text =
       `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
       `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab: ${liste || "keine (in dieser Datenbank ist keine Übersetzung geladen)"}.\n` +
-      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${klammern}\n` +
+      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${klammern}${apparat}\n` +
       `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab (AT: hebräischer WLC; NT: nach texttyp) und kläre, welche Wiedergabe dem Grundtext am nächsten kommt. Bei NT-Versen zusätzlich bible_compare, denn die Übersetzungen können verschiedenen Editionen folgen.\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
   } else {
@@ -3090,6 +3197,11 @@ function handleServerInfo() {
       editionsbezeugung: hasTagnt,
       querverweise: hasXrefs,
       volltextsuche: hasFts,
+      // Der Anmerkungsapparat erscheint an rund 4 % der Abrufe. Ohne diese
+      // Bestandsanzeige könnte ein Aufrufer nicht wissen, dass es ihn überhaupt
+      // gibt: Er sähe nur Antworten ohne das Feld und läse das als „diese
+      // Ausgabe hat keine Fußnoten".
+      fussnoten: hasVerseNotes,
     },
     // Bestand heißt auch: was dieser Server anbietet, nicht nur was er geladen
     // hat. Die vier festen Ressourcen stehen in `resources/list`, die drei

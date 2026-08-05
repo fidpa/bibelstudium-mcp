@@ -6,6 +6,20 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.16] - 2026-08-05
+
+### Hinzugefügt
+
+- **Fußnoten der Ausgabe** als bedingtes Feld `fussnoten` an `bible_lookup` und den beiden Textressourcen. Jeder Eintrag trägt `vers`, die Stellenangabe der Ausgabe selbst (`stelle`) und `text`. Das Feld erscheint nur, wenn die abgerufenen Verse eine Anmerkung tragen, und steht deshalb **nicht** in `required`. Es ist die Stimme der Ausgabe, nicht die des Servers: `hinweis` bleibt davon getrennt.
+
+- **Schlachter 2000** (`SLT`) als fünfte Übersetzung, mit 31 171 Versen und 1220 Fußnoten an 1134 Versen. Sie ist die einzige, die nicht über ein Download-Skript zu holen ist: Ihre Quelldateien kommen vom Verlag. `bun run import:slt` liest sie ein, neue Tabelle `verse_notes`. `bible_server_info` meldet den Bestand als `zusatzdaten.fussnoten`.
+
+### Geändert
+
+- **`translations.ts` hat ein Feld `quelle`.** Die Registry war zugleich die Arbeitsliste von `bun run download`; eine Ausgabe, die nicht bei bolls.life liegt, hätte damit jeden Erstaufbau abgebrochen, auch den über `bible_setup`.
+
+- **`bible_lookup`, `bible_crossrefs` und `bible_search` nennen in ihren Fehlermeldungen nur noch geladene Übersetzungen** und verweisen nicht mehr auf `bun run download`, wo es diesen Weg nicht gibt.
+
 ## [0.5.15] - 2026-08-03
 
 ### Behoben

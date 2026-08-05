@@ -341,6 +341,16 @@ const CALLS = [
   ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }], // sblgnt führt keine Strong-Nummern
   ["bible_concordance", { strong: "G26", limit: 200 }], // alles aufgelistet: kein Kürzungshinweis
   ["bible_lookup", { book: "Hiob", chapter: 32, verses: "1-4", translation: "MB" }], // Menge ohne Klammern
+  // Fußnoten: der Apparat einer Ausgabe. Vier Fälle, denn `fussnoten` ist
+  // bedingt und die Bedingung hat mehr als eine Richtung: mit Note, ohne Note,
+  // drei Noten am selben Vers, und dieselbe Stelle in einer Ausgabe ohne
+  // Apparat. Geprüft wird ausschließlich die Gestalt: Der Wortlaut dieser
+  // Ausgabe ist lizenziert und hat in einem öffentlichen Repository nichts zu
+  // suchen, auch nicht als Erwartungswert.
+  ["bible_lookup", { book: "Joh", chapter: 3, verses: "16", translation: "SLT" }],
+  ["bible_lookup", { book: "Joh", chapter: 3, verses: "17", translation: "SLT" }],
+  ["bible_lookup", { book: "Römer", chapter: 8, verses: "1", translation: "SLT" }],
+  ["bible_lookup", { book: "Joh", chapter: 3, verses: "16-18", translation: "SLT" }],
   // Der eine Werkzeugaufruf, der kein Werkzeugfehler ist, sondern ein
   // JSON-RPC-Fehler: `isError` braucht ein Werkzeug, das es trägt, und hier
   // gibt es keines.
@@ -445,8 +455,12 @@ const [
   origSblgnt,
   concordVollstaendig,
   mengeOhneKlammer,
+  noteEine,
+  noteKeine,
+  noteDrei,
+  noteMehrvers,
   unbekanntesWerkzeug,
-] = results as ToolResult[] & { length: 31 };
+] = results as ToolResult[] & { length: 35 };
 
 console.log("Grenzwertmeldungen");
 for (const [label, r] of [
@@ -662,6 +676,96 @@ console.log("Bedingte Ausgabefelder");
   check("G26 vollständig gelistet: ohne hinweis", !("hinweis" in (concordVollstaendig!.json ?? {})));
   eq("Hiob 32,1-4 (MB): kein Klammerhinweis", hint(mengeOhneKlammer!.json), "");
   eq("Hiob 32,1-4 (MB): kein Fehler", mengeOhneKlammer!.isError, false);
+}
+
+console.log("Fußnoten");
+{
+  // Nur wenn die Ausgabe mit Apparat auch geladen ist. Ihre Quelldateien sind
+  // nicht frei lizenziert und liegen nicht im Repository; ein Klon und jede
+  // frisch aufgebaute Datenbank haben sie nicht, und ein Test, der dort rot
+  // wird, meldet keinen Fehler, sondern eine fehlende Datei. Dasselbe Muster
+  // wie bei der Editionsbezeugung weiter unten.
+  const apparat =
+    ((serverInfo!.json?.zusatzdaten as Json | undefined)?.fussnoten as boolean | undefined) ===
+    true;
+  const geladen = (
+    (serverInfo!.json?.uebersetzungen ?? []) as Array<{ code: string }>
+  ).some((t) => t.code === "SLT");
+
+  check("Bestandsanzeige und geladene Ausgabe stimmen überein", apparat === geladen,
+    `zusatzdaten.fussnoten=${apparat}, SLT geladen=${geladen}`);
+
+  if (!apparat || !geladen) {
+    console.log("  übersprungen: die Ausgabe mit Apparat ist nicht geladen");
+  } else {
+    // Gestalt eines Eintrags. Der Wortlaut wird nirgends verglichen, nur seine
+    // Anwesenheit: `text.length > 0` ist die stärkste Aussage, die dieser Test
+    // über ihn treffen darf.
+    const pruefeGestalt = (name: string, eintraege: unknown): Array<Json> => {
+      check(`${name}: fussnoten ist ein Feld`, Array.isArray(eintraege));
+      const liste = (Array.isArray(eintraege) ? eintraege : []) as Array<Json>;
+      for (const [i, e] of liste.entries()) {
+        check(`${name}[${i}]: vers ist eine Zahl`, typeof e.vers === "number");
+        check(`${name}[${i}]: stelle ist eine Zeichenkette`, typeof e.stelle === "string");
+        check(`${name}[${i}]: text nicht leer`, typeof e.text === "string" && e.text.length > 0);
+      }
+      return liste;
+    };
+
+    {
+      const liste = pruefeGestalt("Joh 3,16 (SLT)", noteEine!.json?.fussnoten);
+      eq("Joh 3,16 (SLT): eine Fußnote", liste.length, 1);
+      eq("Joh 3,16 (SLT): Fußnote am abgefragten Vers", liste[0]?.vers, 16);
+      // Die Stellenangabe stammt aus der Ausgabe, nicht vom Server: Sie zählt
+      // in deren eigener Schreibweise „Kapitel,Vers".
+      eq("Joh 3,16 (SLT): Stellenangabe der Ausgabe", liste[0]?.stelle, "3,16");
+      eq("Joh 3,16 (SLT): kein Fehler", noteEine!.isError, false);
+    }
+
+    check("Joh 3,17 (SLT): ohne fussnoten", !("fussnoten" in (noteKeine!.json ?? {})));
+    eq("Joh 3,17 (SLT): kein Fehler", noteKeine!.isError, false);
+
+    {
+      // Ein Vers trägt bis zu drei Noten, und ihre Reihenfolge gehört zur
+      // Aussage: Sie stehen im Druck untereinander und beziehen sich der Reihe
+      // nach auf den Vers. Deshalb hat `verse_notes` die Spalte `seq`.
+      const liste = pruefeGestalt("Röm 8,1 (SLT)", noteDrei!.json?.fussnoten);
+      eq("Röm 8,1 (SLT): drei Fußnoten", liste.length, 3);
+      check(
+        "Röm 8,1 (SLT): alle am selben Vers",
+        liste.every((e) => e.vers === 1)
+      );
+      check(
+        "Röm 8,1 (SLT): drei verschiedene Texte",
+        new Set(liste.map((e) => e.text)).size === 3
+      );
+    }
+
+    {
+      // Mehrere Verse auf einmal: Jede Note muss einem der abgefragten Verse
+      // zugeordnet sein, sonst liest ein Konsument sie beim falschen.
+      const liste = pruefeGestalt("Joh 3,16-18 (SLT)", noteMehrvers!.json?.fussnoten);
+      check("Joh 3,16-18 (SLT): mindestens eine Fußnote", liste.length >= 1);
+      check(
+        "Joh 3,16-18 (SLT): jede Fußnote an einem abgefragten Vers",
+        liste.every((e) => typeof e.vers === "number" && e.vers >= 16 && e.vers <= 18)
+      );
+    }
+
+    // Der Gegenfall über die Ausgaben hinweg: Dieselbe Stelle in einer Ausgabe
+    // ohne Apparat trägt das Feld nicht. Ohne ihn bliebe offen, ob das Feld an
+    // der Stelle hängt oder an der Ausgabe.
+    check("Joh 3,16 (LUT): ohne fussnoten", !("fussnoten" in (joh316!.json ?? {})));
+
+    // Die Namensnennung muss an der Antwort hängen, die den Apparat trägt: Der
+    // Apparat gehört derselben Ausgabe wie der Vers, und eine Antwort ohne
+    // Nennung wäre eine Weitergabe ohne sie.
+    const quellen = (noteEine!.json?.quellen ?? []) as Array<Json>;
+    check(
+      "Joh 3,16 (SLT): Antwort mit Fußnote trägt eine Nennung",
+      quellen.some((q) => typeof q.nennung === "string" && q.nennung.length > 0)
+    );
+  }
 }
 
 console.log("Strukturierte Ausgabe");

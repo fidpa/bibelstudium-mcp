@@ -17,6 +17,18 @@
  * `bible_lookup` (137 von 31 166 Menge-Versen) erschien in keiner einzigen.
  * `test-golden.ts` benennt diesen Fall ausdrücklich.
  *
+ * Zwei bedingte Felder werden deshalb gezielt angesteuert statt der Schrittweite
+ * überlassen: `bezeugung` über die neun NT-Verse ohne TAGNT-Zeile, `fussnoten`
+ * über Verse, die eine Fußnote tragen (1134 von 31 171, bei Schrittweite 700
+ * sonst im Regelfall kein einziger). Stand 05.08.2026: 582 Aufrufe,
+ * 578 sauber geprüft, 0 Schemafehler, 4 sachliche Fehlerantworten (drei Verse
+ * ohne Querverweis, eine Suche ohne Treffer).
+ *
+ * Ausgaben mit eigener Versifikation bekommen ihre eigene Stichprobe. Die
+ * Luther-Stichprobe trifft bei ihnen reihenweise daneben (gemessen 05.08.2026:
+ * 136 Kapitel mit abweichender Verszahl, zwei Bücher mit abweichender
+ * Kapitelzahl), und die Breite prüfte dann Fehlermeldungen statt Nutzlasten.
+ *
  * Nicht Teil von `bun run test`: Die Prüfung braucht die gebaute Datenbank,
  * dauert rund eine Minute und ist von Hand auszuführen, nachdem ein Schema oder
  * eine Nutzlast angefasst wurde:
@@ -52,6 +64,56 @@ const sample = db.query(
     `WHERE rn % ${STRIDE} = 1`
 ).all() as Ref[];
 
+// Welche Übersetzungen die Datenbank überhaupt führt. Fest verdrahtet wäre die
+// Liste genau auf der Instanz falsch, der eine fehlt.
+const geladeneUebersetzungen = (
+  db.query("SELECT DISTINCT translation FROM verses ORDER BY translation").all() as Array<{
+    translation: string;
+  }>
+).map((r) => r.translation);
+
+// Ausgaben mit abweichender Versifikation bekommen ihre eigene Stichprobe. Die
+// Ausgaben mit deutscher Zählung weichen von Luther in 136 Kapiteln in der
+// Verszahl ab und in zwei Büchern in der Kapitelzahl (gemessen 05.08.2026); mit
+// der Luther-Stichprobe abgefragt lieferten sie reihenweise „nicht gefunden",
+// und die Breite prüfte dann Fehlermeldungen statt Nutzlasten.
+const eigeneStichprobe = new Map<string, Ref[]>();
+for (const translation of geladeneUebersetzungen) {
+  if (translation === "LUT") continue;
+  const fremd = db
+    .query(
+      "SELECT COUNT(*) AS n FROM (SELECT book_id, chapter, verse FROM verses WHERE translation=? " +
+        "EXCEPT SELECT book_id, chapter, verse FROM verses WHERE translation='LUT')"
+    )
+    .get(translation) as { n: number };
+  if (fremd.n === 0) continue;
+  eigeneStichprobe.set(
+    translation,
+    db
+      .query(
+        "SELECT book_id, chapter, verse FROM (SELECT book_id, chapter, verse, " +
+          "ROW_NUMBER() OVER (ORDER BY book_id, chapter, verse) rn FROM verses WHERE translation=?) " +
+          `WHERE rn % ${STRIDE} = 1`
+      )
+      .all(translation) as Ref[]
+  );
+}
+
+// Verse mit Fußnote: `fussnoten` hängt an 1134 von 31 171 Versen und erschiene
+// bei Schrittweite 700 im Regelfall kein einziges Mal. Wie bei den TAGNT-Versen
+// unten wird das bedingte Feld deshalb gezielt angesteuert, sonst prüft die
+// Breite ein Schema, dessen bedingten Zweig sie nie sieht.
+const mitFussnote = db
+  .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verse_notes'")
+  .get()
+  ? (db
+      .query(
+        "SELECT DISTINCT translation, book_id, chapter, verse FROM verse_notes " +
+          "ORDER BY translation, book_id, chapter, verse LIMIT 25"
+      )
+      .all() as Array<Ref & { translation: string }>)
+  : [];
+
 // Die neun NT-Verse ohne TAGNT-Zeile: Dort fehlt `bezeugung`, und genau solch
 // ein bedingtes Feld übersähe eine Stichprobe mit fester Schrittweite.
 const ohneTagnt = db.query(
@@ -64,7 +126,8 @@ const calls: Call[] = [["bible_server_info", {}]];
 
 for (const s of sample) {
   const book = books.get(s.book_id)!;
-  for (const translation of ["LUT", "SCH", "ELB", "MB"]) {
+  for (const translation of geladeneUebersetzungen) {
+    if (eigeneStichprobe.has(translation)) continue; // kommt unten mit eigener Stichprobe
     calls.push(["bible_lookup", { book, chapter: s.chapter, verses: String(s.verse), translation }]);
   }
   calls.push(["bible_lookup", { book, chapter: s.chapter }]); // ganzes Kapitel
@@ -78,6 +141,24 @@ for (const s of sample) {
   } else {
     calls.push(["bible_original", { book, chapter: s.chapter, verse: s.verse }]);
   }
+}
+for (const [translation, refs] of eigeneStichprobe) {
+  for (const s of refs) {
+    const book = books.get(s.book_id)!;
+    calls.push(["bible_lookup", { book, chapter: s.chapter, verses: String(s.verse), translation }]);
+    calls.push(["bible_lookup", { book, chapter: s.chapter, translation }]);
+  }
+  // Einmal je Ausgabe, ohne Buchgrenze: Eine Suche je Stichprobenvers fragte
+  // dasselbe Schema immer wieder ab und lieferte überwiegend „keine Treffer",
+  // weil ein einzelnes Buch das gesuchte Wort meist nicht führt.
+  calls.push(["bible_search", { query: "Gnade", translation, limit: 5 }]);
+}
+for (const v of mitFussnote) {
+  const book = books.get(v.book_id)!;
+  calls.push([
+    "bible_lookup",
+    { book, chapter: v.chapter, verses: String(v.verse), translation: v.translation },
+  ]);
 }
 for (const v of ohneTagnt) {
   const book = books.get(v.book_id)!;

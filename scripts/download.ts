@@ -4,7 +4,7 @@
  * SQLite-Datenbank (Tabelle `verses`, ein Satz Zeilen je Übersetzung).
  *
  * Aufruf:
- *   bun run download.ts          # alle vier Übersetzungen (Sekunden)
+ *   bun run download.ts          # alle bei bolls.life geführten (Sekunden)
  *   bun run download.ts LUT      # eine einzelne (LUT/SCH/ELB/MB)
  *
  * Jede Übersetzung kommt als ein statischer JSON-Export. Die API-Dokumentation
@@ -286,14 +286,29 @@ export async function main(selection?: string): Promise<void> {
   // Den Parameter gibt es für setup.ts: Es ruft diese Funktion aus dem Server
   // heraus auf, wo in process.argv die Argumente des Clients stehen, nicht unsere.
   const arg = (selection ?? process.argv[2] ?? "all").trim();
+  // Nur die Übersetzungen, die es bei bolls.life überhaupt gibt. Die Registry
+  // führt auch solche mit `quelle: "lokal"`, deren Dateien nur beim Betreiber
+  // liegen; sie hier mitzunehmen hieße, `setup.ts` an einem 404 scheitern zu
+  // lassen, und weil der Schritt `required` ist, fielen die sieben folgenden
+  // Datensätze mit aus.
+  const fromBolls = (Object.keys(TRANSLATIONS) as TranslationCode[]).filter(
+    (c) => TRANSLATIONS[c].quelle === "bolls"
+  );
   let codes: readonly TranslationCode[];
   if (arg.toLowerCase() === "all") {
-    codes = Object.keys(TRANSLATIONS) as TranslationCode[];
+    codes = fromBolls;
   } else if (arg.toUpperCase() in TRANSLATIONS) {
-    codes = [arg.toUpperCase() as TranslationCode];
+    const code = arg.toUpperCase() as TranslationCode;
+    if (TRANSLATIONS[code].quelle !== "bolls") {
+      throw new Error(
+        `Translation "${code}" (${TRANSLATIONS[code].name}) does not come from bolls.life ` +
+          `and cannot be downloaded with this script.`
+      );
+    }
+    codes = [code];
   } else {
     throw new Error(
-      `Unknown translation "${arg}". Allowed: ${Object.keys(TRANSLATIONS).join(", ")}, all`
+      `Unknown translation "${arg}". Allowed: ${fromBolls.join(", ")}, all`
     );
   }
 

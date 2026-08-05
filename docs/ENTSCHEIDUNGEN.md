@@ -18,6 +18,90 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Der Anmerkungsapparat einer Ausgabe ist ein eigenes Feld, und die Registry ist keine Deklaration
+
+Eine gedruckte Bibelausgabe sagt an einer Stelle selbst, dass ihre Wiedergabe
+eine Wahl unter mehreren ist: in der Fußnote. Genau diese Auskunft fehlte dem
+Server. Sie liegt jetzt in `verse_notes` und erscheint als Feld `fussnoten` an
+`bible_lookup` und den beiden Textressourcen.
+
+**Der Apparat ist die Stimme der Ausgabe, `hinweis` die des Servers.** Deshalb
+zwei Felder statt eines, und deshalb trägt jeder Eintrag die Stellenangabe der
+Ausgabe mit (`stelle`, etwa „3,16") statt einer, die der Server neu formuliert.
+
+**Die Querverweisnoten der Lieferung bleiben draußen.** Sie sind mit 43 971
+Einträgen der weitaus größere Teil, und der Server führt bereits 344 781
+Verweise aus OpenBible.info. Zwei Verweisnetze nebeneinander hieße, bei jedem
+Aufruf zu entscheiden, welches gilt. Hinzu kommt, dass die Lieferung in einer
+anderen Versifikation zählt als der übrige Bestand (siehe unten): Ihre
+Verweisziele stimmten mit den vorhandenen nicht überein.
+
+**Nicht nach Notentyp ausgewählt.** Der Wunsch lag nahe, nur die Noten mit
+alternativer Übersetzung zu übernehmen. USX kennt dafür keinen Marker, es gibt
+allein `style="f"`; eine Typisierung nach dem Anfangswort wäre eine
+Interpretation des Servers am Verlagstext, und sie wäre falsch, sobald eine Note
+zwei Dinge zugleich sagt.
+
+**Verankert wird nach der Stellenangabe der Note, nicht nach dem umgebenden
+Vers.** Verse sind in USX Meilensteine; eine Note steht irgendwo dazwischen.
+Beides fällt in 1219 von 1220 Fällen zusammen. Die Ausnahme ist die Note zu
+Ps 119,1: Sie hängt an der Akrostichon-Überschrift **vor** dem ersten Vers des
+Kapitels und ginge beim Ankern nach dem Vers verloren. Die Stellenangabe trägt:
+alle 1220 haben die Form „K,V", und alle 1220 Ziele existieren als Vers
+(gemessen 05.08.2026).
+
+**Der Parser braucht eine Deny-Liste, und das ist der Fund, den eine
+Gesamtsumme nicht hergibt.** 3885 der 31 171 Verse (12,5 %) überspannen eine
+`<para>`-Grenze. Dazwischen liegen in fünf Fällen Dinge, die nicht zum Vers
+gehören: Abschnittsüberschriften (Apg 9,19, Jes 59,15) und Sprecherangaben
+(Hld 7,1, 7,10, 8,5). Wer „alle Textknoten zwischen `sid` und `eid`" einsammelt,
+liefert die Überschrift als Verstext aus, und die Verszahl stimmt dabei. Nicht
+auf der Liste steht `d`, die Psalmüberschrift (11 Fälle): Die deutsche Zählung
+dieser Ausgabe führt sie als Vers 1, sie gehört hinein. Gegengeprüft wird gegen
+`versification.vrs` der Lieferung, 1189 Kapitel, keine Abweichung.
+
+**`fussnoten` steht nicht in `required`.** Es erscheint an 1134 von 31 171
+Versen, rund 3,6 %. Damit hat `bible_lookup` zwei bedingte Felder statt einem;
+die Tabelle im Eintrag vom 02.08.2026 nennt nur `hinweis` und ist insoweit
+überholt. Die Auszählung steht am Schema, je ein Fall im Golden-Test. Auch die
+Zahl beim Klammerhinweis hat sich bewegt: zu den 137 Menge-Versen kommen 1925
+der neuen Ausgabe.
+
+**Die Registry in `translations.ts` hat ein Feld `quelle` bekommen, und der
+Grund ist ein Fehler, der beinahe passiert wäre.** Sie sieht wie eine
+Deklaration aus und ist zugleich die Arbeitsliste von `scripts/download.ts`:
+Bei `all` leitet es die Codes aus `Object.keys(TRANSLATIONS)` ab, und
+`scripts/setup.ts` führt diesen Schritt als `required`. Ein Eintrag, dessen
+Quelldateien nicht bei bolls.life liegen, hätte damit jeden Erstaufbau
+abgebrochen, auch den eines MCPB-Nutzers über `bible_setup`, und weil der
+Schritt `required` ist, wären die sieben folgenden Datensätze mit ausgefallen.
+Aufgefallen wäre es beim Entwickeln nie: Die Datenbank steht ja längst.
+
+Aus demselben Grund nennen die Meldungen von `requireTranslation` nur noch
+**geladene** Ausgaben. Vorher zählten sie den gesamten Registry-Bestand auf und
+schickten den Aufrufer bei einer nicht geladenen Ausgabe zu
+`bun run download <code>`. Am authlosen HTTP-Endpunkt ist der Aufrufer ein
+Fremder: Er bekäme einen Namen genannt, den dieser Server nicht liefert, und
+einen Befehl, den er nicht ausführen kann.
+
+**Was die Breitenprüfung dazu lernen musste.** `tests/schema-coverage.ts` zog
+seine Stichprobe aus Luther und rief sie gegen alle Übersetzungen ab. Bei einer
+Ausgabe mit deutscher Versifikation trifft das reihenweise daneben: 136 Kapitel
+mit abweichender Verszahl, zwei Bücher mit abweichender Kapitelzahl (Joel 4
+statt 3, Maleachi 3 statt 4). Die Aufrufe wären als „nicht gefunden"
+durchgelaufen und hätten als Fehlerantworten gezählt, nicht als geprüfte
+Nutzlasten: Der Lauf bliebe grün und hätte weniger geprüft, als er meldet.
+Solche Ausgaben bekommen jetzt ihre eigene Stichprobe, erkannt daran, dass sie
+Verse führen, die Luther nicht hat. Stand 05.08.2026: 582 Aufrufe, 578 geprüft,
+0 Schemafehler.
+
+Das gilt nicht nur für die neue Ausgabe. Menge zählt seit je ebenso, und
+`books.chapters` stammt aus dem Luther-Lauf und führt Joel mit 3 und Maleachi
+mit 4: für Menge heute schon falsch. Umgerechnet wird nichts, jede Ausgabe
+behält ihre Zählung.
+
+---
+
 ## 2026-08-03: Die Origin-Prüfung steht jetzt vorn, und `/mcp` hat eine Methodenweiche
 
 Nachlese zum 405-Fund vom selben Tag. Weil jener Fehler dort saß, wo eigener

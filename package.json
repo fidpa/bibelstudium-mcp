@@ -1,6 +1,6 @@
 {
   "name": "bibelstudium-mcp",
-  "version": "0.5.15",
+  "version": "0.5.16",
   "description": "Local MCP server for word-precise Bible study: four freely licensed German translations, original-language morphology (Hebrew WLC; Greek Majority Text / SBLGNT / Textus Receptus), concordance, cross-references, full-text search, and edition comparison with eight-edition attestation.",
   "type": "module",
   "private": true,
@@ -18,6 +18,7 @@
     "download:crossrefs": "bun run scripts/download-crossrefs.ts",
     "download:tagnt": "bun run scripts/download-tagnt.ts",
     "download:lexicon": "bun run scripts/download-lexicon.ts",
+    "import:slt": "bun run scripts/import-schlachter2000.ts",
     "setup": "bun run scripts/setup.ts",
     "build:fts": "bun run scripts/build-fts.ts",
     "build:mcpb": "bun run scripts/build-mcpb.ts"

@@ -89,10 +89,11 @@ Dekodern) sind in Ordnung.
 
 ## Kommentare
 
-Dieser Code ist ungewöhnlich dicht kommentiert: 1065 von 4424 Zeilen in
-`server.ts` sind Kommentar, also 24 Prozent, dazu 20 Blöcke von mehr als zwölf
-Zeilen (gemessen 03.08.2026, nach der Umstellung auf Deutsch; davor 935 von
-4293 Zeilen und 15 solcher Blöcke). Das ist Absicht. Ein großer Teil der
+Dieser Code ist ungewöhnlich dicht kommentiert: 1203 von 4643 Zeilen in
+`server.ts` sind Kommentar, also 26 Prozent, dazu 24 Blöcke von mehr als zwölf
+Zeilen (gemessen 05.08.2026; am 03.08.2026, nach der Umstellung auf Deutsch,
+waren es 1065 von 4424 Zeilen und 20 solcher Blöcke, davor 935 von 4293 und
+15). Das ist Absicht. Ein großer Teil der
 Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen
 und dem MCP-SDK, und ohne die Begründung daneben sieht eine solche Stelle aus
 wie eine willkürliche Zeile, die der nächste Umbau geradezieht. Die folgenden

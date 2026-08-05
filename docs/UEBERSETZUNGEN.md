@@ -17,9 +17,18 @@ kosten würden, damit die Frage nicht bei jeder Gelegenheit neu recherchiert wir
 | `ELB` | Elberfelder 1871 | Public Domain |
 | `MB` | Menge 1939 | Public Domain |
 | `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) |
+| `SLT` | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft |
 
 Maßgeblich ist `translations.ts`; dort steht neben jeder Ausgabe auch die
-Nennung, die ihre Lizenz beim Weitergeben verlangt (`null` bei Public Domain).
+Nennung, die ihre Lizenz beim Weitergeben verlangt (`null` bei Public Domain),
+und woher ihr Text kommt (`quelle`).
+
+Die Schlachter 2000 ist die einzige, die **nicht** frei lizenziert ist und
+deshalb nicht über ein Download-Skript zu holen: Ihre Quelldateien kommen vom
+Verlag und liegen allein beim Betreiber des Dienstes. Ein Klon dieses
+Repositories und jede selbst aufgebaute Datenbank führen sie nicht; die
+Werkzeuge melden das und nennen sie in ihren Meldungen nicht. Sie ist zugleich
+die einzige mit einem Anmerkungsapparat (Feld `fussnoten`).
 
 ## Die bisherige Quelle ist ausgeschöpft
 
@@ -118,8 +127,14 @@ Zusicherungen in den Golden-Tests.
 
 Der Server ist über HTTP öffentlich und ohne Anmeldung erreichbar. Jeder Abruf
 liefert Bibeltext an Dritte aus, das ist Verbreitung und nicht Privatgebrauch.
-Deshalb gilt: **Aufgenommen wird nur, was frei lizenziert ist** (Public Domain
-oder eine Lizenz, die die Weitergabe erlaubt), und eine geforderte Nennung wird
-an jede betroffene Antwort gehängt (Feld `quellen`), nicht bloß in einer
-Repository-Datei vermerkt. Dass eine API einen Text ausliefert, ist kein
-Lizenznachweis.
+Deshalb gilt: **Aufgenommen wird nur, wofür eine geprüfte Erlaubnis vorliegt** –
+Public Domain, eine Lizenz, die die Weitergabe erlaubt, oder ein Abkommen mit
+dem Rechteinhaber, das den Betrieb dieses Dienstes ausdrücklich deckt. Eine
+geforderte Nennung wird an jede betroffene Antwort gehängt (Feld `quellen`),
+nicht bloß in einer Repository-Datei vermerkt. Dass eine API einen Text
+ausliefert, ist kein Lizenznachweis.
+
+Der dritte Weg ist der engste: Ein Abkommen gilt der Partei, die es
+geschlossen hat. Es deckt deshalb den gehosteten Dienst und **nicht** ohne
+Weiteres eine selbst betriebene Kopie oder das MCPB-Bundle, und die betreffende
+Ausgabe wird nicht über ein Download-Skript verteilt.

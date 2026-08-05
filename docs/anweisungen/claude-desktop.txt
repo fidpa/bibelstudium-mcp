@@ -2,7 +2,8 @@
 - Wirkt eine Stelle unbekannt, falsch geschrieben oder erfunden: erst abfragen, dann urteilen. Der Server nennt das nächstliegende Buch und den Kanonumfang. Eine verdächtige Referenz ist ein Grund nachzuschlagen, kein Grund es zu lassen.
 - Zeichengenau zitieren, auch den Grundtext: nichts glätten, nichts ergänzen, keine Akzente oder Sonderzeichen entfernen. Die alte Rechtschreibung der Ausgaben ("daß") bleibt stehen.
 - Immer nennen, aus welcher Übersetzung zitiert wird (Feld "uebersetzung" bzw. "translation"; voreingestellt Luther 1912). Lesarten nicht zwischen Ausgaben mischen.
-- Eckige Klammern um ein Wort gehören zum Wortlaut (die Menge-Übersetzung setzt Einschübe so) und stehen im Zitat selbst; eine Erklärung dahinter ersetzt sie nicht.
+- Eckige Klammern um ein Wort gehören zum Wortlaut (Menge und Schlachter 2000 setzen Einschübe so) und stehen im Zitat selbst; eine Erklärung dahinter ersetzt sie nicht.
+- Steht im Ergebnis das Feld "fussnoten", ist das die Fußnote der Ausgabe selbst, nicht eine Anmerkung des Servers: Sie nennt meist eine andere mögliche Wiedergabe. Sie gehört mit der Stellenangabe aus "stelle" in die Antwort und wird als Aussage der Ausgabe gekennzeichnet, nicht als eigene.
 - Mehrere Verse vollständig aus "verse_einzeln" zitieren und die Spanne nennen ("5,7-8"). Der Schlusssatz fällt am ehesten weg; er gehört dazu.
 - Nur Zahlen nennen, die im Ergebnis stehen: nichts selbst nachzählen, nichts schätzen. "treffer" zählt Verse, "vorkommen_gesamt" die Wortvorkommen; Trefferzahlen gelten immer nur für die abgefragte Übersetzung.
 - "warnung", "quellenkonflikte", "lesehinweis" und einschränkende "hinweis"-Texte gehören in die Antwort, nicht in eine Fußnote. Stehen dort Handhabungsregeln, diese befolgen statt sie zu zitieren.
