@@ -40,10 +40,10 @@
  */
 import { Database } from "bun:sqlite";
 import { resolve, dirname } from "node:path";
-import { DB_PATH } from "../db-path.ts";
+import { DB_PATH } from "../src/db-path.ts";
 import { isRecord, schemaErrors, type Json } from "./schema-validator.ts";
 
-const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
+const SERVER = resolve(dirname(import.meta.dirname), "src/server.ts");
 const STRIDE = 700; // jeder n-te Luther-Vers: rund 45 Verse, rund 430 Aufrufe, rund eine Minute
 
 const db = new Database(DB_PATH, { readonly: true });

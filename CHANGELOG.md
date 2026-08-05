@@ -6,6 +6,26 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.6] - 2026-08-05
+
+### Geändert
+
+- **Der Laufzeitcode liegt jetzt unter `src/`.** `server.ts` und die acht Module
+  sind dorthin gewandert, `handlers/` nach `src/handlers/`. In der Wurzel bleiben
+  die zwölf Dateien, die dort hingehören: README, LICENSE, CHANGELOG,
+  `package.json`, `tsconfig.json` und ihresgleichen. Anlass war eine Asymmetrie
+  aus 0.6.4: `handlers/` lag als Verzeichnis gleichrangig neben `server.ts`.
+
+  **Wer den Server über eine eigene Konfiguration startet, passt den Pfad an**:
+  aus `.../bibelstudium-mcp/server.ts` wird `.../bibelstudium-mcp/src/server.ts`.
+  Ebenso bei einem Aufruf von Hand (`bun run src/server.ts`). Das MCPB-Bundle ist
+  nicht betroffen, es startet ein eigenständiges Binary. `bun run start` und alle
+  übrigen `package.json`-Skripte ebenfalls nicht.
+
+  Kein Verhalten ändert sich. Die Datenbank liegt weiterhin in `data/` neben der
+  Repository-Wurzel; der Pfad wird an einer einzigen Stelle bestimmt und ist
+  mitgezogen.
+
 ## [0.6.5] - 2026-08-05
 
 ### Behoben

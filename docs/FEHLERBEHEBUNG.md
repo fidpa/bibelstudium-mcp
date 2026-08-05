@@ -239,7 +239,7 @@ Browser und schicken keinen Origin, sind also nicht betroffen. Für einen
 browserbasierten Client die erlaubten Herkünfte ausdrücklich freigeben:
 
 ```bash
-MCP_HTTP_ALLOWED_ORIGINS=https://example.com MCP_HTTP_PORT=8931 bun run server.ts
+MCP_HTTP_ALLOWED_ORIGINS=https://example.com MCP_HTTP_PORT=8931 bun run src/server.ts
 ```
 
 **Seit 0.5.15 gilt die Prüfung für beide Pfade**, also auch für `/health` und

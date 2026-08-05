@@ -82,7 +82,7 @@ const build = Bun.spawnSync(
     "build",
     "--compile",
     `--target=${target}`,
-    resolve(ROOT, "server.ts"),
+    resolve(ROOT, "src/server.ts"),
     "--outfile",
     resolve(SERVER_DIR, binaryName),
   ],

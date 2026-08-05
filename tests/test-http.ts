@@ -34,7 +34,7 @@ import { resolve, dirname } from "node:path";
 // bleibt datenunabhängig und damit die einzige, die auch in der CI laufen kann.
 import { abschluss, check, eq } from "./lib/zusicherungen.ts";
 
-const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
+const SERVER = resolve(dirname(import.meta.dirname), "src/server.ts");
 
 /**
  * Bewusst nicht 8931: Diesen Port belegen der Dienst und der CI-Guard. Läuft

@@ -245,7 +245,7 @@ grep -rnE "^\s*(//|\*|/\*)" --include="*.ts" . | grep -v node_modules \
   | grep -P "\b(the|and|of|to|that|with|not|this|are|be|which|would|because)\b"
 
 # Datumslose Messaussagen: Treffer ohne Datum in der Nähe manuell ansehen
-grep -n "gemessen\|measured" server.ts
+grep -n "gemessen\|measured" src/server.ts
 ```
 
 ## Bewusst nicht übernommen

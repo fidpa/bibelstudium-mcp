@@ -68,5 +68,5 @@ export const DB_PATH = ((): string => {
     return configured;
   }
   if (!existsSync(MODULE_DIR)) return resolve(userDataDir(), "bible.db");
-  return resolve(MODULE_DIR, "data/bible.db");
+  return resolve(MODULE_DIR, "..", "data/bible.db");
 })();

@@ -106,7 +106,7 @@ Schluss auf eine Lücke ist zu prüfen, ob der Einbau überhaupt auf dem Pfad
 liegt, den der Test nimmt.
 
 **Und eine Prüfung ist neu dazugekommen:** `bun run build:mcpb` samt einem
-stdio-Aufruf gegen das entstandene Binary. `bun run server.ts` und
+stdio-Aufruf gegen das entstandene Binary. `bun run src/server.ts` und
 `bun build --compile` sind zwei verschiedene Auflöser, und dieser Umbau
 verschob erstmals Module unter die Wurzel; auf CT 104 landet genau dieses
 Binary. Es lief.

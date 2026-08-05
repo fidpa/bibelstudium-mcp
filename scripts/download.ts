@@ -25,11 +25,11 @@
 
 import { dirname, resolve } from "path";
 import { BOOK_ALIASES } from "./aliases.ts";
-import { DB_PATH } from "../db-path.ts";
+import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 import { ensureVersesSchema, rebuildVersesFts } from "./schema.ts";
-import { DEFAULT_TRANSLATION, TRANSLATIONS, type TranslationCode } from "../translations.ts";
+import { DEFAULT_TRANSLATION, TRANSLATIONS, type TranslationCode } from "../src/translations.ts";
 
 const API_BASE = "https://bolls.life";
 const STATIC_BASE = `${API_BASE}/static/translations`;

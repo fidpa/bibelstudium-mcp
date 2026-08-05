@@ -19,7 +19,7 @@
 
 import { dirname, resolve } from "path";
 import { ensureTagntSchema } from "./schema.ts";
-import { DB_PATH } from "../db-path.ts";
+import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 

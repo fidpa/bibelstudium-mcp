@@ -42,7 +42,7 @@ import type {
   GetPromptRequest,
   ReadResourceRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import packageJson from "./package.json";
+import packageJson from "../package.json";
 import { DB_PATH } from "./db-path.ts";
 import {
   HTTP_MODE,
@@ -1561,7 +1561,7 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
 
   // Import hier und nicht auf Modulebene: Er zieht alle acht Download-Module
   // herein, und ein Server, der seine Daten schon hat, soll sie nie laden.
-  const { runSetup, SETUP_STEPS } = await import("./scripts/setup.ts");
+  const { runSetup, SETUP_STEPS } = await import("../scripts/setup.ts");
 
   if (args.bestaetigung !== true) {
     const plan = {
@@ -2324,7 +2324,7 @@ async function main(): Promise<void> {
     if (dataMissing === null) {
       console.log(`Es liegt bereits eine Datenbank unter ${DB_PATH}. Sie wird neu aufgebaut.`);
     }
-    const { runSetup } = await import("./scripts/setup.ts");
+    const { runSetup } = await import("../scripts/setup.ts");
     const report = await runSetup((label, i, total) => {
       console.log(`[${i}/${total}] ${label}`);
     });

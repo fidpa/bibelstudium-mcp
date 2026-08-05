@@ -87,7 +87,7 @@ Server im MCP-Client registrieren, z. B. `.mcp.json` für Claude Code:
   "mcpServers": {
     "bibelstudium": {
       "command": "bun",
-      "args": ["run", "/pfad/zu/bibelstudium-mcp/server.ts"]
+      "args": ["run", "/pfad/zu/bibelstudium-mcp/src/server.ts"]
     }
   }
 }
@@ -118,7 +118,7 @@ Ein Bundle enthält genau ein Binary und läuft deshalb nur auf der Plattform un
 Wer einen Client bedienen muss, der keinen Kindprozess starten kann, schaltet den HTTP-Transport frei:
 
 ```bash
-MCP_HTTP_PORT=8931 bun run server.ts     # /mcp und /health, gebunden an 127.0.0.1
+MCP_HTTP_PORT=8931 bun run src/server.ts # /mcp und /health, gebunden an 127.0.0.1
 ```
 
 Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor: Der Server bringt beides nicht mit.
@@ -190,7 +190,7 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
   echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}'
   echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"bible_lookup","arguments":{"book":"Johannes","chapter":3,"verses":"16"}}}'
-} | bun run server.ts
+} | bun run src/server.ts
 ```
 
 ## Werkzeuge
@@ -267,16 +267,16 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Datei | Aufgabe |
 |-------|---------|
-| `server.ts` | MCP-Server: Ausgabeschemata, Werkzeugliste, drei Prompts, vier Ressourcen und drei URI-Vorlagen, Verteilung der Anfragen, `bible_setup`, Start |
-| `handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
-| `werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
-| `db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
-| `editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
-| `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
-| `morphology.ts` | Die drei Morphologie-Schemata: MorphGNT, Robinson, OSHB |
-| `verse-budget.ts` | Wie viele Verse eine Ausgabe je Antwort im Wortlaut trägt, und wie das Kürzen gemeldet wird |
-| `greek-diff.ts` | Wortvergleich zweier Grundtext-Editionen, Abgleich mit der Bezeugungsnotiz |
-| `db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
+| `src/server.ts` | MCP-Server: Ausgabeschemata, Werkzeugliste, drei Prompts, vier Ressourcen und drei URI-Vorlagen, Verteilung der Anfragen, `bible_setup`, Start |
+| `src/handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
+| `src/werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
+| `src/db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
+| `src/editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
+| `src/translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
+| `src/morphology.ts` | Die drei Morphologie-Schemata: MorphGNT, Robinson, OSHB |
+| `src/verse-budget.ts` | Wie viele Verse eine Ausgabe je Antwort im Wortlaut trägt, und wie das Kürzen gemeldet wird |
+| `src/greek-diff.ts` | Wortvergleich zweier Grundtext-Editionen, Abgleich mit der Bezeugungsnotiz |
+| `src/db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
 | `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
 | `scripts/schema.ts` | Tabellen-Schemata + FTS-Neuaufbau |
 | `scripts/atomic-db.ts` | Atomare Datenbank-Schreibvorgänge (temporäre Kopie + Umbenennen), sicher bei parallelen Lesern |

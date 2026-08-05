@@ -9,7 +9,7 @@ import { resolve, dirname } from "node:path";
 import type { Json } from "./zusicherungen.ts";
 
 // Zwei Ebenen hoch: diese Datei liegt in tests/lib/, der Server in der Wurzel.
-const SERVER = resolve(dirname(dirname(import.meta.dirname)), "server.ts");
+const SERVER = resolve(dirname(dirname(import.meta.dirname)), "src/server.ts");
 
 /**
  * `json` ist der geparste Textblock, `structured` das Feld `structuredContent`.

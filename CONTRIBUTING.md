@@ -58,7 +58,7 @@ Was die Tests nicht abdecken, bleibt Handarbeit:
 
 1. Betroffene Daten mit dem passenden `download-*.ts`-Skript neu aufbauen
 2. Stichprobe per SQL: `sqlite3 data/bible.db "…"`
-3. Rauchtest über stdio: JSON-RPC-Zeilen `initialize` → `notifications/initialized` → `tools/call` in `bun run server.ts` leiten
+3. Rauchtest über stdio: JSON-RPC-Zeilen `initialize` → `notifications/initialized` → `tools/call` in `bun run src/server.ts` leiten
 4. Bei Änderungen an der Morphologie: Imperativ, Partizip, Infinitiv **und** Nicht-Verben testen, in allen betroffenen Editionen
 
 Häufige Fehlerbilder samt Ursache stehen in [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md).

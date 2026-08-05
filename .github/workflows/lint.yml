@@ -46,7 +46,7 @@ jobs:
       - name: Missing database starts anyway and locks the data tools
         run: |
           set +e
-          output=$(bun run server.ts 2>&1 </dev/null)
+          output=$(bun run src/server.ts 2>&1 </dev/null)
           rc=$?
           set -e
           echo "$output"
@@ -64,7 +64,7 @@ jobs:
             printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
             printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
             printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"bible_lookup","arguments":{"book":"Johannes","chapter":3,"verses":"16"}}}'
-          } | bun run server.ts 2>/dev/null)
+          } | bun run src/server.ts 2>/dev/null)
           echo "$output"
           echo "$output" | grep -q '"name":"bible_setup"' \
             || { echo "::error::bible_setup missing from tools/list"; exit 1; }
@@ -76,7 +76,7 @@ jobs:
           # Empty file: SQLite opens it fine, but it holds no tables.
           mkdir -p data && : > data/bible.db
           set +e
-          output=$(bun run server.ts 2>&1 </dev/null)
+          output=$(bun run src/server.ts 2>&1 </dev/null)
           rc=$?
           set -e
           echo "$output"
@@ -94,7 +94,7 @@ jobs:
           # exactly what CI has, and because a regression would be invisible
           # locally, where the database is present.
           rm -f data/bible.db
-          MCP_HTTP_PORT=8931 bun run server.ts &
+          MCP_HTTP_PORT=8931 bun run src/server.ts &
           server=$!
           trap 'kill $server 2>/dev/null || true' EXIT
           # No `curl -f` here: without data /health answers 503 by design, and -f
