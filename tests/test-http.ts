@@ -30,6 +30,9 @@
  *   beliebig wiederholbar. Die wenigen hier bleiben weit darunter.
  */
 import { resolve, dirname } from "node:path";
+// Geteilt mit den Golden-Tests. Der Kern hängt an nichts weiter: Diese Datei
+// bleibt datenunabhängig und damit die einzige, die auch in der CI laufen kann.
+import { abschluss, check, eq } from "./lib/zusicherungen.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "server.ts");
 
@@ -115,22 +118,6 @@ async function start(extraEnv: Record<string, string> = {}): Promise<Server> {
   throw new Error(
     `Server startete nicht auf Port ${PORT}. Ausgabe war:\n${seen.trim() || "(nichts)"}`
   );
-}
-
-// --- Zusicherungen ----------------------------------------------------------
-
-let failures = 0;
-let checks = 0;
-
-function check(name: string, ok: boolean, detail = ""): void {
-  checks++;
-  if (ok) return;
-  failures++;
-  console.log(`  FEHLGESCHLAGEN  ${name}${detail ? `\n                  ${detail}` : ""}`);
-}
-
-function eq(name: string, actual: unknown, expected: unknown): void {
-  check(name, actual === expected, `erwartet ${JSON.stringify(expected)}, war ${JSON.stringify(actual)}`);
 }
 
 type Probe = { status: number; allow: string | null; corsMethods: string | null; body: string };
@@ -347,7 +334,4 @@ try {
   server2.stop();
 }
 
-console.log(
-  `\n${failures === 0 ? "OK" : "FEHLER"}: ${checks - failures}/${checks} Prüfungen bestanden`
-);
-process.exit(failures === 0 ? 0 : 1);
+abschluss();

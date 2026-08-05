@@ -36,7 +36,25 @@ Zuerst der Typecheck. Er braucht keine Datenbank und ist das, was die CI erzwing
 bun run typecheck
 ```
 
-Darüber hinaus gibt es keine Testsuite: Eine Fixture-Datenbank kann Bibeldaten nicht überprüfen, deshalb wird gegen den echten Server und die echte Datenbank verifiziert.
+Dann die Tests. Es gibt kein Test-Framework, und es gibt keine Fixture-Datenbank: Eine erfundene Datenbank kann Bibeldaten nicht überprüfen, deshalb wird gegen den echten Server und die echte Datenbank verifiziert.
+
+```bash
+bun run test:http     # Transportverhalten über HTTP, braucht KEINE Datenbank
+bun run test          # Zusicherungen gegen einen frischen Server über stdio
+bun run test:schemas   # jede Antwort gegen ihr deklariertes outputSchema
+```
+
+`test:http` läuft überall, auch in der CI. Die beiden anderen brauchen eine gebaute Datenbank (`bun run setup`); ohne sie brechen sie ab, und das ist kein Fehler des Codes.
+
+`bun run test` fährt zwölf Bündel, eines je Werkzeug plus die Fälle, die zu keinem gehören. Jedes Bündel ist auch einzeln lauffähig, was beim Suchen hilft:
+
+```bash
+bun run tests/golden/lookup.ts
+```
+
+Wer eine Zusicherung ergänzt, hängt sie in das Bündel des betroffenen Werkzeugs und zieht die Mindestzahl in `tests/test-golden.ts` mit.
+
+Was die Tests nicht abdecken, bleibt Handarbeit:
 
 1. Betroffene Daten mit dem passenden `download-*.ts`-Skript neu aufbauen
 2. Stichprobe per SQL: `sqlite3 data/bible.db "…"`

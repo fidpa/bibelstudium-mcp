@@ -6,6 +6,28 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.1] - 2026-08-05
+
+### Geändert
+
+- **Die Golden-Tests sind ein Bündel je Werkzeug.** `bun run test` fährt
+  unverändert alles, sammelt die Fälle aber aus zwölf Dateien unter
+  `tests/golden/` ein; der geteilte Kern liegt in `tests/lib/`. Jedes Bündel ist
+  auch einzeln lauffähig (`bun run tests/golden/lookup.ts`). Aufrufe sind
+  benannt statt positionsgebunden: Ein entfallener oder vertippter Fall ist
+  seither ein Übersetzungsfehler, wo vorher jede Zusicherung darunter lautlos
+  auf die falsche Antwort rutschte.
+- **Drei zustandsfreie Blöcke haben `server.ts` verlassen**: `morphology.ts`
+  (die drei Kodierschemata), `verse-budget.ts` (die Wortlaut-Grenze),
+  `greek-diff.ts` (Editionsvergleich). Die Datei schrumpft von 4974 auf 4417
+  Zeilen. Kein Verhalten ändert sich, keine Ausgabe und keine Meldung.
+
+### Hinzugefügt
+
+- Zwei Zusicherungen zum Klammerhinweis der Suche. `bracketHints` läuft an drei
+  Stellen, geprüft war nur eine; ein Hinweis aus allen Treffern statt aus den
+  ausgelieferten Versen wäre unbemerkt geblieben.
+
 ## [0.6.0] - 2026-08-05
 
 ### Geändert (nicht abwärtskompatibel)

@@ -18,6 +18,64 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Erst die Absicherung je Werkzeug, dann der Schnitt, und nur beim Zustandsfreien
+
+`server.ts` war auf 4974 Zeilen in 31 Abschnitten gewachsen. Der Umbau ist in
+zwei Schritten gelaufen, und die Reihenfolge trägt die Begründung: zuerst die
+Tests je Werkzeug, dann drei Module.
+
+**Warum in dieser Reihenfolge.** Die Golden-Tests zerlegten die Ergebnisse eines
+Laufs **positionsweise** in eine Liste von Namen, abgesichert allein durch eine
+Typzusicherung auf die Länge. Ein eingeschobener Fall verschob jeden Namen
+darunter, lautlos: Der Test prüfte dann eine andere Antwort und bestand womöglich
+trotzdem. Diese eine Absicherung war zum Zeitpunkt des Umbaus **selbst schon
+auseinandergelaufen**, der Cast nannte 47 bei 46 Aufrufen. Er prüfte zur Laufzeit
+nichts.
+
+Ersetzt durch benannte Aufrufe: Die Ergebnisse kommen über einen Mapped Type
+(`{ [K in keyof C]: ToolResult }`) auf denselben Schlüsseln zurück. Eine
+Index-Signatur hätte es nicht getan, sie fiele unter `noUncheckedIndexedAccess`
+auf `| undefined` zurück. Gemessen: Ein vertippter Schlüssel ist seither ein
+Übersetzungsfehler, wo vorher eine stille Verschiebung stand.
+
+**Ein Prozess oder einer je Bündel?** Gemessen kostet ein stdio-Serverstart
+0,27 bis 0,30 Sekunden (drei Läufe, vor und nach dem Umbau gleich). Zwölf Bündel
+mit eigenem Start wären rund 3,5 Sekunden gegen 0,88 vorher. Die Fragilität lag
+aber nie an der Zahl der Prozesse, sondern an der Positionsbindung. Der
+Aggregator gruppiert die Bündel deshalb nach ihrer Umgebung und fährt je Gruppe
+einen Prozess: zwei, genau wie vorher. Jede Bündeldatei bleibt trotzdem einzeln
+lauffähig, damit ein eingebauter Fehler dort rot wird, wo man ihn sucht.
+
+**Was der Schnitt der Module gekostet hat: nichts, und das ist der Punkt.** Jeder
+bewegte Bezeichner ist an seiner Aufrufstelle typgeprüft, der Compiler sichert
+den Schnitt also ab. Herausgezogen sind nur zustandsfreie Blöcke:
+`morphology.ts` (die drei Kodierschemata), `verse-budget.ts` (hängt allein an der
+Registry) und `greek-diff.ts`. `crossCheckVariant` ist mitgegangen, obwohl es nach
+einer Datenabfrage aussieht: Es bekommt die Editionstexte als Parameter und liest
+selbst nichts (nachgemessen, `stmtTagnt` steht nur beim Aufrufer im Handler).
+Bliebe es zurück, importierte `server.ts` drei Bezeichner für einen einzigen
+Aufrufer. `server.ts` hat danach 4417 Zeilen in 26 Abschnitten.
+
+**Belegt wurde das nicht über die Zahl, sondern über eingebaute Fehler.** Eine
+gleichbleibende Zahl von Zusicherungen beweist nicht, dass sie noch etwas
+greifen: Eine ins Leere greifende Zusicherung zählt weiter mit. Sechs Fehler
+wurden nacheinander eingebaut, jeder musste in einer **vorab benannten** Datei
+rot werden, und alle sechs taten es. Zwei Nebenbefunde daraus stehen unten unter
+„Was die Tests nicht sehen".
+
+**Was die Tests nicht sehen.** Der Fehlereinbau hat zwei Lücken gefunden, beide
+älter als der Umbau. Der Klammerhinweis der Suche war von keiner Zusicherung
+gedeckt: `bracketHints` läuft an drei Stellen, geprüft war nur die des
+Nachschlagens. Der vorgeschlagene Einbau (Hinweis aus allen Treffern statt aus
+den ausgelieferten Versen) wäre grün geblieben. Er ist jetzt gedeckt, und zwar
+nur mit der Ausgabe, die Klammern **und** eine Wortlaut-Grenze führt: 1925 Verse
+mit Klammerwort in der 2000er gegen 137 in der Menge-Bibel, die keine Grenze hat.
+Zweite Lücke: Die Faltung des Schlusssigma in `normForCompare` lässt sich
+verfälschen, ohne dass eine Zusicherung anspringt; die geprüften Vergleichsverse
+unterscheiden sich an keiner Stelle nur darin.
+
+---
+
 ## 2026-08-05: Eine Grenze, die eine Zusage einhält, gehört an die Ausgabe und nicht an den Server
 
 Zwei Ausgaben geben je Abruf höchstens 20 Verse im Wortlaut aus, die übrigen drei
@@ -178,8 +236,9 @@ statt 3, Maleachi 3 statt 4). Die Aufrufe wären als „nicht gefunden"
 durchgelaufen und hätten als Fehlerantworten gezählt, nicht als geprüfte
 Nutzlasten: Der Lauf bliebe grün und hätte weniger geprüft, als er meldet.
 Solche Ausgaben bekommen jetzt ihre eigene Stichprobe, erkannt daran, dass sie
-Verse führen, die Luther nicht hat. Stand 05.08.2026: 582 Aufrufe, 578 geprüft,
-0 Schemafehler.
+Verse führen, die Luther nicht hat. Stand 05.08.2026 vormittags: 582 Aufrufe,
+578 geprüft, 0 Schemafehler; nach dem Anmerkungsapparat und der Wortlaut-Grenze
+desselben Tages 597 Aufrufe und 593 geprüft.
 
 Das gilt nicht nur für die neue Ausgabe. Menge zählt seit je ebenso, und
 `books.chapters` stammt aus dem Luther-Lauf und führt Joel mit 3 und Maleachi
@@ -689,7 +748,10 @@ wäre ungeprüfter Code, der geprüften Code bewacht. `ajv` läge als transitive
 SDK-Abhängigkeit bereit und wäre als devDependency vertretbar (die Laufzeit
 bliebe bei einer Abhängigkeit), nur zu 95 Prozent ungenutzt. Dass der Prüfer
 nicht alles durchwinkt, ist die eine Aussage, die er über sich selbst nicht
-treffen kann; sie steht als fünf bekannt kaputte Antworten in `test-golden.ts`.
+treffen kann; sie steht als fünf bekannt kaputte Antworten im Golden-Test, seit
+dem 05.08.2026 im Bündel `tests/golden/search.ts` (dort liegt die echte Antwort,
+an der sie gemessen werden). Die „rund eine Minute" ist überholt: Der Breitentest
+läuft in 1,3 Sekunden und prüft inzwischen 593 Antworten.
 
 ---
 

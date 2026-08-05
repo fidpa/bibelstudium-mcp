@@ -37,7 +37,7 @@
  * einzige Zahl, weil es im Code dieselbe Regel ist; die Rechtsgründe der beiden
  * Ausgaben unterscheiden sich, ihr Verhalten nicht. Wer die Grenze ändern oder
  * aufheben will, ändert diese Zeile und die Registry-Einträge darunter: Kein
- * Handler kennt den Wert, alle fragen `verseBudget()` in `server.ts`.
+ * Handler kennt den Wert, alle fragen `verseBudget()` in `verse-budget.ts`.
  */
 const VERSE_MAX_GBG = 20;
 

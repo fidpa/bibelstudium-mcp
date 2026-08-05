@@ -93,7 +93,16 @@ Dieser Code ist ungewöhnlich dicht kommentiert: 1203 von 4643 Zeilen in
 `server.ts` sind Kommentar, also 26 Prozent, dazu 24 Blöcke von mehr als zwölf
 Zeilen (gemessen 05.08.2026; am 03.08.2026, nach der Umstellung auf Deutsch,
 waren es 1065 von 4424 Zeilen und 20 solcher Blöcke, davor 935 von 4293 und
-15). Das ist Absicht. Ein großer Teil der
+15).
+
+Am 05.08.2026 sind drei zustandsfreie Blöcke in eigene Dateien gezogen
+(`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`); die Kommentare gingen
+mit. `server.ts` hat seither 4417 Zeilen, die drei Module zusammen 605, und der
+Anteil bleibt in derselben Größenordnung: gemessen 28 Prozent in `server.ts`,
+17 bis 32 Prozent in den Modulen. Die Zahlen der Reihe darüber sind nicht
+fortgeschrieben, sie belegen den damaligen Stand einer einzigen Datei.
+
+Das ist Absicht. Ein großer Teil der
 Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen
 und dem MCP-SDK, und ohne die Begründung daneben sieht eine solche Stelle aus
 wie eine willkürliche Zeile, die der nächste Umbau geradezieht. Die folgenden
@@ -197,6 +206,13 @@ teuerste Kommentar überhaupt.
 78 Spalten. Neue Deklarationen kommen in den passenden Abschnitt, nicht ans
 Dateiende. Die Reihenfolge der werkzeugspezifischen Helferblöcke entspricht der
 Reihenfolge der Handler weiter unten.
+
+Die Regel gilt für `server.ts`, nicht für jede Datei. Ein Laufzeitmodul trägt
+stattdessen einen JSDoc-Kopf, der sagt, was drin ist und warum es dort steht
+(`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`, `translations.ts`).
+Banner innerhalb eines Moduls sind kein Fehler, wenn sie wirklich gliedern:
+`morphology.ts` führt drei, eines je Kodierschema, weil die drei einander
+ähnlich genug sind, um verwechselt zu werden.
 
 ### K7. Ein Kommentar, der nicht mehr stimmt, ist ein Fehler
 
