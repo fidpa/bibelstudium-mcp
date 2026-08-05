@@ -267,7 +267,9 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Datei | Aufgabe |
 |-------|---------|
-| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, vier Ressourcen und drei URI-Vorlagen, Testament-Routing |
+| `server.ts` | MCP-Server: Ausgabeschemata, Werkzeugliste, drei Prompts, vier Ressourcen und drei URI-Vorlagen, Verteilung der Anfragen, `bible_setup`, Start |
+| `handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
+| `werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
 | `db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
 | `editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
 | `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |

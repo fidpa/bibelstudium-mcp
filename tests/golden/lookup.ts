@@ -44,6 +44,12 @@ export const lookupBuendel = buendel({
     versesTooLong: ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_LONG }],
     versesNotAString: ["bible_lookup", { book: "Ps", chapter: 119, verses: { kein: "string" } }],
     versesMaxValid: ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_MAX_VALID }],
+    // Die einzige Stellenangabe, die alle Wertprüfungen besteht und trotzdem auf
+    // keinen Vers führt: Psalm 117 hat zwei. Sie erreicht als einziger Aufruf
+    // dieses Bündels den Zweig, in dem die Versnutzlast null liefert. Ohne ihn
+    // war die Meldung von keiner Zusicherung gedeckt, und eine Verfälschung des
+    // Wortlauts blieb grün (gemessen 05.08.2026).
+    keinVers: ["bible_lookup", { book: "Ps", chapter: 117, verses: "5" }],
     // Fußnoten: der Apparat einer Ausgabe. Vier Fälle, denn `fussnoten` ist
     // bedingt und die Bedingung hat mehr als eine Richtung: mit Note, ohne Note,
     // drei Noten am selben Vers, und dieselbe Stelle in einer Ausgabe ohne
@@ -59,10 +65,18 @@ export const lookupBuendel = buendel({
     const {
       lookupChap999, hesekiel, sirach, joh316, mengeVers, mengeOhneKlammer,
       versesTooMany, versesSpanTooHigh, versesSpanWithComma, versesTooLong,
-      versesNotAString, versesMaxValid, noteEine, noteKeine, noteDrei, noteMehrvers,
+      versesNotAString, versesMaxValid, keinVers,
+      noteEine, noteKeine, noteDrei, noteMehrvers,
     } = res;
 
     eq("bible_lookup chapter", lookupChap999.text, KAPITEL_AUSSERHALB);
+
+    eq(
+      "Ps 117,5: nicht vorhanden",
+      keinVers.text,
+      "No verses found for Ps 117,5. Check chapter and verse numbers."
+    );
+    eq("Ps 117,5: isError", keinVers.isError, true);
 
     has("Hesekiel-Zusatz: Vorschlag", hesekiel.text, 'Am nächsten kommt "Hesekiel"');
     has("Hesekiel-Zusatz: Kanonumfang", hesekiel.text, "66 Bücher");

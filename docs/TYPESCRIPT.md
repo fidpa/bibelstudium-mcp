@@ -33,7 +33,7 @@ falsche Typen: `"3"` statt `3`, eine Zahl statt einer Zeichenkette) und
 - Tool-Argumente als `unknown` typisieren und explizit prüfen, niemals blind
   casten. Muster im Code: `toInt()` (akzeptiert Zahl *und* Ziffernfolge),
   `resolveEdition()` / `resolveTranslation()` (Typprüfung vor `.trim()`), die
-  `verses`-Normalisierung in `server.ts`.
+  `verses`-Normalisierung in `handlers/lookup.ts`.
 - Heruntergeladene Strukturen prüfen, bevor sie in die DB gelangen
   (`Array.isArray`, Feldprüfungen wie in `download.ts`), und werfen statt still
   weiterlaufen: Der `abort()`-Pfad lässt die Live-DB unangetastet.
@@ -42,7 +42,7 @@ falsche Typen: `"3"` statt `3`, eine Zahl statt einer Zeichenkette) und
   Modell die Meldung und kann sie beantworten.
 - **Prompts und Ressourcen** haben kein `isError`; dort ist der JSON-RPC-Fehler
   der vorgesehene Weg, und zwar über `rpcError(ErrorCode.InvalidParams, …)`
-  aus `server.ts`, nicht über ein nacktes `throw new Error` (das meldet
+  aus `werkzeug-helfer.ts`, nicht über ein nacktes `throw new Error` (das meldet
   `InternalError`) und nicht über `McpError` (das stellt der Meldung ein Präfix
   voran). `InternalError` bleibt Zuständen des Servers vorbehalten, etwa einer
   Instanz ohne Datenbank.
@@ -95,14 +95,16 @@ Zeilen (gemessen 05.08.2026; am 03.08.2026, nach der Umstellung auf Deutsch,
 waren es 1065 von 4424 Zeilen und 20 solcher Blöcke, davor 935 von 4293 und
 15).
 
-Am 05.08.2026 sind fünf Blöcke in eigene Dateien gezogen: erst drei
+Am 05.08.2026 sind in zwei Zügen Blöcke in eigene Dateien gezogen: erst drei
 zustandsfreie (`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`), dann die
-Datenschicht (`db.ts`) und die Editionen (`editions.ts`). Die Kommentare gingen
-jeweils mit. `server.ts` hat seither 3857 Zeilen, die fünf Module zusammen 1274,
-und der Anteil bleibt in derselben Größenordnung: gemessen 28 Prozent in
-`server.ts`, 17 bis 36 Prozent in den Modulen (gezählt über Zeilen, die mit
-`//`, `/*` oder `*` beginnen). Die Zahlen der Reihe darüber sind nicht
-fortgeschrieben, sie belegen den damaligen Stand einer einzigen Datei.
+Datenschicht (`db.ts`) und die Editionen (`editions.ts`), zuletzt die geteilten
+Werkzeughelfer (`werkzeug-helfer.ts`) und die sechs Handler unter `handlers/`.
+Die Kommentare gingen jeweils mit. `server.ts` hat seither 2360 Zeilen, die
+übrigen Laufzeitmodule zusammen 3146, und der Anteil bleibt in derselben
+Größenordnung: gemessen 30 Prozent in `server.ts`, 20 bis 36 Prozent in den
+Modulen (gezählt über Zeilen, die mit `//`, `/*` oder `*` beginnen). Die Zahlen
+der Reihe darüber sind nicht fortgeschrieben, sie belegen den damaligen Stand
+einer einzigen Datei.
 
 Das ist Absicht. Ein großer Teil der
 Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen
@@ -206,16 +208,21 @@ teuerste Kommentar überhaupt.
 
 `server.ts` ist in Abschnitte geteilt, jeder mit `// --- Titel ---` auf
 78 Spalten. Neue Deklarationen kommen in den passenden Abschnitt, nicht ans
-Dateiende. Die Reihenfolge der werkzeugspezifischen Helferblöcke entspricht der
-Reihenfolge der Handler weiter unten.
+Dateiende.
 
 Die Regel gilt für `server.ts`, nicht für jede Datei. Ein Laufzeitmodul trägt
 stattdessen einen JSDoc-Kopf, der sagt, was drin ist und warum es dort steht
 (`db.ts`, `editions.ts`, `morphology.ts`, `verse-budget.ts`, `greek-diff.ts`,
-`translations.ts`). Banner innerhalb eines Moduls sind kein Fehler, wenn sie
-wirklich gliedern: `morphology.ts` führt drei, eines je Kodierschema, weil die
-drei einander ähnlich genug sind, um verwechselt zu werden, und `db.ts` acht,
-eines je Tabelle, weil eine Abfrage über ihre Tabelle gesucht wird.
+`translations.ts`, `werkzeug-helfer.ts`, dazu die sechs Dateien unter
+`handlers/`). Banner innerhalb eines Moduls sind kein Fehler, wenn sie wirklich
+gliedern: `morphology.ts` führt drei, eines je Kodierschema, weil die drei
+einander ähnlich genug sind, um verwechselt zu werden, `db.ts` acht, eines je
+Tabelle, weil eine Abfrage über ihre Tabelle gesucht wird, und
+`werkzeug-helfer.ts` vier, weil dort vier Arbeitsschritte nebeneinanderliegen,
+die nichts miteinander zu tun haben außer ihren Aufrufern.
+
+Eine Handler-Datei braucht keinen Banner: Sie enthält ein Werkzeug, und ihr
+Name sagt bereits, welches.
 
 ### K7. Ein Kommentar, der nicht mehr stimmt, ist ein Fehler
 

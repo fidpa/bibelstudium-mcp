@@ -3,7 +3,7 @@
  *
  * Sie stehen hier und nicht bei den Zusicherungen, weil sie im Server ebenfalls
  * an einer Stelle stehen (`chapterOutOfRange`, `verseOutOfRange`, `bookTooLong`
- * in `server.ts`). Eine Grenze, deren Meldung an fünf Orten hingeschrieben
+ * in `werkzeug-helfer.ts`). Eine Grenze, deren Meldung an fünf Orten hingeschrieben
  * wurde, hat hier schon einmal auseinandergelebt: Drei Werkzeuge wiesen
  * `verse=999` mit „must be a positive integer" ab, einer Bedingung, die die
  * Eingabe erfüllte.

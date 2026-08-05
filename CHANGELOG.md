@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.4] - 2026-08-05
+
+### Geändert
+
+- **Jedes Werkzeug hat jetzt eine eigene Datei.** Die sechs Lesewerkzeug-Handler
+  stehen unter `handlers/`, benannt nach dem Werkzeug, das sie bedienen; was
+  mehrere von ihnen teilen (Ergebnisformen, Buchauflösung samt Grenzen und
+  Meldungen, die beiden Nutzlasten), steht in `werkzeug-helfer.ts`. `server.ts`
+  schrumpft von 3857 auf 2360 Zeilen, von 17 auf 10 Abschnitte, und trägt noch
+  die Ausgabeschemata, die Werkzeugliste, Prompts, Ressourcen, `bible_setup`,
+  die Verteilung der Anfragen und den Start. `bible_lookup` hat dabei aus dem
+  Rest-Fall des Dispatch einen benannten Handler bekommen wie die übrigen fünf.
+
+  Kein Verhalten ändert sich, keine Ausgabe und keine Meldung; Startzeit
+  unverändert. Belegt über sieben eingebaute Fehler, jeder rot im vorab
+  benannten Testbündel, dazu ein Lauf gegen das kompilierte Binary.
+
+### Behoben
+
+- **Die Meldung „No verses found" entsteht wie jeder andere Werkzeugfehler.**
+  Sie war als einzige von Hand zusammengesetzt. Die Antwort ist zeichengleich;
+  die Absicherung dafür fehlte bisher ganz und ist nachgeholt. Die Messlatte in
+  `bun run test` steigt von 475 auf 478.
+
 ## [0.6.3] - 2026-08-05
 
 ### Hinzugefügt

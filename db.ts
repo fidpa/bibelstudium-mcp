@@ -361,7 +361,7 @@ export const stmtSearchBook = hasFts
 
 // book_id und chapter reisen mit, damit ein Durchlauf sowohl die Gesamtzahl der
 // Vorkommen als auch die Aufschlüsselung je Buch und Kapitel trägt: siehe den
-// `verteilung`-Block in `handleSearch` (server.ts).
+// `verteilung`-Block in `handleSearch` (handlers/search.ts).
 export const stmtSearchAll = hasFts
   ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, string, number]>(
       "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +

@@ -18,6 +18,91 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Ein Werkzeug je Datei, und der teuerste Teil war der Helferblock davor
+
+Nach der Datenschicht (`db.ts`) und den Editionen (`editions.ts`) waren die
+Handler dran, und die eigentliche Arbeit lag nicht bei ihnen. Die fünf benannten
+Handler messen 747 Zeilen im Abschnitt, greifen aber auf **19 Bezeichner** aus
+`server.ts` zu. Zöge man nur sie heraus, importierte jede Handler-Datei aus
+`server.ts`, das sie seinerseits importiert: genau der Zirkelbezug, den der
+ganze Umbau vermeidet. Die 19 lagen in vier Banner-Abschnitten mit zusammen 622
+Zeilen, und die mussten zuerst nach `werkzeug-helfer.ts`.
+
+**Zwei Zuschnittsfragen, beide gemessen statt gewählt.** *Eine Helferdatei oder
+zwei?* Die 622 Zeilen zerfallen sichtbar in zwei Themen, allgemeines Werkzeug
+und biblische Auflösung, und zwei Dateien wären ehrlicher benannt. Die Messung
+sprach dagegen: Von den sechs werkzeugseitigen Aufrufern (fünf Handler plus das
+inline liegende `bible_lookup`) käme **keiner** mit nur einer der beiden Hälften
+aus. Zwei Dateien kosteten elf Importanweisungen statt sechs und ersparten
+keinem Aufrufer eine einzige. Dazu hängen die Hälften selbst aneinander:
+`bookNotFound` ruft `errorResult`, `resolveBook` ruft `escapeLike`,
+`lookupPayload` ruft `stripHtml` und `bracketHints`. Also eine Datei, gegliedert
+über die vier erhaltenen Banner. *Flach oder unter `handlers/`?* Kein Handler
+löst irgendetwas relativ auf (`import.meta.path` steht allein in `db-path.ts`
+und unter `scripts/`), die Pfadauflösung sprach also nicht dagegen; flach
+stünden 15 statt 8 `.ts`-Dateien in der Wurzel. Also `handlers/`.
+
+**Der Befund, den die Sitzung wirklich gebracht hat, betrifft den Dispatch.**
+`bible_lookup` lag als Rest-Fall inline in `handleCallTool`, hinter
+`if (toolName !== "bible_lookup") throw`. Nimmt man den Rumpf heraus, sieht
+diese Negation sinnlos aus, und die naheliegende Aufräumung wäre ein `switch`
+mit `default: throw` oder eine Handler-Tabelle. Beides zöge den Wurf dorthin,
+wo er logisch hingehört: an den Anfang. Gemessen liegt er heute aber **hinter**
+der `dataMissing`-Sperre, und das ist verhaltensrelevant: Ein unbekannter
+Werkzeugname bekommt auf einer Instanz ohne Datenbank den Setup-Hinweis mit
+`isError: true`, nicht `-32602`. Nichts deckt das ab. `tests/golden/uebergreifend.ts`
+fährt den unbekannten Namen **mit** Datenbank, `tests/golden/ohne-datenbank.ts`
+ruft ohne Datenbank nur `bible_lookup`, und der CI-Guard greppt allein auf
+`bible_lookup`. Die Kette ist deshalb als Negation stehen geblieben, und die
+Kombination wurde vorher und nachher von Hand gemessen; die Antwort ist
+zeichengleich.
+
+**Ein Fehlereinbau, der die geprüfte Zeile nicht erreicht, sieht aus wie eine
+bestandene Prüfung.** Von sieben Einbauten blieb einer im ersten Anlauf grün:
+der Vorgabewert von `limit` in `handleConcordance`, von 50 auf 1. Das Bündel
+übergibt `limit` aber ausdrücklich mit 200, der Vorgabewert wird also nie
+erreicht. An der Klammer wiederholt (Obergrenze 200 auf 1) wurde derselbe
+Gedanke rot. Die Lehre ist nicht „die Absicherung fehlte", sondern: Vor dem
+Schluss auf eine Lücke ist zu prüfen, ob der Einbau überhaupt auf dem Pfad
+liegt, den der Test nimmt.
+
+**Und eine Prüfung ist neu dazugekommen:** `bun run build:mcpb` samt einem
+stdio-Aufruf gegen das entstandene Binary. `bun run server.ts` und
+`bun build --compile` sind zwei verschiedene Auflöser, und dieser Umbau
+verschob erstmals Module unter die Wurzel; auf CT 104 landet genau dieses
+Binary. Es lief.
+
+Ergebnis: `server.ts` von 3857 auf **2361** Zeilen und von 17 auf 10 Banner
+(2360 nach dem Nachgang unten),
+erwartet waren 2355. Vier Läufe unverändert (475 / 47 / 593), vier
+CI-Startgarantien von Hand, sieben Einbauten rot im vorab benannten Bündel.
+
+**Nachgang am selben Tag, und er ist der eigentliche Ertrag.** Zwei Befunde aus
+dem Umbau wurden abgeräumt: ein toter `type`-Import in `server.ts`, den
+`noUnusedLocals: false` dauerhaft verdeckt hätte, und die Meldung
+„No verses found", die als einzige von Hand zusammengesetzt war statt über
+`errorResult`. Die Begründung dafür („sie trägt einen eigenen Rückgabetyp")
+stammte aus dem Gegenlesen, war **nicht gemessen und falsch**: Beide Formen sind
+gestaltgleich, typgleich und liefern byteweise dieselbe Antwort.
+
+Die Probe auf die geänderte Zeile blieb dann **grün**, und das war der Fund. Der
+Einbau griff und der Pfad ist erreichbar; es fehlte die Absicherung. Die
+Zeichenkette kam in keinem der zwölf Bündel vor, und kein Aufruf erreichte den
+Zweig, in dem die Versnutzlast `null` liefert: Jeder nutzte eine gültige Stelle
+oder scheiterte schon an einer Wertprüfung davor (`chapter: 999` an
+`MAX_CHAPTER`, `verses: "1-500"` an der Wertgrenze). Dorthin führt nur eine
+**gültig aussehende, aber nicht existierende** Angabe. `Ps 117,5` ist eine davon,
+das Kapitel hat zwei Verse. Zwei Zusicherungen dazu, Messlatte von 475 auf 478,
+und derselbe Einbau ist jetzt rot.
+
+Das ist der dritte Fall desselben Musters nach den beiden aus Sitzung A, und er
+kam nur ans Licht, weil eine **Änderung** verifiziert wurde und nicht bloß ein
+Umzug. Ein Umzug lässt sich gegen die Vorher-Antwort messen; eine Änderung nicht,
+dort ist der Fehlereinbau die einzige Auskunft darüber, ob überhaupt jemand
+hinsieht.
+
+---
+
 ## 2026-08-05: Auch der geteilte Zustand lässt sich herausziehen, wenn er zirkelfrei ist und nach dem Start nicht mehr geschrieben wird
 
 Nach den drei zustandsfreien Modulen war die Datenschicht an der Reihe: die
@@ -565,7 +650,7 @@ Der Konstruktor setzt `super("MCP error <code>: " + message)`
 (`types.js:2031`), und der empfangende 1.x-Client stellt beim Wiederaufbau ein
 zweites Präfix voran (`protocol.js:459`). Diese Meldungen sind aber zeichengleich
 mit denen der Werkzeuge, absichtlich und getestet. Deshalb `rpcError()` in
-`server.ts`, nicht `McpError`. Die exakten Meldungsvergleiche im Golden-Test
+`werkzeug-helfer.ts`, nicht `McpError`. Die exakten Meldungsvergleiche im Golden-Test
 sind der Schutz davor, dass jemand später doch umstellt.
 
 ### Was `-32603` behält
