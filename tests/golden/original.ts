@@ -12,6 +12,7 @@ import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
+  BUCH_ZU_LANG,
   KAPITEL_AUSSERHALB,
   VERSE_AUSSERHALB,
 } from "../lib/meldungen.ts";
@@ -23,6 +24,21 @@ export const originalBuendel = buendel({
     origVerse999: ["bible_original", { book: "Ps", chapter: 23, verse: 999 }],
     origChap999: ["bible_original", { book: "Ps", chapter: 999, verse: 1 }],
     origBuchZahl: ["bible_original", { book: 123, chapter: 1, verse: 1 }],
+    // Die drei Buchprüfungen liegen seit dem 06.08.2026 in `requireBookName`.
+    // Gedeckt war davon hier nur der Typ: Ein Einbau, der die Länge aufhob oder
+    // die werkzeugeigene „is required"-Meldung durch die eines anderen Werkzeugs
+    // ersetzte, blieb in diesem Bündel grün (beides gemessen).
+    origBuchFehlt: ["bible_original", { chapter: 1, verse: 1 }],
+    origBuchZuLang: ["bible_original", { book: "J".repeat(60), chapter: 1, verse: 1 }],
+    // Ein Nicht-String, dessen String()-Form die Längengrenze überschreitet
+    // (26 Zahlen = 71 Zeichen). Er hält fest, dass der Typ vor der Länge geprüft
+    // wird: Vertauscht meldet der Helfer hier die Länge statt des Typs, nennt
+    // also die falsche Bedingung, und ohne diesen Fall blieb der Einbau in allen
+    // vier Bündeln grün (gemessen 06.08.2026).
+    origBuchListe: [
+      "bible_original",
+      { book: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26], chapter: 1, verse: 1 },
+    ],
     ps231: ["bible_original", { book: "Psalm", chapter: 23, verse: 1 }],
     // Eine Edition ohne Strong-Nummern: das Feld fehlt dann, und das ist richtig.
     origSblgnt: ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }],
@@ -32,12 +48,35 @@ export const originalBuendel = buendel({
     origNtVorgabe: ["bible_original", { book: "1Joh", chapter: 5, verse: 7 }],
   },
   pruefe({ res }) {
-    const { origVerse999, origChap999, origBuchZahl, ps231, origSblgnt, origNtVorgabe } = res;
+    const {
+      origVerse999,
+      origChap999,
+      origBuchZahl,
+      origBuchFehlt,
+      origBuchZuLang,
+      origBuchListe,
+      ps231,
+      origSblgnt,
+      origNtVorgabe,
+    } = res;
 
     eq("bible_original verse: Text", origVerse999.text, VERSE_AUSSERHALB);
     eq("bible_original verse: isError", origVerse999.isError, true);
     eq("bible_original chapter", origChap999.text, KAPITEL_AUSSERHALB);
     eq("bible_original book=123: nennt den Typ", origBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
+    // Zeichengleich, nicht als Teilstring: Die Beispiele gehören zum Werkzeug,
+    // und genau sie sind der Grund, warum die Meldung nicht in den Helfer wandert.
+    eq(
+      "bible_original book fehlt: eigene Meldung samt eigenen Beispielen",
+      origBuchFehlt.text,
+      "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
+    );
+    eq("bible_original: langer Buchname", origBuchZuLang.text, BUCH_ZU_LANG);
+    eq(
+      "bible_original: langer Nicht-String nennt den Typ, nicht die Länge",
+      origBuchListe.text,
+      BUCH_KEINE_ZEICHENKETTE
+    );
 
     const w = (ps231.json?.woerter ?? []) as Array<Json>;
     eq("Ps 23,1: Wortzahl", w.length, 6);

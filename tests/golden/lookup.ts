@@ -14,6 +14,7 @@ import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
+  BUCH_ZU_LANG,
   KAPITEL_AUSSERHALB,
   VERSLISTE_ZU_LANG,
 } from "../lib/meldungen.ts";
@@ -59,6 +60,10 @@ export const lookupBuendel = buendel({
     // einem fehlenden Feld.
     buchZahl: ["bible_lookup", { book: 123, chapter: 3 }],
     buchFehlt: ["bible_lookup", { chapter: 3 }],
+    // Die Länge war hier ungedeckt, obwohl sie seit dem 06.08.2026 mit den beiden
+    // anderen Buchprüfungen in `requireBookName` liegt: Ein Einbau, der
+    // MAX_BOOK_LENGTH aufhob, blieb in diesem Bündel grün (gemessen).
+    buchZuLang: ["bible_lookup", { book: "J".repeat(60), chapter: 3 }],
     // Fußnoten: der Apparat einer Ausgabe. Vier Fälle, denn `fussnoten` ist
     // bedingt und die Bedingung hat mehr als eine Richtung: mit Note, ohne Note,
     // drei Noten am selben Vers, und dieselbe Stelle in einer Ausgabe ohne
@@ -74,7 +79,7 @@ export const lookupBuendel = buendel({
     const {
       lookupChap999, hesekiel, sirach, joh316, mengeVers, mengeOhneKlammer,
       versesTooMany, versesSpanTooHigh, versesSpanWithComma, versesTooLong,
-      versesNotAString, versesMaxValid, keinVers, buchZahl, buchFehlt,
+      versesNotAString, versesMaxValid, keinVers, buchZahl, buchFehlt, buchZuLang,
       noteEine, noteKeine, noteDrei, noteMehrvers,
     } = res;
 
@@ -88,7 +93,15 @@ export const lookupBuendel = buendel({
     eq("Ps 117,5: isError", keinVers.isError, true);
 
     eq("book=123: nennt den Typ", buchZahl.text, BUCH_KEINE_ZEICHENKETTE);
-    has("book fehlt: nennt die Anwesenheit", buchFehlt.text, "'book' is required");
+    // Zeichengleich statt als Teilstring: Die Beispiele in der Klammer sind der
+    // Grund, warum diese eine Meldung nicht in `requireBookName` wandert, und ein
+    // Teilstringtest deckt genau sie nicht ab.
+    eq(
+      "book fehlt: nennt die Anwesenheit samt eigenen Beispielen",
+      buchFehlt.text,
+      "Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer')."
+    );
+    eq("book zu lang: nennt die Länge", buchZuLang.text, BUCH_ZU_LANG);
 
     has("Hesekiel-Zusatz: Vorschlag", hesekiel.text, 'Am nächsten kommt "Hesekiel"');
     has("Hesekiel-Zusatz: Kanonumfang", hesekiel.text, "66 Bücher");

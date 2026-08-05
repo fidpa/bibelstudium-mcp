@@ -12,17 +12,15 @@ import { stmtVerse, stmtVerseRange, stmtXrefs } from "../db.ts";
 import { DATASET_QUELLEN, quellen, translationQuelle } from "../editions.ts";
 import { gekuerztFeld, verseBudget, verseMaxHinweis } from "../verse-budget.ts";
 import {
-  MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
-  bookNotAString,
   bookNotFound,
-  bookTooLong,
   bracketHints,
   chapterOutOfRange,
   errorResult,
   getBookDisplayName,
   jsonResult,
+  requireBookName,
   requireTranslation,
   resolveBook,
   stripHtml,
@@ -53,16 +51,15 @@ export function handleCrossrefs(args: {
   }
   const translation = resolved.code;
 
-  const { book } = args;
-  if (book === undefined || book === null || book === "") {
-    return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  const geprueft = requireBookName(
+    args.book,
+    "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
+  );
+  if ("error" in geprueft) {
+    return errorResult(geprueft.error);
   }
-  if (typeof book !== "string") {
-    return errorResult(bookNotAString);
-  }
-  if (book.length > MAX_BOOK_LENGTH) {
-    return errorResult(bookTooLong);
-  }
+  const { book } = geprueft;
+
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
     return errorResult(chapterOutOfRange);

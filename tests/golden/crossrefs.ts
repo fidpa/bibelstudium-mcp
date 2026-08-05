@@ -26,9 +26,13 @@ export const crossrefsBuendel = buendel({
     xrefLongBook: ["bible_crossrefs", { book: OVERLONG_NAME, chapter: 1, verse: 1 }],
     // Ein falscher Typ ist wieder etwas anderes als ein fehlendes Feld
     xrefBuchZahl: ["bible_crossrefs", { book: 123, chapter: 1, verse: 1 }],
+    // Die werkzeugeigene „is required"-Meldung war hier ungedeckt: Sie ist die
+    // einzige Angabe, die `requireBookName` seit dem 06.08.2026 als Parameter
+    // bekommt, und ein Einbau, der die eines anderen Werkzeugs setzte, blieb grün.
+    xrefBuchFehlt: ["bible_crossrefs", { chapter: 1, verse: 1 }],
   },
   pruefe({ res }) {
-    const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl } = res;
+    const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
 
     eq("bible_crossrefs verse: Text", xrefVerse999.text, VERSE_AUSSERHALB);
     eq("bible_crossrefs verse: isError", xrefVerse999.isError, true);
@@ -36,6 +40,11 @@ export const crossrefsBuendel = buendel({
     // gesetzt war, nur zu lang (26.07.2026).
     eq("bible_crossrefs: langer Buchname", xrefLongBook.text, BUCH_ZU_LANG);
     eq("bible_crossrefs book=123: nennt den Typ", xrefBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
+    eq(
+      "bible_crossrefs book fehlt: eigene Meldung samt eigenen Beispielen",
+      xrefBuchFehlt.text,
+      "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
+    );
 
     const v = (xrefJoh146.json?.verweise ?? []) as Array<Json>;
     eq("Joh 14,6: fünf Verweise", v.length, 5);

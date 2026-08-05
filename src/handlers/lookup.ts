@@ -19,18 +19,16 @@
  */
 
 import {
-  MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
   MAX_VERSES_LENGTH,
   MAX_VERSE_PARTS,
-  bookNotAString,
   bookNotFound,
-  bookTooLong,
   chapterOutOfRange,
   errorResult,
   jsonResult,
   lookupPayload,
+  requireBookName,
   requireTranslation,
   resolveBook,
   toInt,
@@ -48,19 +46,19 @@ export function handleLookup(rawArgs: unknown) {
     translation?: unknown;
   };
 
-  const { book, translation } = args;
+  const { translation } = args;
 
-  // Pflichteingaben prüfen. Anwesenheit und Länge sind getrennte Prüfungen, damit
-  // jede Meldung die tatsächlich verletzte Bedingung nennt.
-  if (book === undefined || book === null || book === "") {
-    return errorResult("Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer').");
+  // Pflichteingaben prüfen. Anwesenheit, Typ und Länge sind getrennte Prüfungen,
+  // damit jede Meldung die tatsächlich verletzte Bedingung nennt; sie liegen in
+  // `requireBookName`, weil vier Werkzeuge sie zeichengleich brauchen.
+  const geprueft = requireBookName(
+    args.book,
+    "Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer')."
+  );
+  if ("error" in geprueft) {
+    return errorResult(geprueft.error);
   }
-  if (typeof book !== "string") {
-    return errorResult(bookNotAString);
-  }
-  if (book.length > MAX_BOOK_LENGTH) {
-    return errorResult(bookTooLong);
-  }
+  const { book } = geprueft;
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {

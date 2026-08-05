@@ -342,6 +342,54 @@ export const versesTooLong = `Error: 'verses' must be at most ${MAX_VERSES_LENGT
 export const versesTooManyParts = `Error: 'verses' must list at most ${MAX_VERSE_PARTS} comma-separated segments`;
 export const versesOutOfBounds = `Error: every verse number in 'verses' must be between 1 and ${MAX_VERSE}`;
 
+/**
+ * Prüft ein `book`-Argument in drei Schritten und gibt den geprüften Namen
+ * zurück, oder eine Meldung, die der Aufrufer zurückgibt. Gestalt wie
+ * `requireTranslation`.
+ *
+ * Diese drei Bedingungen liegen hier, weil ihre Faltung der einzige Fehler
+ * dieses Repositories ist, der zweimal auftrat und beide Male mehrfach
+ * geschrieben werden musste: Am 26.07.2026 wurde die Länge aus
+ * `!book || typeof book !== "string" || book.length > 50` gezogen, in fünf
+ * Werkzeugen, und die Typprüfung blieb gefaltet stehen; am 05.08.2026 wurde sie
+ * nachgezogen, wieder in fünf Werkzeugen, zehn Tage später. Vier der fünf
+ * Änderungen waren beide Male zeichengleich (gemessen an den Commits 44d282c
+ * und 7bb3872). Ab hier ist es eine Änderung statt vier.
+ *
+ * Die Reihenfolge ist Teil der Zusage und keine Bequemlichkeit: Anwesenheit,
+ * dann Typ, dann Länge, damit jede Meldung die tatsächlich verletzte Bedingung
+ * nennt. Die Anwesenheitsprüfung fragt ausdrücklich auf `undefined`/`null`/`""`
+ * ab und nicht auf `!book`: `0` und `false` sind gesetzte Werte vom falschen
+ * Typ, und sie sollen das auch hören.
+ *
+ * `bookRequiredMessage` bleibt Sache des Werkzeugs, denn sie trägt dessen eigene
+ * Beispiele: `bible_compare` nennt nur neutestamentliche Bücher, weil es
+ * alttestamentliche ohnehin abweist. Eine gemeinsame Konstante böte dort ein
+ * Beispiel an, das das Werkzeug zurückweist.
+ *
+ * Nicht mit aufgenommen sind Kapitel- und Versprüfung, obwohl sie im selben
+ * Block stehen: Sie sind je eine Bedingung mit je einer Meldung, ihre Grenze und
+ * ihr Text liegen seit dem 26.07.2026 in gemeinsamen Konstanten, und der
+ * Ressourcen-Pfad hält sie aus demselben Grund einzeln (siehe
+ * `requireBookLength` und `segmentChapter` in `server.ts`, deren Kopfkommentar
+ * begründet, warum dort nichts zusammengelegt wird).
+ */
+export function requireBookName(
+  book: unknown,
+  bookRequiredMessage: string
+): { book: string } | { error: string } {
+  if (book === undefined || book === null || book === "") {
+    return { error: bookRequiredMessage };
+  }
+  if (typeof book !== "string") {
+    return { error: bookNotAString };
+  }
+  if (book.length > MAX_BOOK_LENGTH) {
+    return { error: bookTooLong };
+  }
+  return { book };
+}
+
 // --- Verse holen, Stellenangaben formen, Versnutzlast bauen ----------------
 /**
  * Liest eine Versangabe wie "4", "16-17", "1,3,5", "1-3,7" und liefert die

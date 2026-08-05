@@ -6,6 +6,29 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.7] - 2026-08-06
+
+### Geändert
+
+- **Die drei Buchprüfungen liegen in einem Helfer.** `requireBookName` in
+  `werkzeug-helfer.ts` prüft Anwesenheit, Typ und Länge des Arguments `book` und
+  bedient damit `bible_lookup`, `bible_original`, `bible_compare` und
+  `bible_crossrefs`. Die Reihenfolge ist dadurch an einer Stelle festgelegt statt
+  viermal nachgebaut; die Meldung „is required" bleibt beim Werkzeug, weil sie
+  dessen eigene Beispiele trägt. **Am Verhalten ändert sich nichts:** alle
+  Fehlermeldungen sind zeichengleich zur Vorfassung, über stdio geprüft.
+
+- **`docs/ENTSCHEIDUNGEN.md` ist nach Thema gegliedert** statt nach Datum, mit
+  Inhaltsverzeichnis. Die Begründungen zum Zuschnitt der Module sind
+  herausgenommen: Sie betreffen die Anordnung des Codes, nicht sein Verhalten.
+
+### Ergänzt
+
+- Sechzehn Zusicherungen zu den Buchprüfungen; die Messlatte der Golden-Tests
+  steigt von 494 auf 510. Sie schließen drei gemessene Lücken: der zu lange
+  Buchname war nur in einem Werkzeug geprüft, die „is required"-Meldung nur in
+  einem und dort nur als Teilstring, ein falsy Nicht-String in keinem.
+
 ## [0.6.6] - 2026-08-05
 
 ### Geändert

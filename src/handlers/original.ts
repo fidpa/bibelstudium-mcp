@@ -9,16 +9,14 @@
  */
 
 import {
-  MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
-  bookNotAString,
   bookNotFound,
-  bookTooLong,
   chapterOutOfRange,
   errorResult,
   jsonResult,
   originalPayload,
+  requireBookName,
   resolveBook,
   toInt,
   verseOutOfRange,
@@ -34,17 +32,15 @@ export function handleOriginal(args: {
   verse?: unknown;
   texttyp?: unknown;
 }) {
-  const { book } = args;
+  const geprueft = requireBookName(
+    args.book,
+    "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
+  );
+  if ("error" in geprueft) {
+    return errorResult(geprueft.error);
+  }
+  const { book } = geprueft;
 
-  if (book === undefined || book === null || book === "") {
-    return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
-  }
-  if (typeof book !== "string") {
-    return errorResult(bookNotAString);
-  }
-  if (book.length > MAX_BOOK_LENGTH) {
-    return errorResult(bookTooLong);
-  }
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
     return errorResult(chapterOutOfRange);

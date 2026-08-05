@@ -12,7 +12,7 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss } from "../lib/zusicherungen.ts";
-import { BUCH_KEINE_ZEICHENKETTE, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
+import { BUCH_KEINE_ZEICHENKETTE, BUCH_ZU_LANG, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
 
 export const compareBuendel = buendel({
   name: "compare",
@@ -23,13 +23,31 @@ export const compareBuendel = buendel({
     // Keine TAGNT-Zeile: neun NT-Verse haben keine, `bezeugung` fehlt dann zu Recht.
     cmpOhneBezeugung: ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }],
     cmpBuchZahl: ["bible_compare", { book: 123, chapter: 1, verse: 1 }],
+    // Seit dem 06.08.2026 liegen die drei Buchprüfungen in `requireBookName`.
+    // Die eigene „is required"-Meldung dieses Werkzeugs nennt als einzige nur
+    // neutestamentliche Beispiele, weil es alttestamentliche Bücher ohnehin
+    // abweist; ungedeckt war sie hier bis dahin trotzdem.
+    cmpBuchFehlt: ["bible_compare", { chapter: 1, verse: 1 }],
+    cmpBuchZuLang: ["bible_compare", { book: "J".repeat(60), chapter: 1, verse: 1 }],
+    // `0` ist ein gesetzter Wert vom falschen Typ, kein fehlendes Feld. Kein
+    // Test fuhr bis dahin einen falsy Nicht-String, und `!book` hätte hier still
+    // die andere Meldung geliefert (gemessen 06.08.2026).
+    cmpBuchNull: ["bible_compare", { book: 0, chapter: 1, verse: 1 }],
   },
   pruefe({ res }) {
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpBuchZahl } = res;
+    const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull } = res;
 
     eq("bible_compare verse: Text", cmpVerse999.text, VERSE_AUSSERHALB);
     eq("bible_compare verse: isError", cmpVerse999.isError, true);
     eq("bible_compare book=123: nennt den Typ", cmpBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
+    eq("bible_compare book=0: nennt den Typ, nicht die Anwesenheit", cmpBuchNull.text, BUCH_KEINE_ZEICHENKETTE);
+    eq(
+      "bible_compare book fehlt: eigene Meldung, nur NT-Beispiele",
+      cmpBuchFehlt.text,
+      "Error: 'book' is required (e.g. 'Römer', '1Joh')."
+    );
+    eq("bible_compare: langer Buchname", cmpBuchZuLang.text, BUCH_ZU_LANG);
 
     const eds = (comma.json?.editionen ?? []) as Array<{ texttyp: string; text: string }>;
     const byType = new Map(eds.map((e) => [e.texttyp, e.text]));

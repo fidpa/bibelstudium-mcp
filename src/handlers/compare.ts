@@ -20,16 +20,14 @@ import {
 } from "../editions.ts";
 import { crossCheckVariant, diffSegments } from "../greek-diff.ts";
 import {
-  MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
-  bookNotAString,
   bookNotFound,
-  bookTooLong,
   chapterOutOfRange,
   errorResult,
   getBookDisplayName,
   jsonResult,
+  requireBookName,
   resolveBook,
   toInt,
   verseOutOfRange,
@@ -47,16 +45,12 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
     );
   }
 
-  const { book } = args;
-  if (book === undefined || book === null || book === "") {
-    return errorResult("Error: 'book' is required (e.g. 'Römer', '1Joh').");
+  const geprueft = requireBookName(args.book, "Error: 'book' is required (e.g. 'Römer', '1Joh').");
+  if ("error" in geprueft) {
+    return errorResult(geprueft.error);
   }
-  if (typeof book !== "string") {
-    return errorResult(bookNotAString);
-  }
-  if (book.length > MAX_BOOK_LENGTH) {
-    return errorResult(bookTooLong);
-  }
+  const { book } = geprueft;
+
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
     return errorResult(chapterOutOfRange);
