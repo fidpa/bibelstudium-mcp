@@ -6,6 +6,29 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.2] - 2026-08-05
+
+### Geändert
+
+- **Die Datenschicht hat `server.ts` verlassen.** Datenbankverbindung,
+  Unversehrtheitsprüfung und alle 20 vorbereiteten Statements stehen jetzt in
+  `db.ts`, die vier Grundtext-Editionen samt Lizenzangaben und
+  Texttyp-Auflösung in `editions.ts`. Die Datei schrumpft von 4417 auf 3857
+  Zeilen, von 26 auf 17 Abschnitte. Kein Verhalten ändert sich, keine Ausgabe
+  und keine Meldung; Startzeit unverändert bei 0,27 Sekunden.
+
+  Belegt ist das nicht über die gleichbleibende Zahl der Zusicherungen, sondern
+  über vier eingebaute Fehler. Drei wurden im vorab benannten Bündel rot. Der
+  vierte blieb grün und hat eine Lücke gefunden, die älter ist als der Umbau:
+  Die Voreinstellung von `bible_original` auf den byzantinischen Text ist von
+  keiner Zusicherung gedeckt, ebenso wenig der Inhalt der Trefferliste von
+  `bible_search`. Beides ist festgehalten, nicht geschlossen.
+
+### Geändert (Dokumentation)
+
+- Die Architekturtabelle im README führt `db.ts` und `editions.ts`; die
+  Herleitung des Schnitts steht in `docs/ENTSCHEIDUNGEN.md`.
+
 ## [0.6.1] - 2026-08-05
 
 ### Geändert

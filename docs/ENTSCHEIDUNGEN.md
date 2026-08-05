@@ -18,6 +18,73 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Auch der geteilte Zustand lässt sich herausziehen, wenn er zirkelfrei ist und nach dem Start nicht mehr geschrieben wird
+
+Nach den drei zustandsfreien Modulen war die Datenschicht an der Reihe: die
+Datenbankverbindung, ihre Unversehrtheitsprüfung und alle 20 vorbereiteten
+Statements, zusammen 410 Zeilen am Anfang von `server.ts`. Sie ist der geteilte
+Zustand des Servers, und genau das galt lange als der Grund, sie nicht
+anzufassen.
+
+**Warum es trotzdem geht.** Zwei Eigenschaften, beide gemessen, nicht die
+Zustandsfreiheit. Erstens ist der Block zirkelfrei: Er benutzt von der Logik des
+Servers nichts, die Rückwärtssuche findet vier Treffer, alle in Kommentaren.
+Zweitens wird er nach dem Start nicht mehr geschrieben; unterhalb des
+Initialisierungsblocks gibt es keine einzige Zuweisung an `db` oder
+`dataMissing`. `handleSetup` fasst die Verbindung nicht an, es verlangt einen
+Neustart. Deshalb genügt jedem Aufrufer ein gewöhnlicher Import, und der
+Initialisierungsblock ist wörtlich unverändert umgezogen, `let` und try-catch
+eingeschlossen: Die kleinste mögliche Änderung beantwortet die naheliegende
+Rückfrage („erstarrt beim Verschieben etwas?") mit „es hat sich nichts
+geändert".
+
+**`EDITION_META` ging im selben Zug, aber in eine eigene Datei.** Der Abschnitt
+enthält kein `db`, kein `stmt*`, kein `has*`; in die Datenschicht gehörte er
+also nicht. Er blieb aber auch nicht: Zwei der fünf Handler, die als Nächstes
+ausziehen sollen, brauchen ihn, und ein Handler in eigener Datei müsste ihn dann
+aus `server.ts` zurückimportieren. Genau das soll der Umbau vermeiden.
+`PACKAGE_VERSION` ist umgekehrt zurückgeblieben, obwohl es formal im gleichen
+Bereich stand: Es kommt aus `package.json` und nicht aus der Datenbank.
+
+**Was der Schnitt gekostet hat: nichts, und zwei Läufe haben es gezeigt, die es
+sonst nicht gäbe.** `server.ts` ging von 4417 auf 3857 Zeilen, von 26 auf 17
+Abschnitte. Vier Läufe unverändert (466 / 47 / 593), Startzeit unverändert
+(0,267 bis 0,276 s gegen 0,267 bis 0,281 s vorher, je drei Läufe). Die
+befürchtete Typverengung über Modulgrenzen trat nicht ein: An allen sieben
+Stellen, an denen eine `null`-Prüfung auf einem Statement über nachfolgende
+Funktionsaufrufe hinweg tragen muss, bleibt `tsc` grün, auch wenn die Bindung
+jetzt aus einem Import kommt.
+
+**Was die Tests nicht sehen, und diesmal ist es das Wichtigste.** Vier Fehler
+wurden eingebaut, drei wurden im vorab benannten Bündel rot. Der vierte blieb
+grün, und er war kein Randfall: `resolveEdition` von `byzantine` auf `tr`
+umgestellt kippt die Voreinstellung von `bible_original` von einer Textform auf
+eine andere, nachgewiesen an einem frischen Aufruf (1Joh 5,7 antwortete mit
+`texttyp: "tr"` samt Comma Johanneum). Keine der 466 Zusicherungen bemerkt das:
+Alle Editionsprüfungen nennen den Texttyp ausdrücklich, keine prüft, was ohne
+Angabe herauskommt. Ersetzt wurde der Einbau durch eine Verfälschung in
+`EDITION_ALIASES`, die in `ressourcen` rot wird.
+
+Der erste Einbau musste aus demselben Grund umgestellt werden, bevor er lief.
+Geplant war eine verfälschte Bedingung in `stmtSearchBook`; gemessen kommt aber
+weder `treffer` noch `vorkommen_gesamt` aus diesem Statement, sondern aus
+`stmtSearchCountBook` und `stmtSearchAllBook`. Über die Trefferliste selbst
+sichert `tests/golden/search.ts` inhaltlich nichts zu. Beide Lücken sind älter
+als der Umbau, und beide wären ohne den Fehlereinbau unentdeckt geblieben. Sie
+sind hier festgehalten und nicht geschlossen: Das Schließen ist eine eigene
+Entscheidung über die Testabdeckung, kein Teil eines Umbaus, der nichts
+verändern soll.
+
+**Die drei Startgarantien der CI liefen zum ersten Mal von Hand.** `lint.yml`
+prüft drei Zustände, die kein lokaler Test berührt: keine Datenbank, leere
+Datei, HTTP-Modus ohne Daten. Alle drei greifen ausschließlich auf stderr des
+bewegten Blocks zu. Sie sind vor der Meldung „grün" lokal nachgestellt worden,
+über `BIBLE_DB_PATH` auf Attrappen statt an der echten Datenbank. Wer diesen
+Block künftig anfasst, fährt sie mit; die vier üblichen Läufe sehen davon
+nichts.
+
+---
+
 ## 2026-08-05: Erst die Absicherung je Werkzeug, dann der Schnitt, und nur beim Zustandsfreien
 
 `server.ts` war auf 4974 Zeilen in 31 Abschnitten gewachsen. Der Umbau ist in

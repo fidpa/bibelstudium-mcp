@@ -95,11 +95,13 @@ Zeilen (gemessen 05.08.2026; am 03.08.2026, nach der Umstellung auf Deutsch,
 waren es 1065 von 4424 Zeilen und 20 solcher Blöcke, davor 935 von 4293 und
 15).
 
-Am 05.08.2026 sind drei zustandsfreie Blöcke in eigene Dateien gezogen
-(`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`); die Kommentare gingen
-mit. `server.ts` hat seither 4417 Zeilen, die drei Module zusammen 605, und der
-Anteil bleibt in derselben Größenordnung: gemessen 28 Prozent in `server.ts`,
-17 bis 32 Prozent in den Modulen. Die Zahlen der Reihe darüber sind nicht
+Am 05.08.2026 sind fünf Blöcke in eigene Dateien gezogen: erst drei
+zustandsfreie (`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`), dann die
+Datenschicht (`db.ts`) und die Editionen (`editions.ts`). Die Kommentare gingen
+jeweils mit. `server.ts` hat seither 3857 Zeilen, die fünf Module zusammen 1274,
+und der Anteil bleibt in derselben Größenordnung: gemessen 28 Prozent in
+`server.ts`, 17 bis 36 Prozent in den Modulen (gezählt über Zeilen, die mit
+`//`, `/*` oder `*` beginnen). Die Zahlen der Reihe darüber sind nicht
 fortgeschrieben, sie belegen den damaligen Stand einer einzigen Datei.
 
 Das ist Absicht. Ein großer Teil der
@@ -209,10 +211,11 @@ Reihenfolge der Handler weiter unten.
 
 Die Regel gilt für `server.ts`, nicht für jede Datei. Ein Laufzeitmodul trägt
 stattdessen einen JSDoc-Kopf, der sagt, was drin ist und warum es dort steht
-(`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`, `translations.ts`).
-Banner innerhalb eines Moduls sind kein Fehler, wenn sie wirklich gliedern:
-`morphology.ts` führt drei, eines je Kodierschema, weil die drei einander
-ähnlich genug sind, um verwechselt zu werden.
+(`db.ts`, `editions.ts`, `morphology.ts`, `verse-budget.ts`, `greek-diff.ts`,
+`translations.ts`). Banner innerhalb eines Moduls sind kein Fehler, wenn sie
+wirklich gliedern: `morphology.ts` führt drei, eines je Kodierschema, weil die
+drei einander ähnlich genug sind, um verwechselt zu werden, und `db.ts` acht,
+eines je Tabelle, weil eine Abfrage über ihre Tabelle gesucht wird.
 
 ### K7. Ein Kommentar, der nicht mehr stimmt, ist ein Fehler
 

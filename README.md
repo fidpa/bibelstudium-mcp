@@ -267,7 +267,9 @@ Die Variantennotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und d
 
 | Datei | Aufgabe |
 |-------|---------|
-| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, vier Ressourcen und drei URI-Vorlagen, Editions-/Testament-Routing |
+| `server.ts` | MCP-Server: sieben Werkzeuge (plus `bible_setup`), drei Prompts, vier Ressourcen und drei URI-Vorlagen, Testament-Routing |
+| `db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
+| `editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
 | `translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
 | `morphology.ts` | Die drei Morphologie-Schemata: MorphGNT, Robinson, OSHB |
 | `verse-budget.ts` | Wie viele Verse eine Ausgabe je Antwort im Wortlaut trägt, und wie das Kürzen gemeldet wird |

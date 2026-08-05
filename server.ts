@@ -12,10 +12,10 @@
  * translations.ts), voreingestellt Luther 1912. Die Daten entstehen lokal über
  * die download-*.ts-Skripte.
  *
- * Aufbau der Datei: Setup, vorbereitete Statements (ein Abschnitt je Tabelle),
- * Editionen, die drei Morphologie-Dekoder, Helfer (erst generische, dann je
- * Werkzeug), Ausgabeschemata, Werkzeug-Registrierung, Prompts, Ressourcen,
- * Dispatch, Handler, Bootstrap.
+ * Aufbau der Datei: Helfer (erst generische, dann je Werkzeug),
+ * Ausgabeschemata, Werkzeug-Registrierung, Prompts, Ressourcen, bible_setup,
+ * Dispatch, Handler, Bootstrap. Die Datenbankverbindung samt allen
+ * vorbereiteten Statements steht in db.ts, die Editionen in editions.ts.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -36,9 +36,46 @@ import type {
   GetPromptRequest,
   ReadResourceRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { Database } from "bun:sqlite";
 import packageJson from "./package.json";
 import { DB_PATH } from "./db-path.ts";
+import {
+  HIT_OPEN,
+  HTTP_MODE,
+  OCCURRENCE_SCAN_LIMIT,
+  SETUP_CLI,
+  availableEditions,
+  availableTranslations,
+  dataFetchedAt,
+  dataMissing,
+  db,
+  hasFts,
+  hasStepCols,
+  hasStrongDefs,
+  hasTagnt,
+  hasVerseNotes,
+  hasXrefs,
+  originalEditions,
+  stmtAlias,
+  stmtBookByName,
+  stmtBookName,
+  stmtBooks,
+  stmtConcordLemma,
+  stmtConcordStrong,
+  stmtOriginal,
+  stmtSearch,
+  stmtSearchAll,
+  stmtSearchAllBook,
+  stmtSearchBook,
+  stmtSearchCount,
+  stmtSearchCountBook,
+  stmtStrongDef,
+  stmtTagnt,
+  stmtVerse,
+  stmtVerseNotes,
+  stmtVerseRange,
+  stmtVerses,
+  stmtXrefs,
+} from "./db.ts";
 import { decodeHebrew, decodeParse, decodeRobinson, posLabel } from "./morphology.ts";
 import {
   gekuerztFeld,
@@ -49,6 +86,15 @@ import {
 } from "./verse-budget.ts";
 import { crossCheckVariant, diffSegments } from "./greek-diff.ts";
 import {
+  DATASET_QUELLEN,
+  EDITION_META,
+  NT_EDITIONS,
+  NT_EDITION_ORDER,
+  quellen,
+  resolveEdition,
+  translationQuelle,
+} from "./editions.ts";
+import {
   DEFAULT_TRANSLATION,
   TRANSLATIONS,
   resolveTranslation,
@@ -57,612 +103,6 @@ import {
 
 /** Die eine Versionsangabe, aus der auch das MCPB-Manifest gebaut wird. */
 const PACKAGE_VERSION: string = packageJson.version;
-
-// --- Setup: Datenbankverbindung und Unversehrtheitsprüfung -----------------
-// DB_PATH kommt aus db-path.ts, das auch die Skripte des Datenaufbaus
-// importieren. Beide Seiten müssen dieselbe Datei meinen: bible_setup ruft jene
-// Skripte, und wichen sie voneinander ab, landete der Download dort, wo der
-// Server nie nachsieht.
-
-/**
- * Warum eine fehlende Datenbank den Prozess nicht mehr beendet.
- *
- * Wer das MCPB-Bundle installiert hat, hat kein Terminal dazwischen: Ein
- * Abbruch an dieser Stelle zeigte ihm „server disconnected" und sonst nichts.
- * Stattdessen startet der Server gegen eine leere Datenbank im Speicher, meldet
- * `dataMissing` und bietet bible_setup an, um die echte aufzubauen. Jedes
- * andere Werkzeug weist mit einem Verweis darauf ab (siehe handleCallTool).
- *
- * Das Schema im Speicher gibt es, damit die vorbereiteten Statements unten
- * übersetzt werden können; geschrieben wird nie hinein, und ein Neustart
- * ersetzt es, sobald der Download fertig ist. Deklariert sind nur die drei
- * Tabellen, die die Statements brauchen: Die optionalen werden über ihr
- * Vorhandensein erkannt, und ihr Fehlen ist ohnehin ein vorgesehener Zustand.
- */
-function emptyDatabase(): Database {
-  const mem = new Database(":memory:");
-  mem.exec("CREATE TABLE books (book_id INTEGER PRIMARY KEY, name TEXT NOT NULL, chapters INTEGER NOT NULL)");
-  mem.exec("CREATE TABLE aliases (alias TEXT PRIMARY KEY COLLATE NOCASE, book_id INTEGER NOT NULL)");
-  mem.exec(
-    "CREATE TABLE verses (translation TEXT NOT NULL, book_id INTEGER NOT NULL, " +
-      "chapter INTEGER NOT NULL, verse INTEGER NOT NULL, text TEXT NOT NULL, " +
-      "PRIMARY KEY (translation, book_id, chapter, verse))"
-  );
-  return mem;
-}
-
-/** Warum die echte Datenbank nicht taugt, oder null, wenn sie taugt. */
-function databaseProblem(candidate: Database): string | null {
-  const tables = new Set(
-    (candidate
-      .query("SELECT name FROM sqlite_master WHERE type='table'")
-      .all() as Array<{ name: string }>).map((r) => r.name)
-  );
-  const missing = ["books", "aliases", "verses"].filter((t) => !tables.has(t));
-  if (missing.length > 0) {
-    return `Der Datenbank fehlen Tabellen (${missing.join(", ")}).`;
-  }
-  // Einer verses-Tabelle aus dem älteren Aufbau für eine einzige Übersetzung
-  // fehlt die Spalte `translation`; download.ts migriert sie beim nächsten Lauf.
-  const verseCols = (candidate.query("PRAGMA table_info(verses)").all() as Array<{ name: string }>)
-    .map((c) => c.name);
-  if (!verseCols.includes("translation")) {
-    return "Die Tabelle 'verses' hat keine Spalte 'translation' (alter Aufbau).";
-  }
-  const verseCount = (candidate.query("SELECT COUNT(*) AS n FROM verses").get() as { n: number }).n;
-  if (verseCount === 0) {
-    return "Die Datenbank enthält keine Verse.";
-  }
-  return null;
-}
-
-let db: Database;
-let dataMissing: string | null = null;
-try {
-  // Kein WAL-Pragma: Die Datenbank wird nur gelesen, und WAL-Sidecar-Dateien
-  // ließen sich manipulieren. Das Download-Skript setzt vor dem Schließen einen
-  // WAL-Checkpoint, die Datenbank ist damit selbstgenügsam.
-  const candidate = new Database(DB_PATH, { readonly: true });
-  const problem = databaseProblem(candidate);
-  if (problem === null) {
-    db = candidate;
-    console.error(`Bible DB loaded: ${DB_PATH}`);
-  } else {
-    candidate.close();
-    dataMissing = problem;
-    db = emptyDatabase();
-    console.error(`${problem} Erwartet unter: ${DB_PATH}`);
-  }
-} catch (error) {
-  dataMissing = "Es ist noch keine Bibeldatenbank vorhanden.";
-  db = emptyDatabase();
-  console.error(`No Bible database at ${DB_PATH}: ${error}`);
-}
-
-/**
- * Ob dieser Prozess HTTP bedient statt stdio.
- *
- * Hier ausgelesen, neben `dataMissing`, weil die beiden zusammen entscheiden,
- * ob es bible_setup überhaupt gibt. Über stdio hat der Aufrufer diesen Prozess
- * gestartet und verfügt über die Maschine; ein Werkzeug, das rund 145 MB von
- * acht Quellen lädt und die Datenbankdatei ersetzt, ist dort eine
- * Bequemlichkeit. An einem HTTP-Endpunkt ist der Aufrufer ein Fremder: Das
- * Werkzeug ließe jeden diese Downloads beliebig oft auslösen, und der Zustand,
- * der es freischaltet, nämlich keine Datenbank, ist genau der, den eine
- * gescheiterte oder beschädigte Installation herstellt. Es ist deshalb ein
- * Werkzeug allein für stdio. Wer einen HTTP-Endpunkt betreibt, baut die Daten
- * stattdessen mit `--setup` oder `bun run setup` auf (siehe main()).
- *
- * Aus der Umgebung abgeleitet statt aus main() durchgereicht, damit der Wert
- * dem dort tatsächlich gewählten Transport nicht widersprechen kann.
- */
-const HTTP_MODE = (process.env["MCP_HTTP_PORT"] ?? "") !== "";
-
-/** Wahr, wenn der Start dem Datenbankaufbau gilt statt dem Bedienen (siehe main()). */
-const SETUP_CLI = process.argv.includes("--setup");
-
-// Nicht während des Datenbankaufbaus: „Der Server läuft" wäre dort schlicht
-// falsch, und die gemeldete Werkzeugverfügbarkeit kommt nie zum Tragen.
-if (dataMissing !== null && !SETUP_CLI) {
-  console.error(
-    HTTP_MODE
-      ? "Der Server läuft, aber ALLE Werkzeuge sind gesperrt: im HTTP-Modus gibt es " +
-          "bible_setup nicht. Datenbank mit '--setup' aufbauen und den Server neu starten."
-      : "Der Server läuft, bis auf bible_setup sind alle Werkzeuge gesperrt."
-  );
-}
-
-// --- Vorbereitete Statements: books, aliases, verses -----------------------
-const stmtAlias = db.prepare<{ book_id: number }, [string]>(
-  "SELECT book_id FROM aliases WHERE alias = ? COLLATE NOCASE"
-);
-
-const stmtVerses = db.prepare<{ verse: number; text: string }, [string, number, number]>(
-  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? ORDER BY verse"
-);
-
-const stmtVerse = db.prepare<{ verse: number; text: string }, [string, number, number, number]>(
-  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse = ?"
-);
-
-const stmtVerseRange = db.prepare<
-  { verse: number; text: string },
-  [string, number, number, number, number]
->(
-  "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
-);
-
-// Welche Übersetzungen tatsächlich gefüllt sind (für Prüfung und Meldungen).
-const availableTranslations: Set<string> = new Set(
-  (db.query("SELECT DISTINCT translation FROM verses").all() as Array<{
-    translation: string;
-  }>).map((r) => r.translation)
-);
-
-const stmtBookName = db.prepare<{ name: string }, [number]>(
-  "SELECT name FROM books WHERE book_id = ?"
-);
-
-const stmtBookByName = db.prepare<{ book_id: number }, [string]>(
-  "SELECT book_id FROM books WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY book_id LIMIT 1"
-);
-
-// Die ganze Tabelle, für die Ressource `bible://buecher`. `chapters` führt das
-// Schema seit je mit, gelesen wurde es bislang nie.
-const stmtBooks = db.prepare<{ book_id: number; name: string; chapters: number }, []>(
-  "SELECT book_id, name, chapters FROM books ORDER BY book_id"
-);
-
-// --- Grundtext: Morphologie ------------------------------------------------
-// Die Tabelle `original_words` ist optional, es gibt sie erst, nachdem
-// download-morph.ts gelaufen ist. Die Absicherung sorgt dafür, dass der Server
-// auch ohne sie startet.
-const hasOriginal =
-  db
-    .query(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='original_words'"
-    )
-    .get() !== null;
-
-// Der jüngste in der provenance-Tabelle vermerkte Abruf, nur das Datum. Die eine
-// Zahl, die den ganzen Bestand datiert: „Ihre Daten sind vom 2026-07-23"
-// beantwortet mehr Rückfragen als jede Anzahl. Die Tabelle ist optional (älteren
-// Aufbauten fehlt sie), und die Quell-URLs bleiben draußen: Sie sind für jede
-// Installation dieselben und stehen im README, hier wiederholt blähten sie nur
-// die Nutzlast auf.
-const dataFetchedAt: string | null = (() => {
-  const hasProvenance =
-    db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='provenance'").get() !==
-    null;
-  if (!hasProvenance) return null;
-  const row = db.query("SELECT MAX(fetched_at) AS t FROM provenance").get() as { t: string | null };
-  return row?.t ? row.t.slice(0, 10) : null;
-})();
-
-// Welche Grundtext-Editionen diese Datei tatsächlich führt, für
-// bible_server_info. Einmal abgefragt: Die Menge steht für die Lebensdauer der
-// Datei fest, und sie ist die ehrliche Antwort auf „welche Grundtexte haben
-// Sie". Die Download-Schritte sind getrennt, wlc ohne sblgnt (oder umgekehrt)
-// ist also ein wirklich vorkommender Zustand.
-const originalEditions: readonly string[] = hasOriginal
-  ? (
-      db.query("SELECT DISTINCT edition FROM original_words ORDER BY edition").all() as Array<{
-        edition: string;
-      }>
-    ).map((r) => r.edition)
-  : [];
-
-const stmtOriginal = hasOriginal
-  ? db.prepare<
-      {
-        word_index: number;
-        surface: string;
-        lemma: string;
-        strong: string;
-        pos: string;
-        parse: string;
-        lang: string;
-      },
-      [string, number, number, number]
-    >(
-      "SELECT word_index, surface, lemma, strong, pos, parse, lang FROM original_words " +
-        "WHERE edition = ? AND book_id = ? AND chapter = ? AND verse = ? ORDER BY word_index"
-    )
-  : null;
-
-// Welche Editionen tatsächlich gefüllt sind (für Prüfung und Meldungen).
-const availableEditions: Set<string> = new Set(
-  hasOriginal
-    ? (db.query("SELECT DISTINCT edition FROM original_words").all() as Array<{
-        edition: string;
-      }>).map((r) => r.edition)
-    : []
-);
-
-// Konkordanzabfragen laufen über die Zeilen einer Edition (ohne eigenen Index;
-// die Datenbank wird nur lesend geöffnet, und ein voller Editionsdurchlauf
-// kostet im lokalen SQLite wenige Millisekunden).
-const stmtConcordStrong = hasOriginal
-  ? db.prepare<
-      { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
-      [string, string]
-    >(
-      "SELECT book_id, chapter, verse, surface, lemma, strong FROM original_words " +
-        "WHERE edition = ? AND strong = ? ORDER BY book_id, chapter, verse, word_index"
-    )
-  : null;
-
-const stmtConcordLemma = hasOriginal
-  ? db.prepare<
-      { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
-      [string, string]
-    >(
-      "SELECT book_id, chapter, verse, surface, lemma, strong FROM original_words " +
-        "WHERE edition = ? AND lemma = ? ORDER BY book_id, chapter, verse, word_index"
-    )
-  : null;
-
-// --- Strong-Definitionen (optionale Tabelle, download-lexicon.ts) ----------
-const hasStrongDefs =
-  db
-    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='strong_defs'")
-    .get() !== null;
-
-// gloss und meaning sind die neueren STEPBible-Spalten (meaning gibt es nur im
-// Griechischen, siehe schema.ts). Einer vor dieser Migration gebauten Datenbank
-// fehlen sie, und geöffnet wird hier nur lesend; deshalb werden stattdessen
-// Platzhalter '' ausgewählt, bis download-lexicon.ts erneut läuft.
-const hasStepCols = hasStrongDefs
-  ? (db.query("PRAGMA table_info(strong_defs)").all() as Array<{ name: string }>).some(
-      (c) => c.name === "gloss"
-    )
-  : false;
-const stmtStrongDef = hasStrongDefs
-  ? db.prepare<
-      { lemma: string; translit: string; definition: string; kjv: string; gloss: string; meaning: string },
-      [string]
-    >(
-      hasStepCols
-        ? "SELECT lemma, translit, definition, kjv, gloss, meaning FROM strong_defs WHERE strong = ?"
-        : "SELECT lemma, translit, definition, kjv, '' AS gloss, '' AS meaning FROM strong_defs WHERE strong = ?"
-    )
-  : null;
-
-// --- TAGNT-Bezeugung (optionale Tabelle, download-tagnt.ts) ----------------
-const hasTagnt =
-  db
-    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='tagnt_words'")
-    .get() !== null;
-
-const stmtTagnt = hasTagnt
-  ? db.prepare<
-      {
-        surface: string;
-        word_type: string;
-        editions: string;
-        meaning_variant: string;
-        spelling_variant: string;
-      },
-      [number, number, number]
-    >(
-      "SELECT surface, word_type, editions, meaning_variant, spelling_variant FROM tagnt_words " +
-        "WHERE book_id = ? AND chapter = ? AND verse = ? ORDER BY word_index"
-    )
-  : null;
-
-// --- Volltextsuche über die deutschen Verse (optionale FTS5-Tabelle) -------
-// `translation` ist in der FTS-Tabelle UNINDEXED; gefiltert wird schlicht über
-// Gleichheit, im Nachgang zum MATCH.
-const hasFts =
-  db
-    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verses_fts'")
-    .get() !== null;
-
-const stmtSearchCount = hasFts
-  ? db.prepare<{ n: number }, [string, string]>(
-      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ?"
-    )
-  : null;
-const stmtSearchCountBook = hasFts
-  ? db.prepare<{ n: number }, [string, string, number]>(
-      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ?"
-    )
-  : null;
-const stmtSearch = hasFts
-  ? db.prepare<
-      { book_id: number; chapter: number; verse: number; text: string },
-      [string, string, number]
-    >(
-      "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? ORDER BY book_id, chapter, verse LIMIT ?"
-    )
-  : null;
-const stmtSearchBook = hasFts
-  ? db.prepare<
-      { book_id: number; chapter: number; verse: number; text: string },
-      [string, string, number, number]
-    >(
-      "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? ORDER BY chapter, verse LIMIT ?"
-    )
-  : null;
-
-// book_id und chapter reisen mit, damit ein Durchlauf sowohl die Gesamtzahl der
-// Vorkommen als auch die Aufschlüsselung je Buch und Kapitel trägt: siehe den
-// `verteilung`-Block weiter unten.
-const stmtSearchAll = hasFts
-  ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, string, number]>(
-      "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? LIMIT ?"
-    )
-  : null;
-const stmtSearchAllBook = hasFts
-  ? db.prepare<
-      { book_id: number; chapter: number; text: string },
-      [string, string, number, number]
-    >(
-      "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? LIMIT ?"
-    )
-  : null;
-
-// Das Zählen der Vorkommen liest jeden passenden Vers, deshalb ist es gedeckelt:
-// Jenseits dieser Grenze entfällt das Feld, statt bezahlt zu werden. Breite
-// Anfragen („der") laufen hinein, Wortstudien nie.
-const OCCURRENCE_SCAN_LIMIT = 1000;
-
-// Treffermarker dürfen im Verstext selbst nicht vorkommen. Das naheliegende «…»
-// stößt mit den eigenen Anführungszeichen der Übersetzungen zusammen: Menge
-// führt sie in 8339 Versen, Schlachter in 887, und sie verschachteln andersherum
-// (»Zitat«), sodass ein schließendes « sowohl für eine Zählung als auch für
-// einen Menschen wie ein Marker aussieht. ⟦⟧ kommt in keiner der geführten
-// Übersetzungen vor (geprüft 25.07.2026 an vieren, 05.08.2026 an Schlachter 2000).
-// Muss mit den Trennzeichen der beiden `highlight()`-Aufrufe oben übereinstimmen.
-const HIT_OPEN = "⟦";
-
-// --- Querverweise (OpenBible.info / TSK, optionale Tabelle) ----------------
-const hasXrefs =
-  db
-    .query(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='cross_references'"
-    )
-    .get() !== null;
-
-const stmtXrefs = hasXrefs
-  ? db.prepare<
-      {
-        to_book: number;
-        to_chapter: number;
-        to_verse: number;
-        to_chapter_end: number;
-        to_verse_end: number;
-        votes: number;
-      },
-      [number, number, number, number]
-    >(
-      "SELECT to_book, to_chapter, to_verse, to_chapter_end, to_verse_end, votes " +
-        "FROM cross_references WHERE from_book = ? AND from_chapter = ? AND from_verse = ? " +
-        "ORDER BY votes DESC LIMIT ?"
-    )
-  : null;
-
-// --- Fußnoten der Ausgaben (optionale Tabelle, import-schlachter2000.ts) ---
-// Der Anmerkungsapparat einer gedruckten Ausgabe: wo sie selbst sagt, dass ihre
-// Wiedergabe eine Wahl unter mehreren ist. Optional wie die übrigen
-// Zusatztabellen, denn er kommt nicht aus dem freien Erstaufbau.
-//
-// Kapitelweise abgefragt, weil `bible_lookup` seine Verse ohnehin kapitelweise
-// holt: Eine Abfrage je Vers wäre bei einem ganzen Kapitel bis zu 176 Abfragen
-// für im Schnitt vier Treffer.
-const hasVerseNotes =
-  db
-    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verse_notes'")
-    .get() !== null;
-
-const stmtVerseNotes = hasVerseNotes
-  ? db.prepare<
-      { verse: number; ref: string; text: string },
-      [string, number, number]
-    >(
-      "SELECT verse, ref, text FROM verse_notes " +
-        "WHERE translation = ? AND book_id = ? AND chapter = ? ORDER BY verse, seq"
-    )
-  : null;
-
-// --- Editionen: Metadaten, Aliase, Auflösung des Texttyps ------------------
-/**
- * Eine Quellenangabe, wie sie im Feld `quellen` einer Antwort erscheint.
- *
- * `nennung` trägt nur, was die Lizenz beim Weitergeben verlangt, und ist sonst
- * `null`. Public-Domain-Quellen brauchen keine, CC-BY-Quellen schon: Ein
- * gehosteter Endpunkt macht die Daten öffentlich verfügbar, und das ist nach
- * CC 4.0 ein „Share". Wer nur über MCP zugreift, sieht weder das Repository
- * noch die Website, also muss die Nennung an der Antwort hängen. Vorbild ist
- * orthotomeo, das dasselbe tut.
- */
-interface Quelle {
-  readonly werk: string;
-  readonly lizenz: string;
-  readonly nennung: string | null;
-}
-
-const EDITION_META: Record<
-  string,
-  {
-    label: string;
-    hinweis: string;
-    sprache: string;
-    decoder: "robinson" | "morphgnt" | "hebrew";
-    // Neben `label`, damit Text und Lizenz einer Edition nicht getrennt
-    // gepflegt werden und auseinanderlaufen können.
-    quelle: Quelle;
-  }
-> = {
-  byzantine: {
-    label: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)",
-    sprache: "Griechisch (Koine)",
-    decoder: "robinson",
-    quelle: {
-      werk: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005), Text und Robinson-Parsing",
-      lizenz: "Public Domain",
-      nennung: null,
-    },
-    hinweis:
-      "Mehrheitstext (Textus-Receptus-Familie, aber breiter bezeugt); enthält z. B. " +
-      "kein Comma Johanneum (1Joh 5,7). Von der Mehrheitstext-Position (u. a. R. Liebi) " +
-      "als zuverlässiger Grundtext vertreten. " +
-      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
-      "beim Zitieren nicht um Akzente oder Interpunktion ergänzen; akzentuiert steht " +
-      "der Text nur im SBLGNT (texttyp 'sblgnt').",
-  },
-  sblgnt: {
-    label: "SBL Greek New Testament (kritische Edition)",
-    sprache: "Griechisch (Koine)",
-    decoder: "morphgnt",
-    quelle: {
-      werk: "SBL Greek New Testament (Text) mit MorphGNT-Morphologie",
-      lizenz: "Text: CC BY 4.0; Morphologie: CC BY-SA 3.0",
-      nennung:
-        "SBL Greek New Testament, © Society of Biblical Literature und Logos Bible " +
-        "Software, CC BY 4.0, https://sblgnt.com/license/. Morphologie: MorphGNT, " +
-        "CC BY-SA 3.0, https://github.com/morphgnt/sblgnt. Die Morphologiecodes " +
-        "werden hier aufgeloest, also bearbeitet: Wer diese Ausgabe " +
-        "weiterveroeffentlicht, gibt sie unter CC BY-SA weiter.",
-    },
-    hinweis:
-      "Kritische (eklektische) Edition, Nestle-Aland-nah, nicht Mehrheitstext. " +
-      "Bei Lesarten-Fragen den Texttyp beachten; die Morphologie ist davon unberührt.",
-  },
-  tr: {
-    label: "Textus Receptus (Robinson, Scrivener/Stephens-Tradition)",
-    sprache: "Griechisch (Koine)",
-    decoder: "robinson",
-    quelle: {
-      werk: "Textus Receptus (Scrivener-/Stephanus-Tradition), Text und Robinson-Parsing",
-      lizenz: "Public Domain",
-      nennung: null,
-    },
-    hinweis:
-      "Textus Receptus, die einzige der drei Editionen mit dem Comma Johanneum " +
-      "(1Joh 5,7 Langform) und weiteren TR-Sonderlesarten. Zum direkten Lesarten-" +
-      "vergleich; die Mehrheitstext-Position sieht den TR als enge Reformationsform " +
-      "des Mehrheitstextes, nicht als Grundtext. " +
-      "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
-      "beim Zitieren nicht um Akzente oder Interpunktion ergänzen.",
-  },
-  wlc: {
-    label: "Westminster Leningrad Codex (masoretisch, OSHB-Morphologie)",
-    sprache: "Hebräisch/Aramäisch",
-    decoder: "hebrew",
-    quelle: {
-      werk: "Westminster Leningrad Codex mit OSHB-Morphologie",
-      lizenz: "Text: Public Domain; Morphologie und Lemmata: CC BY 4.0",
-      nennung:
-        "Morphologie und Lemmata: Open Scriptures Hebrew Bible Project, CC BY 4.0, " +
-        "https://github.com/openscriptures/morphhb",
-    },
-    hinweis:
-      "Masoretischer Text (Ben Ascher, Leningrad-Codex). Geschriebener Text = Ketiv " +
-      "(die Qere-Lesart der Randmasora ist nicht enthalten). Für das AT die von der " +
-      "masoretischen Position (u. a. R. Liebi) getragene Textbasis. " +
-      "Das Feld 'wort' enthält Vokal- und Akzentzeichen (Teamim) sowie den " +
-      "OSHB-Morphemtrenner '/' zwischen Präfix und Wort (z. B. 'בְּ/רֵאשִׁ֖ית'): beim " +
-      "Zitieren weder Zeichen entfernen noch ergänzen.",
-  },
-};
-
-/**
- * Quellen, die keine Edition sind: Querverweise, Bezeugung, Lexika.
- *
- * Konkrete Schlüssel statt `Record<string, Quelle>`, und Zugriff per Punkt statt
- * per Klammer: Unter `noUncheckedIndexedAccess` liefert ein verschriebener
- * Klammerzugriff `Quelle | undefined`, und genau dieser Typ ist in `quellen()`
- * der legitime Kanal für „bedingt unbenutzt". Ein Tippfehler würde also
- * kompilieren, alle Tests grün lassen und eine lizenzpflichtige Nennung
- * stillschweigend weglassen: genau der Fehler, den dieses Feld verhindern soll.
- * So ist ein falscher Name ein Typfehler.
- */
-const DATASET_QUELLEN = {
-  crossrefs: {
-    werk: "Querverweise: Treasury of Scripture Knowledge (erweitert, mit Community-Stimmen)",
-    lizenz: "CC BY 4.0",
-    nennung: "OpenBible.info, CC BY 4.0, https://www.openbible.info/labs/cross-references/",
-  },
-  tagnt: {
-    werk: "Bezeugung über acht griechische Editionen (STEPBible TAGNT)",
-    lizenz: "CC BY 4.0",
-    nennung:
-      "STEPBible-Data (TAGNT), © Tyndale House, Cambridge, CC BY 4.0, " +
-      "https://github.com/STEPBible/STEPBible-Data",
-  },
-  lexikon_strongs: {
-    werk: "Strong-Wörterbücher 1890 (Grundformen, Umschriften, Definitionen)",
-    lizenz: "CC BY-SA (Version von der Quelle nicht angegeben)",
-    nennung:
-      "Open Scriptures, https://github.com/openscriptures/strongs. Das Werk von " +
-      "James Strong (1890) ist gemeinfrei; die Share-Alike-Pflicht betrifft die " +
-      "digitale Aufbereitung von 2009, die hier in ein eigenes Schema überführt ist.",
-  },
-  lexikon_step: {
-    werk: "Tyndale-Glossen und Abbott-Smith-Lexikon (STEPBible TBESG/TBESH)",
-    lizenz: "CC BY 4.0",
-    nennung:
-      "STEPBible-Data (TBESG/TBESH), © Tyndale House, Cambridge, CC BY 4.0, " +
-      "https://github.com/STEPBible/STEPBible-Data",
-  },
-} as const satisfies Record<string, Quelle>;
-
-/**
- * Baut das Feld `quellen` aus genau den Quellen, die die Antwort benutzt hat.
- *
- * Bewusst kein konstanter Block über allen Werkzeugen: Eine Antwort aus
- * `bible_lookup` mit Luther 1912 berührt keine CC-BY-Quelle, und eine
- * Attribution zu behaupten, die gar nicht einschlägig ist, ist derselbe Fehler
- * wie eine weggelassene. `null`-Einträge fallen weg, damit die Liste kurz
- * bleibt.
- */
-function quellen(...verwendet: ReadonlyArray<Quelle | undefined>): Quelle[] {
-  const seen = new Set<string>();
-  const out: Quelle[] = [];
-  for (const q of verwendet) {
-    if (q === undefined || seen.has(q.werk)) continue;
-    seen.add(q.werk);
-    out.push(q);
-  }
-  return out;
-}
-
-/** Quellenangabe einer Übersetzung, aus der Registry in translations.ts. */
-function translationQuelle(code: TranslationCode): Quelle {
-  const meta = TRANSLATIONS[code];
-  return { werk: meta.name, lizenz: meta.license, nennung: meta.attribution };
-}
-
-const EDITION_ALIASES: Record<string, string> = {
-  byzantine: "byzantine", byz: "byzantine", mehrheitstext: "byzantine",
-  mehrheit: "byzantine", majority: "byzantine", mt: "byzantine",
-  sblgnt: "sblgnt", sbl: "sblgnt", kritisch: "sblgnt", "nestle-aland": "sblgnt", na: "sblgnt",
-  tr: "tr", textusreceptus: "tr", "textus-receptus": "tr", receptus: "tr", scrivener: "tr",
-  wlc: "wlc", masoretisch: "wlc", hebräisch: "wlc", hebraeisch: "wlc", hebrew: "wlc", masoretic: "wlc",
-};
-
-// Welche Editionen für welches Testament gelten (book_id 1 bis 39 = AT, 40 bis 66 = NT).
-const OT_EDITIONS = new Set(["wlc"]);
-const NT_EDITIONS = new Set(["byzantine", "sblgnt", "tr"]);
-
-// Die NT-Editionen in der Reihenfolge des Vergleichs, und die einzige Stelle,
-// die sie aufzählt: `bible_compare` gibt sie in dieser Folge aus, und der Prompt
-// `variant-check` nennt die davon geladenen. NT_EDITIONS oben ist die
-// Zugehörigkeitsprüfung, dies hier die Reihenfolge; eine zweite wörtliche Liste
-// liefe davon weg.
-const NT_EDITION_ORDER = ["byzantine", "tr", "sblgnt"] as const;
-
-/** Fehlende oder leere Eingabe löst auf byzantine auf, ein unbekannter Alias auf null. */
-function resolveEdition(input: unknown): string | null {
-  if (input === undefined || input === null || input === "") return EDITION_ALIASES["byzantine"]!;
-  if (typeof input !== "string") return null;
-  return EDITION_ALIASES[input.trim().toLowerCase()] ?? null;
-}
 
 // --- Generische Helfer: Werkzeugergebnisse, Text, Argumentwandlung ---------
 function errorResult(msg: string) {
