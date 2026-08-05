@@ -18,6 +18,45 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Anwesenheit und Typ sind zwei Bedingungen, und die Faltung kam zum zweiten Mal
+
+Am 26.07.2026 war schon einmal eine Faltung aufgeflogen: Länge und Anwesenheit
+in einer Prüfung, worauf ein 60 Zeichen langer Buchname „'book' is required"
+bekam. Behoben wurde damals die Länge. Die **Typ**-Faltung blieb stehen, weil
+sie außerhalb des damaligen Auftrags lag, und stand seither als offener Punkt.
+
+Sie war breiter als notiert. Notiert war `bible_lookup`; gemessen falten
+**vier** Werkzeuge Anwesenheit und Typ (`bible_lookup`, `bible_original`,
+`bible_crossrefs`, `bible_compare`), und `bible_search` faltet bei `query`
+sogar **drei** Bedingungen. Der schlimmste Fall stand deshalb bei der Suche: Ein
+150 Zeichen langer Suchausdruck bekam „Error: 'query' is required (max 100
+characters)" – gesetzt, eine Zeichenkette, allein zu lang, und die Meldung
+nannte zwei Bedingungen, die er erfüllte.
+
+**Die Ursache ist dieselbe wie 2026-07-26, in neuer Gestalt:** eine Zahl neben
+einer Sammelmeldung. Die 100 stand zweimal nackt da, im Vergleich und im
+Meldungstext. Sie heißt jetzt `MAX_QUERY_LENGTH` und steht bei den übrigen
+Grenzen.
+
+**Was getrennt wurde und was nicht.** Die Typmeldungen sind gemeinsame
+Konstanten (`bookNotAString`, `queryNotAString`, `queryTooLong`), denn vier
+Werkzeuge geben die erste wortgleich aus. Die „is required"-Meldung bleibt
+dagegen **beim Werkzeug**, und das ist kein Versehen: Sie trägt dessen eigene
+Beispiele, und `bible_compare` nennt dort nur neutestamentliche Bücher, weil es
+alttestamentliche mit einer eigenen Meldung abweist. Eine gemeinsame Konstante
+hätte an dieser Stelle ein Beispiel angeboten, das das Werkzeug nicht annimmt.
+Die Typmeldung trägt umgekehrt gar keine Beispiele: Sie benennt die Bedingung,
+und die Beispiele stehen schon in der Meldung eine Prüfung davor.
+
+Nebenbei fiel auf, dass `!book` auch `0` und `false` als „fehlt" behandelte.
+Beide sind gesetzt und keine Zeichenkette; sie bekommen jetzt die Typmeldung.
+
+Zehn Zusicherungen dazu, Messlatte von 478 auf 494. Sechs Fehlereinbauten, jeder
+rot im vorab benannten Bündel: der Rückfall in die Faltung in allen fünf
+Werkzeugen, dazu eine Verschiebung von `MAX_QUERY_LENGTH`.
+
+---
+
 ## 2026-08-05: Ein Werkzeug je Datei, und der teuerste Teil war der Helferblock davor
 
 Nach der Datenschicht (`db.ts`) und den Editionen (`editions.ts`) waren die

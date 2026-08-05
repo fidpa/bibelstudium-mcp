@@ -26,12 +26,15 @@ import { TRANSLATIONS } from "../translations.ts";
 import { gekuerztFeld, verseBudget, verseMaxHinweis } from "../verse-budget.ts";
 import {
   MAX_BOOK_LENGTH,
+  MAX_QUERY_LENGTH,
   bookNotFound,
   bookTooLong,
   bracketHints,
   errorResult,
   getBookDisplayName,
   jsonResult,
+  queryNotAString,
+  queryTooLong,
   requireTranslation,
   resolveBook,
   toInt,
@@ -82,11 +85,20 @@ export function handleSearch(args: {
   }
   const translation = resolved.code;
 
+  // Drei Bedingungen, drei Meldungen. Gefaltet meldete auch ein 150 Zeichen
+  // langer Suchausdruck "'query' is required (max 100 characters)", obwohl er
+  // gesetzt und eine Zeichenkette war und allein die Länge verletzte.
   const { query } = args;
-  if (!query || typeof query !== "string" || query.length > 100) {
+  if (query === undefined || query === null || query === "") {
     return errorResult(
-      "Error: 'query' is required (max 100 characters), e.g. 'Hirte mangeln' or '\"Gnade um Gnade\"'."
+      "Error: 'query' is required, e.g. 'Hirte mangeln' or '\"Gnade um Gnade\"'."
     );
+  }
+  if (typeof query !== "string") {
+    return errorResult(queryNotAString);
+  }
+  if (query.length > MAX_QUERY_LENGTH) {
+    return errorResult(queryTooLong);
   }
   const match = buildFtsQuery(query);
   if (match === null) {

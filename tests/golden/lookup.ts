@@ -12,7 +12,11 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
-import { KAPITEL_AUSSERHALB, VERSLISTE_ZU_LANG } from "../lib/meldungen.ts";
+import {
+  BUCH_KEINE_ZEICHENKETTE,
+  KAPITEL_AUSSERHALB,
+  VERSLISTE_ZU_LANG,
+} from "../lib/meldungen.ts";
 import { NO_ERROR } from "../lib/mcp-client.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 
@@ -50,6 +54,11 @@ export const lookupBuendel = buendel({
     // war die Meldung von keiner Zusicherung gedeckt, und eine Verfälschung des
     // Wortlauts blieb grün (gemessen 05.08.2026).
     keinVers: ["bible_lookup", { book: "Ps", chapter: 117, verses: "5" }],
+    // Anwesenheit und Typ sind zwei Bedingungen: Beide Meldungen müssen
+    // auseinandergehen, sonst sucht der Aufrufer bei einem falschen Typ nach
+    // einem fehlenden Feld.
+    buchZahl: ["bible_lookup", { book: 123, chapter: 3 }],
+    buchFehlt: ["bible_lookup", { chapter: 3 }],
     // Fußnoten: der Apparat einer Ausgabe. Vier Fälle, denn `fussnoten` ist
     // bedingt und die Bedingung hat mehr als eine Richtung: mit Note, ohne Note,
     // drei Noten am selben Vers, und dieselbe Stelle in einer Ausgabe ohne
@@ -65,7 +74,7 @@ export const lookupBuendel = buendel({
     const {
       lookupChap999, hesekiel, sirach, joh316, mengeVers, mengeOhneKlammer,
       versesTooMany, versesSpanTooHigh, versesSpanWithComma, versesTooLong,
-      versesNotAString, versesMaxValid, keinVers,
+      versesNotAString, versesMaxValid, keinVers, buchZahl, buchFehlt,
       noteEine, noteKeine, noteDrei, noteMehrvers,
     } = res;
 
@@ -77,6 +86,9 @@ export const lookupBuendel = buendel({
       "No verses found for Ps 117,5. Check chapter and verse numbers."
     );
     eq("Ps 117,5: isError", keinVers.isError, true);
+
+    eq("book=123: nennt den Typ", buchZahl.text, BUCH_KEINE_ZEICHENKETTE);
+    has("book fehlt: nennt die Anwesenheit", buchFehlt.text, "'book' is required");
 
     has("Hesekiel-Zusatz: Vorschlag", hesekiel.text, 'Am nächsten kommt "Hesekiel"');
     has("Hesekiel-Zusatz: Kanonumfang", hesekiel.text, "66 Bücher");

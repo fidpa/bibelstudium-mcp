@@ -16,6 +16,10 @@
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import { BUCH_ZU_LANG } from "../lib/meldungen.ts";
+
+// Drei Bedingungen an `query`, drei Meldungen. Gefaltet meldete auch ein zu
+// langer Ausdruck "is required", obwohl er gesetzt und eine Zeichenkette war.
+const QUERY_ZU_LANG = "a".repeat(101);
 import { isRecord, schemaErrors } from "../schema-validator.ts";
 
 const OVERLONG_NAME = "J".repeat(60);
@@ -25,6 +29,9 @@ export const searchBuendel = buendel({
   calls: {
     searchLieb: ["bible_search", { query: "lieb*", book: "1Joh" }],
     searchLongBook: ["bible_search", { query: "Gnade", book: OVERLONG_NAME }],
+    searchQueryZahl: ["bible_search", { query: 123 }],
+    searchQueryZuLang: ["bible_search", { query: QUERY_ZU_LANG }],
+    searchQueryFehlt: ["bible_search", {}],
     // Oberhalb der Scan-Grenze entfallen die beiden gezählten Felder: das gehört gesagt
     searchOverLimit: ["bible_search", { query: "der", limit: 2 }],
     // Der Klammerhinweis der Suche, beide Richtungen. Er entsteht aus den
@@ -39,7 +46,22 @@ export const searchBuendel = buendel({
     klammerSucheMb: ["bible_search", { query: "Bethlehem", book: "1. Mose", translation: "MB", limit: 30 }],
   },
   pruefe({ res }, ctx) {
-    const { searchLieb, searchLongBook, searchOverLimit, klammerSucheGrenze, klammerSucheMb } = res;
+    const {
+      searchLieb, searchLongBook, searchOverLimit,
+      searchQueryZahl, searchQueryZuLang, searchQueryFehlt,
+      klammerSucheGrenze, klammerSucheMb,
+    } = res;
+
+    // Drei Bedingungen, drei Meldungen, und jede nennt die verletzte. Der zu
+    // lange Ausdruck ist der Fall, der vorher am irreführendsten war: Er hörte
+    // "is required", obwohl er gesetzt war.
+    eq("query=123: nennt den Typ", searchQueryZahl.text, "Error: 'query' must be a string");
+    eq(
+      "query 101 Zeichen: nennt die Länge",
+      searchQueryZuLang.text,
+      "Error: 'query' must be at most 100 characters"
+    );
+    has("query fehlt: nennt die Anwesenheit", searchQueryFehlt.text, "'query' is required");
 
     eq("lieb* in 1Joh: Verse", searchLieb.json?.treffer, 30);
     eq("lieb* in 1Joh: Vorkommen", searchLieb.json?.vorkommen_gesamt, 48);

@@ -15,6 +15,7 @@ import {
   MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
+  bookNotAString,
   bookNotFound,
   bookTooLong,
   bracketHints,
@@ -53,8 +54,11 @@ export function handleCrossrefs(args: {
   const translation = resolved.code;
 
   const { book } = args;
-  if (!book || typeof book !== "string") {
+  if (book === undefined || book === null || book === "") {
     return errorResult("Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer').");
+  }
+  if (typeof book !== "string") {
+    return errorResult(bookNotAString);
   }
   if (book.length > MAX_BOOK_LENGTH) {
     return errorResult(bookTooLong);

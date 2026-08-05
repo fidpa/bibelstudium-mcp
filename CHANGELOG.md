@@ -6,6 +6,25 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.5] - 2026-08-05
+
+### Behoben
+
+- **Fehlermeldungen nennen jetzt die tatsächlich verletzte Bedingung.** Wer
+  `book` mit einem falschen Typ schickte (`{"book": 123}`), bekam von
+  `bible_lookup`, `bible_original`, `bible_crossrefs` und `bible_compare`
+  „'book' is required", obwohl das Feld gesetzt war; die Meldung schickte damit
+  auf die Suche nach einem fehlenden Feld statt nach einem falschen Typ. Am
+  irreführendsten war `bible_search`: Dort steckten drei Bedingungen in einer
+  Prüfung, sodass ein 150 Zeichen langer Suchausdruck „'query' is required (max
+  100 characters)" bekam, obwohl er gesetzt und eine Zeichenkette war und allein
+  die Länge verletzte.
+
+  Anwesenheit, Typ und Länge sind jetzt getrennte Prüfungen mit je eigener
+  Meldung. Die Aufforderung „is required" bleibt bei ihrem Werkzeug, weil sie
+  dessen eigene Beispiele trägt. Gültige Aufrufe verhalten sich unverändert; wer
+  Fehlertexte auswertet, prüfe die drei neuen Wortlaute.
+
 ## [0.6.4] - 2026-08-05
 
 ### Geändert

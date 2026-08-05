@@ -10,7 +10,11 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
-import { KAPITEL_AUSSERHALB, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
+import {
+  BUCH_KEINE_ZEICHENKETTE,
+  KAPITEL_AUSSERHALB,
+  VERSE_AUSSERHALB,
+} from "../lib/meldungen.ts";
 
 export const originalBuendel = buendel({
   name: "original",
@@ -18,6 +22,7 @@ export const originalBuendel = buendel({
     // Grenzen: Die Meldung muss die wirkliche Grenze nennen, nicht "positive integer"
     origVerse999: ["bible_original", { book: "Ps", chapter: 23, verse: 999 }],
     origChap999: ["bible_original", { book: "Ps", chapter: 999, verse: 1 }],
+    origBuchZahl: ["bible_original", { book: 123, chapter: 1, verse: 1 }],
     ps231: ["bible_original", { book: "Psalm", chapter: 23, verse: 1 }],
     // Eine Edition ohne Strong-Nummern: das Feld fehlt dann, und das ist richtig.
     origSblgnt: ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }],
@@ -27,11 +32,12 @@ export const originalBuendel = buendel({
     origNtVorgabe: ["bible_original", { book: "1Joh", chapter: 5, verse: 7 }],
   },
   pruefe({ res }) {
-    const { origVerse999, origChap999, ps231, origSblgnt, origNtVorgabe } = res;
+    const { origVerse999, origChap999, origBuchZahl, ps231, origSblgnt, origNtVorgabe } = res;
 
     eq("bible_original verse: Text", origVerse999.text, VERSE_AUSSERHALB);
     eq("bible_original verse: isError", origVerse999.isError, true);
     eq("bible_original chapter", origChap999.text, KAPITEL_AUSSERHALB);
+    eq("bible_original book=123: nennt den Typ", origBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
 
     const w = (ps231.json?.woerter ?? []) as Array<Json>;
     eq("Ps 23,1: Wortzahl", w.length, 6);

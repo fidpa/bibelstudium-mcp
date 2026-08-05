@@ -23,6 +23,7 @@ import {
   MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
+  bookNotAString,
   bookNotFound,
   bookTooLong,
   chapterOutOfRange,
@@ -47,8 +48,11 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
   }
 
   const { book } = args;
-  if (!book || typeof book !== "string") {
+  if (book === undefined || book === null || book === "") {
     return errorResult("Error: 'book' is required (e.g. 'Römer', '1Joh').");
+  }
+  if (typeof book !== "string") {
+    return errorResult(bookNotAString);
   }
   if (book.length > MAX_BOOK_LENGTH) {
     return errorResult(bookTooLong);

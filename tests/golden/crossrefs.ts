@@ -9,7 +9,11 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
-import { BUCH_ZU_LANG, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
+import {
+  BUCH_KEINE_ZEICHENKETTE,
+  BUCH_ZU_LANG,
+  VERSE_AUSSERHALB,
+} from "../lib/meldungen.ts";
 
 const OVERLONG_NAME = "J".repeat(60);
 
@@ -20,15 +24,18 @@ export const crossrefsBuendel = buendel({
     xrefJoh146: ["bible_crossrefs", { book: "Joh", chapter: 14, verse: 6, limit: 5 }],
     // Ein zu langer Buchname ist ein Längenproblem, kein fehlendes oder unbekanntes Feld
     xrefLongBook: ["bible_crossrefs", { book: OVERLONG_NAME, chapter: 1, verse: 1 }],
+    // Ein falscher Typ ist wieder etwas anderes als ein fehlendes Feld
+    xrefBuchZahl: ["bible_crossrefs", { book: 123, chapter: 1, verse: 1 }],
   },
   pruefe({ res }) {
-    const { xrefVerse999, xrefJoh146, xrefLongBook } = res;
+    const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl } = res;
 
     eq("bible_crossrefs verse: Text", xrefVerse999.text, VERSE_AUSSERHALB);
     eq("bible_crossrefs verse: isError", xrefVerse999.isError, true);
     // Nannte früher die falsche Bedingung: sagte 'book' is required, obwohl book
     // gesetzt war, nur zu lang (26.07.2026).
     eq("bible_crossrefs: langer Buchname", xrefLongBook.text, BUCH_ZU_LANG);
+    eq("bible_crossrefs book=123: nennt den Typ", xrefBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
 
     const v = (xrefJoh146.json?.verweise ?? []) as Array<Json>;
     eq("Joh 14,6: fünf Verweise", v.length, 5);

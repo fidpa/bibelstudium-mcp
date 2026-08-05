@@ -12,7 +12,7 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss } from "../lib/zusicherungen.ts";
-import { VERSE_AUSSERHALB } from "../lib/meldungen.ts";
+import { BUCH_KEINE_ZEICHENKETTE, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
 
 export const compareBuendel = buendel({
   name: "compare",
@@ -22,12 +22,14 @@ export const compareBuendel = buendel({
     mk1446: ["bible_compare", { book: "Mk", chapter: 14, verse: 46 }],
     // Keine TAGNT-Zeile: neun NT-Verse haben keine, `bezeugung` fehlt dann zu Recht.
     cmpOhneBezeugung: ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }],
+    cmpBuchZahl: ["bible_compare", { book: 123, chapter: 1, verse: 1 }],
   },
   pruefe({ res }) {
-    const { cmpVerse999, comma, mk1446, cmpOhneBezeugung } = res;
+    const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpBuchZahl } = res;
 
     eq("bible_compare verse: Text", cmpVerse999.text, VERSE_AUSSERHALB);
     eq("bible_compare verse: isError", cmpVerse999.isError, true);
+    eq("bible_compare book=123: nennt den Typ", cmpBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
 
     const eds = (comma.json?.editionen ?? []) as Array<{ texttyp: string; text: string }>;
     const byType = new Map(eds.map((e) => [e.texttyp, e.text]));

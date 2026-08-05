@@ -304,6 +304,7 @@ export const MAX_VERSE = 200; // Das längste Kapitel (Psalm 119) hat 176 Verse
 export const MAX_VERSE_PARTS = 30; // kommagetrennte Segmente in `verses`
 export const MAX_BOOK_LENGTH = 50; // der längste deutsche Buchname hat rund 20 Zeichen
 export const MAX_LEMMA_LENGTH = 50; // eigenes Feld, eigene Grenze, nicht die des Buchnamens
+export const MAX_QUERY_LENGTH = 100; // Suchausdruck, ebenfalls ein eigenes Feld
 
 // Abgeleitet, nicht gewählt: Die längste gültige `verses`-Zeichenkette besteht
 // aus MAX_VERSE_PARTS Segmenten der Form "176-176" samt den Kommata dazwischen.
@@ -322,6 +323,17 @@ export const MAX_VERSES_LENGTH =
 export const chapterOutOfRange = `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}`;
 export const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_VERSE}`;
 export const bookTooLong = `Error: 'book' must be at most ${MAX_BOOK_LENGTH} characters (e.g. 'Jesaja', '1. Mose', 'Römer')`;
+// Anwesenheit und Typ sind zwei Bedingungen, also zwei Meldungen. Gefaltet
+// (`!book || typeof book !== "string"`) antworteten vier Werkzeuge auf
+// `{"book": 123}` mit "'book' is required", obwohl `book` gesetzt war; der
+// Aufrufer sucht dann nach einem fehlenden Feld statt nach einem falschen Typ
+// (gemessen 02.08.2026, behoben 05.08.2026). Die "is required"-Meldung bleibt
+// beim Werkzeug, weil sie dessen eigene Beispiele trägt: `bible_compare` nennt
+// nur neutestamentliche, denn fürs AT weist es ohnehin ab. Diese hier trägt
+// keine, sie benennt die Bedingung.
+export const bookNotAString = `Error: 'book' must be a string with the German book name`;
+export const queryNotAString = `Error: 'query' must be a string`;
+export const queryTooLong = `Error: 'query' must be at most ${MAX_QUERY_LENGTH} characters`;
 // Eine Meldung je Bedingung. Eine einzige Sammelmeldung nannte die Form von
 // `verses`, und die Form war genau in dem Fall in Ordnung, der an die Grenze
 // stieß.

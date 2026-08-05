@@ -24,6 +24,7 @@ import {
   MAX_VERSE,
   MAX_VERSES_LENGTH,
   MAX_VERSE_PARTS,
+  bookNotAString,
   bookNotFound,
   bookTooLong,
   chapterOutOfRange,
@@ -51,8 +52,11 @@ export function handleLookup(rawArgs: unknown) {
 
   // Pflichteingaben prüfen. Anwesenheit und Länge sind getrennte Prüfungen, damit
   // jede Meldung die tatsächlich verletzte Bedingung nennt.
-  if (!book || typeof book !== "string") {
+  if (book === undefined || book === null || book === "") {
     return errorResult("Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer').");
+  }
+  if (typeof book !== "string") {
+    return errorResult(bookNotAString);
   }
   if (book.length > MAX_BOOK_LENGTH) {
     return errorResult(bookTooLong);
