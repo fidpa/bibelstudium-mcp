@@ -70,10 +70,28 @@ Geplant war eine verfälschte Bedingung in `stmtSearchBook`; gemessen kommt aber
 weder `treffer` noch `vorkommen_gesamt` aus diesem Statement, sondern aus
 `stmtSearchCountBook` und `stmtSearchAllBook`. Über die Trefferliste selbst
 sichert `tests/golden/search.ts` inhaltlich nichts zu. Beide Lücken sind älter
-als der Umbau, und beide wären ohne den Fehlereinbau unentdeckt geblieben. Sie
-sind hier festgehalten und nicht geschlossen: Das Schließen ist eine eigene
-Entscheidung über die Testabdeckung, kein Teil eines Umbaus, der nichts
-verändern soll.
+als der Umbau, und beide wären ohne den Fehlereinbau unentdeckt geblieben.
+
+**Geschlossen wurden sie noch am selben Tag, in einem eigenen Schritt und aus
+einem konkreten Grund.** Nicht als allgemeine Testpflege: Beide saßen auf
+`handleOriginal` und `handleSearch`, also auf zwei der fünf Handler, die als
+Nächstes in eigene Dateien umziehen sollen, und der Nachweis dieses Umzugs
+stützt sich auf dieselben Bündel. Eine Absicherung, die genau dort blind ist, wo
+gleich geschnitten wird, ist keine Absicherung.
+
+Neun Zusicherungen kamen dazu, die Messlatte ging von 466 auf 475. Für die
+NT-Vorgabe ist 1Joh 5,7 gewählt, die eine Stelle, an der die drei NT-Editionen
+weit auseinandergehen: Der Mehrheitstext liest dort fünf Wörter, der Textus
+Receptus trägt das Comma Johanneum und kommt auf 22. Eine verrutschte Vorgabe
+bricht deshalb zwei Zusicherungen statt einer, und die Zahl sagt sofort, wohin
+sie verrutscht ist. Für die Suche geprüft werden beide Wege, mit Buchfilter und
+ohne: dass jeder gelistete Vers im gesuchten Buch steht und dass jeder den
+Treffermarker trägt. Gegenprobe: Die zwei Einbauten, die vorher grün blieben,
+werden jetzt beide rot, der zweite auch in seiner aritätserhaltenden Fassung.
+
+Die AT-Vorgabe war übrigens die ganze Zeit gedeckt, ohne dass es jemand
+aufgeschrieben hatte: Der Psalmvers im selben Bündel wird ohne `texttyp`
+abgerufen und sichert `wlc` zu. Nur die NT-Seite fehlte.
 
 **Die drei Startgarantien der CI liefen zum ersten Mal von Hand.** `lint.yml`
 prüft drei Zustände, die kein lokaler Test berührt: keine Datenbank, leere

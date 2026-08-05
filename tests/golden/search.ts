@@ -44,6 +44,23 @@ export const searchBuendel = buendel({
     eq("lieb* in 1Joh: Verse", searchLieb.json?.treffer, 30);
     eq("lieb* in 1Joh: Vorkommen", searchLieb.json?.vorkommen_gesamt, 48);
     has("lieb* in 1Joh: Trennung benannt", String(searchLieb.json?.hinweis ?? ""), "zählt Verse");
+
+    // Die drei Zahlen oben stammen sämtlich aus den Zähl- und Scan-Abfragen. Die
+    // ausgelieferte Trefferliste kommt aus einer anderen Abfrage und war bis zum
+    // 05.08.2026 von keiner Zusicherung gedeckt: Eine Verfälschung ihres
+    // Buchfilters oder ihrer Hervorhebung blieb grün. Geprüft werden deshalb
+    // beide Wege, mit Buchfilter (`searchLieb`) und ohne (`searchOverLimit`).
+    {
+      const liste = (searchLieb.json?.verse ?? []) as Array<Json>;
+      eq("lieb* in 1Joh: gelistet bis zur Grenze", liste.length, 10);
+      check("lieb* in 1Joh: jeder gelistete Vers steht im gesuchten Buch",
+        liste.length > 0 && liste.every((v) => String(v.stelle).startsWith("1 Johannes ")));
+      check("lieb* in 1Joh: jeder gelistete Vers trägt den Treffermarker",
+        liste.length > 0 && liste.every((v) => String(v.text).includes("⟦")));
+      const ohneBuch = (searchOverLimit.json?.verse ?? []) as Array<Json>;
+      check("Suche ohne Buchfilter: jeder gelistete Vers trägt den Treffermarker",
+        ohneBuch.length > 0 && ohneBuch.every((v) => String(v.text).includes("⟦")));
+    }
     // Nannte früher die falsche Bedingung: sagte, es müsse ein deutscher
     // Buchname sein, obwohl es einer war, nur zu lang (26.07.2026).
     eq("bible_search: langer Buchname", searchLongBook.text, BUCH_ZU_LANG);

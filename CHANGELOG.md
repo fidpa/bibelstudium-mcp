@@ -6,6 +6,24 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.3] - 2026-08-05
+
+### Hinzugefügt
+
+- **Neun Zusicherungen für zwei Lücken, die 0.6.2 gemeldet hat.** Die
+  Voreinstellung von `bible_original` ist jetzt geprüft: Ein Aufruf ohne
+  `texttyp` auf ein neutestamentliches Buch muss den byzantinischen
+  Mehrheitstext liefern. Gewählt ist dafür 1Joh 5,7, wo die drei NT-Editionen
+  weit auseinandergehen, sodass eine verrutschte Vorgabe auch an der Wortzahl
+  auffällt. Für `bible_search` ist die ausgelieferte Trefferliste geprüft, mit
+  Buchfilter und ohne: dass jeder gelistete Vers im gesuchten Buch steht und
+  jeder den Treffermarker trägt. Bisher deckten alle Zusicherungen nur die
+  Zähl- und Scan-Abfragen ab.
+
+  Gegenprobe über eingebaute Fehler: Beide Verfälschungen, die in 0.6.2 grün
+  blieben, werden jetzt rot. Die Messlatte in `bun run test` steigt von 466 auf
+  475. Am Serververhalten ändert sich nichts.
+
 ## [0.6.2] - 2026-08-05
 
 ### Geändert

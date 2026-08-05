@@ -21,9 +21,13 @@ export const originalBuendel = buendel({
     ps231: ["bible_original", { book: "Psalm", chapter: 23, verse: 1 }],
     // Eine Edition ohne Strong-Nummern: das Feld fehlt dann, und das ist richtig.
     origSblgnt: ["bible_original", { book: "Joh", chapter: 3, verse: 16, texttyp: "sblgnt" }],
+    // Ohne `texttyp` entscheidet das Buch. Für das NT war diese Vorgabe bis zum
+    // 05.08.2026 von keiner Zusicherung gedeckt: Ein eingebauter Fehler, der sie
+    // auf 'tr' umstellte, lieferte eine andere Textform und blieb grün.
+    origNtVorgabe: ["bible_original", { book: "1Joh", chapter: 5, verse: 7 }],
   },
   pruefe({ res }) {
-    const { origVerse999, origChap999, ps231, origSblgnt } = res;
+    const { origVerse999, origChap999, ps231, origSblgnt, origNtVorgabe } = res;
 
     eq("bible_original verse: Text", origVerse999.text, VERSE_AUSSERHALB);
     eq("bible_original verse: isError", origVerse999.isError, true);
@@ -43,6 +47,16 @@ export const originalBuendel = buendel({
     const sblgnt = (origSblgnt.json?.woerter ?? []) as Array<Json>;
     check("Joh 3,16 (sblgnt): Wörter vorhanden", sblgnt.length > 0);
     check("Joh 3,16 (sblgnt): ohne Strong-Nummern", sblgnt.every((x) => !("strong" in x)));
+
+    // Die AT-Vorgabe deckt `ps231` oben mit ab (kein `texttyp`, Antwort 'wlc').
+    // Hier die NT-Vorgabe, und zwar am schärfsten möglichen Vers: 1Joh 5,7 ist
+    // die eine Stelle, an der die drei NT-Editionen weit auseinandergehen. Der
+    // Mehrheitstext liest fünf Wörter, der Textus Receptus trägt hier das Comma
+    // Johanneum und ist um ein Vielfaches länger. Eine verrutschte Vorgabe
+    // bricht deshalb beide Zusicherungen und nicht nur die erste.
+    eq("1Joh 5,7 ohne texttyp: Vorgabe byzantine", origNtVorgabe.json?.texttyp, "byzantine");
+    eq("1Joh 5,7 ohne texttyp: Wortzahl des Mehrheitstextes",
+      ((origNtVorgabe.json?.woerter ?? []) as Array<Json>).length, 5);
   },
 });
 
