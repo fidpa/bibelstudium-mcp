@@ -162,6 +162,29 @@ Betroffen sind nur Ressourcen und nur dieser Client. Prompts geben ihre Meldung
 weiterhin im Wortlaut aus, Werkzeuge ohnehin. Für Claude Desktop und claude.ai
 ist es nicht gemessen.
 
+### Ein Kapitel kommt unvollständig zurück, oder Treffer haben keinen Text
+
+Das ist kein Fehler. Die Schlachter 1951 gibt je Abruf höchstens 20 Verse im
+Wortlaut aus, ein freiwilliges Entgegenkommen gegenüber der Genfer
+Bibelgesellschaft, die den Text unter CC BY 4.0 freigegeben hat. Erkennbar ist
+es an drei Stellen der Antwort, und stillschweigend geschieht es nie:
+
+- `reference` nennt die tatsächlich gelieferten Verse (`Psalter 119,1-20`, nicht
+  `1-176`).
+- `gekuerzt` nennt die Grenze und beide Zahlen
+  (`{"verse_max": 20, "im_wortlaut": 20, "ohne_wortlaut": 156}`).
+- `hinweis` sagt es im Klartext.
+
+Bei `bible_search` fehlt jenseits der Grenze das Feld `text`, während `stelle`
+stehen bleibt; `treffer` und die Auszählungen sind davon nicht berührt. Bei
+`bible_crossrefs` tragen die bestbewerteten Verweise ihren Text, die übrigen nur
+`stelle` und `votes`; die Zahl der Verweise ändert sich nicht.
+
+**Ausweg**: Luther 1912, Elberfelder 1871 und Menge 1939 sind gemeinfrei und
+kennen keine Grenze; dort kommt jedes Kapitel vollständig. Welche Ausgabe wie
+begrenzt ist, sagt `bible://uebersetzungen` im Feld `verse_max` (`null` heißt
+keine Grenze).
+
 ## HTTP-Modus
 
 Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne

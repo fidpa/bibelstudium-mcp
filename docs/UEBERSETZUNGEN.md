@@ -11,17 +11,25 @@ kosten würden, damit die Frage nicht bei jeder Gelegenheit neu recherchiert wir
 
 ## Was heute geführt wird
 
-| Code | Ausgabe | Lizenz |
-|---|---|---|
-| `LUT` | Luther 1912 | Public Domain |
-| `ELB` | Elberfelder 1871 | Public Domain |
-| `MB` | Menge 1939 | Public Domain |
-| `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) |
-| `SLT` | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft |
+| Code | Ausgabe | Lizenz | Verse je Abruf |
+|---|---|---|---|
+| `LUT` | Luther 1912 | Public Domain | unbegrenzt |
+| `ELB` | Elberfelder 1871 | Public Domain | unbegrenzt |
+| `MB` | Menge 1939 | Public Domain | unbegrenzt |
+| `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) | **20** |
+| `SLT` | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft | **20** |
 
 Maßgeblich ist `translations.ts`; dort steht neben jeder Ausgabe auch die
 Nennung, die ihre Lizenz beim Weitergeben verlangt (`null` bei Public Domain),
-und woher ihr Text kommt (`quelle`).
+woher ihr Text kommt (`quelle`) und wie viele Verse eine Antwort aus ihr im
+Wortlaut tragen darf (`verseMax`, `null` heißt keine Grenze).
+
+Die letzte Spalte ist **keine** Lizenzbedingung der CC BY 4.0: Diese Lizenz
+erlaubt die vollständige Wiedergabe und verlangt allein die Nennung. Für die
+Schlachter 1951 ist die Grenze ein freiwilliges Entgegenkommen gegenüber der
+Genfer Bibelgesellschaft; im Code ist es dieselbe Regel wie bei der 2000er, die
+Rechtsgründe sind verschieden. Wer eine weitere Ausgabe aufnimmt, entscheidet
+diese Spalte mit; `null` ist dort eine Aussage und kein vergessener Wert.
 
 Die Schlachter 2000 ist die einzige, die **nicht** frei lizenziert ist und
 deshalb nicht über ein Download-Skript zu holen: Ihre Quelldateien kommen vom

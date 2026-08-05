@@ -178,6 +178,19 @@ for (const args of [
   { query: "Zebaoth", book: "Amos" }, { query: "xyzabc" },
   { query: "Hirte", book: "Johannes", limit: 50 },
 ] as Json[]) calls.push(["bible_search", args]);
+// Die Wortlaut-Grenze der Ausgaben, je Übersetzung. Die Stichprobe oben trifft
+// sie kaum: Sie fragt überwiegend einzelne Verse ab, und ihre Kapitel sind
+// meistens kurz genug. Ohne diese drei Zeilen sähe der Breitentest die drei
+// bedingt gewordenen Felder (`gekuerzt`, `verse[].text`, `verweise[].text`)
+// nie, und genau für sie wurde `required` gelockert.
+for (const translation of geladeneUebersetzungen) {
+  calls.push(["bible_lookup", { book: "Psalm", chapter: 119, translation }]);
+  calls.push(["bible_search", { query: "Gnade", translation, limit: 50 }]);
+  calls.push([
+    "bible_crossrefs",
+    { book: "Johannes", chapter: 3, verse: 16, limit: 30, translation },
+  ]);
+}
 
 // --- mit einem frischen Server über stdio sprechen --------------------------
 

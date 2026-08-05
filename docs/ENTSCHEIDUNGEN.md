@@ -18,6 +18,92 @@ nicht gemessen, sondern vermutet ist, steht das ausdrücklich dabei.
 
 ---
 
+## 2026-08-05: Eine Grenze, die eine Zusage einhält, gehört an die Ausgabe und nicht an den Server
+
+Zwei Ausgaben geben je Abruf höchstens 20 Verse im Wortlaut aus, die übrigen drei
+alles wie bisher. Die Zahl ist nicht abgeleitet und nicht gewählt, sie ist einem
+Verlag zugesagt; ableitbar ist sie aus keiner anderen Grenze dieses Servers, und
+eine konstruierte Herleitung wäre eine Fiktion gewesen.
+
+**Der Ort ist die Registry, nicht `server.ts`.** Eine Konstante bei den `MAX_*`
+hätte gebraucht, was daneben steht: die Menge der betroffenen Kürzel. Das ist die
+zweite Angabe, die vergessen wird, sobald eine sechste Ausgabe dazukommt, und
+genau das Muster, das in diesem Repo zweimal auseinandergelaufen ist. Als Feld
+`verseMax` neben `license` und `attribution` erzwingt `satisfies` bei jedem neuen
+Eintrag eine Aussage, und `null` heißt dort „keine Grenze" und nicht „vergessen".
+Das ist zugleich der Rückweg: Kein Handler liest die Registry, alle fragen
+`verseBudget()`, eine andere Zahl kostet also eine Zeile.
+
+**Gekürzt und gemeldet, nicht abgewiesen.** Abweisen machte „zeig mir Psalm 119"
+unbenutzbar, und das ist bei einem Werkzeug für Bibelarbeit der Normalfall.
+Gemessen haben 768 der 1189 Kapitel in der einen und 765 in der anderen Ausgabe
+mehr als 20 Verse.
+
+**Querverweise werden je Verweis budgetiert, nicht je Vers, und das ist der
+teuerste Teil der Entscheidung.** Eine Grenze auf Versebene schneidet mitten in
+eine Versspanne: `stelle` nennt weiter „Johannes 11,25-26", `verse_einzeln` trägt
+einen Teil davon, und die Ellipse `… [bis V. n]` greift nur, wenn die Spanne
+schon den Deckel von vier Versen sprengt, sagt es also nicht. Gemessen träfe das
+3335 von 29 364 möglichen Abrufen bei `limit: 30`. Das Feld `verse_einzeln`
+existiert eigens gegen unvollständiges Zitieren, und der `lesehinweis` daneben
+fordert ausdrücklich zur vollständigen Übernahme auf: Ein still halbierter
+Verweis wäre der Hausfehler dieses Servers ein viertes Mal gewesen, diesmal neben
+einer Lizenzzusage. Deshalb `nimmGanz()`, das eine Einheit nur vollständig
+bewilligt und nach der ersten Ablehnung sperrt. Die Sperre ist nicht Zierrat:
+Ohne sie rutschte hinter einem abgelehnten dreiversigen Verweis noch ein
+einversiger durch, und die Antwort bekäme ein Loch.
+
+**Die Verweise bleiben trotzdem alle stehen, ohne `text`.** Die Verweisdaten sind
+CC BY und stammen nicht vom Verlag; begrenzt ist der Wortlaut, nicht die
+Stellenangabe. Die Liste zu kürzen hätte `verweise.length` von der Übersetzung
+abhängig gemacht, und dieselbe Frage lieferte in der einen Ausgabe 23 und in der
+anderen 15 Verweise, ohne dass die Datenlage verschieden wäre.
+
+**Die Auslegung der zweiten Zusage ist entschieden, nicht angenommen.** Der Satz
+„Bei einer Wortsuche über die ganze Bibel sieht der Nutzer darüber hinaus nur die
+Stellenangaben" lässt sich auch als „bei der Suche gar kein Text" lesen; ein
+Gegenleser hat genau das vorgebracht. Umgesetzt ist die andere Lesart: die ersten
+20 Treffer mit `text`, alle weiteren nur mit `stelle`. Entschieden vom Verfasser
+des Briefes am 05.08.2026.
+
+**Die eine Stelle, die kein Typfehler ist.** In `bible_search` liest der
+Klammerhinweis die Datenbankzeilen, und deren `text` bleibt eine Zeichenkette,
+auch wenn die Antwort ihn nicht ausliefert. Ohne Umstellung warnte die Antwort
+vor Klammern in Versen, die sie nicht enthält, und der Typecheck sagte nichts
+dazu. In `bible_crossrefs` fängt er dieselbe Verwechslung, weil das bedingte Feld
+dort als `text?: string` inferiert (mit `tsc --strict` geprüft): Der naive Zugriff
+scheitert mit TS2345, der `typeof`-Filter geht durch.
+
+**Die Grenze gilt je Abruf, und das ist die Zusage, nicht ein Versäumnis.** Dass
+ein Modell mehrfach abrufen und ein Kapitel zusammensetzen kann, ist bekannt und
+entschieden (05.08.2026): Der Brief sagt „jeder Abruf höchstens 20 Verse", nicht
+eine Sitzungssumme. Eine Drosselung über Abrufe hinweg bräuchte Zustand, den der
+HTTP-Modus bewusst nicht führt, und die Zusage verlangt sie nicht. Was bleibt:
+Keine Antwort fordert zum Nachladen des Rests auf.
+
+**Der Anmerkungsapparat bekommt ein eigenes Budget derselben Größe.** Ob
+Notentext als „Verse im Wortlaut" zählt, ist mit dem Verlag nicht geklärt.
+Zwei Vorkehrungen beantworten die Frage nicht, machen sie aber folgenlos: Die
+Noten werden aus dem bereits gekürzten Versbestand abgeleitet, und sie zählen
+zusätzlich gegen ein zweites Budget. Der Apparat kann die Grenze also auch dann
+nicht sprengen, wenn sie später bejaht wird. Eine zweite, frei erfundene Zahl
+gibt es dafür nicht: Das Budget hat dieselbe Größe wie das der Verse, damit die
+Registry weiterhin die einzige Stelle bleibt.
+
+Gemessen greift es nie: 1220 Noten, höchstens 15 je Kapitel, 12 innerhalb der
+ersten 20 Verse, 3 je Vers. Damit ist es Vorsorge wie `MAX_VERSES_LENGTH`, und
+wie dort gibt es aus demselben Grund keinen Testfall: Er ließe sich mit diesen
+Daten nicht herstellen.
+
+**Ein leerer `text` in `bible_crossrefs` ist entfallen.** Findet sich zu einem
+kapitelübergreifenden Ziel kein Vers in der gewählten Übersetzung, stand dort
+seit je `""`. Seit die Grenze dasselbe Feld weglassen kann, stünden zwei
+Bedeutungen nebeneinander, und die eine sähe aus wie die andere. Jetzt fehlt das
+Feld in beiden Lagen. Der leere String war nie eine Aussage: Er sagte nicht, dass
+der Vers fehlt, und auch sonst nichts.
+
+---
+
 ## 2026-08-05: Der Anmerkungsapparat einer Ausgabe ist ein eigenes Feld, und die Registry ist keine Deklaration
 
 Eine gedruckte Bibelausgabe sagt an einer Stelle selbst, dass ihre Wiedergabe

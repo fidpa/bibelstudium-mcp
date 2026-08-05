@@ -4,7 +4,7 @@
   "display_name": "Bibelstudium",
   "version": "0.0.0",
   "description": "Wortgetreue Bibelarbeit: vier deutsche Übersetzungen, Grundtext, Konkordanz, Querverweise, Volltextsuche, Editionsvergleich.",
-  "long_description": "Lokaler MCP-Server für wortgetreue Bibelarbeit. Vier frei lizenzierte deutsche Übersetzungen (Luther 1912, Schlachter 1951, Elberfelder 1871, Menge), Grundtext Wort für Wort (Hebräisch WLC; Griechisch Mehrheitstext, SBLGNT, Textus Receptus) mit Strong-Nummern und aufgelöster Morphologie, Konkordanz, Querverweise (OpenBible.info), Volltextsuche und Editionsvergleich mit Bezeugung über acht Editionen.\n\nDie Bibeldaten sind nicht Teil dieses Bundles. Sie müssen aber nichts vorbereiten: Bei der ersten Bibelfrage meldet der Server, dass die Daten fehlen, und fragt, ob er sie laden soll. Nach Ihrer Bestätigung holt er rund 145 MB von den Originalquellen (etwa eine Minute, Internetverbindung nötig) und legt sie in Ihrem Benutzerordner ab. Danach starten Sie Claude Desktop einmal neu.\n\nDas Feld unten können Sie leer lassen. Es ist nur für den Fall gedacht, dass Sie bereits eine fertige bible.db aus dem Repository haben.",
+  "long_description": "Lokaler MCP-Server für wortgetreue Bibelarbeit. Vier frei lizenzierte deutsche Übersetzungen (Luther 1912, Schlachter 1951, Elberfelder 1871, Menge), Grundtext Wort für Wort (Hebräisch WLC; Griechisch Mehrheitstext, SBLGNT, Textus Receptus) mit Strong-Nummern und aufgelöster Morphologie, Konkordanz, Querverweise (OpenBible.info), Volltextsuche und Editionsvergleich mit Bezeugung über acht Editionen. Die Schlachter 1951 gibt je Abruf höchstens 20 Verse im Wortlaut aus, ein freiwilliges Entgegenkommen gegenüber der Genfer Bibelgesellschaft; die drei gemeinfreien Übersetzungen sind davon nicht betroffen.\n\nDie Bibeldaten sind nicht Teil dieses Bundles. Sie müssen aber nichts vorbereiten: Bei der ersten Bibelfrage meldet der Server, dass die Daten fehlen, und fragt, ob er sie laden soll. Nach Ihrer Bestätigung holt er rund 145 MB von den Originalquellen (etwa eine Minute, Internetverbindung nötig) und legt sie in Ihrem Benutzerordner ab. Danach starten Sie Claude Desktop einmal neu.\n\nDas Feld unten können Sie leer lassen. Es ist nur für den Fall gedacht, dass Sie bereits eine fertige bible.db aus dem Repository haben.",
   "author": {
     "name": "fidpa",
     "url": "https://github.com/fidpa"
@@ -40,7 +40,7 @@
   "tools": [
     {
       "name": "bible_lookup",
-      "description": "Exakter Verstext in vier deutschen Übersetzungen, gegen Gedächtniszitate."
+      "description": "Exakter Verstext in vier deutschen Übersetzungen, gegen Gedächtniszitate. Die Schlachter 1951 gibt höchstens 20 Verse je Abruf aus."
     },
     {
       "name": "bible_original",
@@ -48,7 +48,7 @@
     },
     {
       "name": "bible_crossrefs",
-      "description": "Querverweise zu einem Vers, nach Votes sortiert, mit dem Text der Zielstellen."
+      "description": "Querverweise zu einem Vers, nach Votes sortiert, mit dem Text der Zielstellen, soweit die Grenze der Ausgabe ihn zulässt."
     },
     {
       "name": "bible_concordance",
@@ -56,7 +56,7 @@
     },
     {
       "name": "bible_search",
-      "description": "Volltextsuche im deutschen Text: Wörter, Phrasen, Präfix, optional auf ein Buch begrenzt."
+      "description": "Volltextsuche im deutschen Text: Wörter, Phrasen, Präfix, optional auf ein Buch begrenzt. Jenseits der Grenze einer Ausgabe nur die Stellenangaben."
     },
     {
       "name": "bible_compare",

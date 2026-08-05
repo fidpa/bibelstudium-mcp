@@ -1172,6 +1172,161 @@ const versesTooLong = `Error: 'verses' must be at most ${MAX_VERSES_LENGTH} char
 const versesTooManyParts = `Error: 'verses' must list at most ${MAX_VERSE_PARTS} comma-separated segments`;
 const versesOutOfBounds = `Error: every verse number in 'verses' must be between 1 and ${MAX_VERSE}`;
 
+// --- Wortlaut-Grenze der Ausgaben (Bedingung der Registry) -----------------
+// Anders als die Grenzen darüber schützt diese nicht vor unsinniger Eingabe,
+// sondern hält eine Zusage an einen Verlag ein: Eine Antwort darf aus einer
+// begrenzten Ausgabe nur so viele Verse im Wortlaut tragen, wie `verseMax` in
+// `translations.ts` erlaubt. Die Zahl steht dort und nirgends sonst, weil sie am
+// Text hängt und nicht am Server; hier steht allein, wie sie angewandt wird.
+//
+// Ein Budget gilt für eine ganze Antwort und wird durch sie hindurchgereicht,
+// weil zwei der drei Werkzeuge nicht an einer einzigen Stelle kürzen:
+// `bible_crossrefs` schreibt die Zahl über bis zu 30 Verweise fort, und
+// `bible_search` kürzt gar nicht, sondern lässt ein Feld weg. Wer stattdessen
+// je Aufrufstelle rechnete, hätte drei Zählungen und irgendwann drei Grenzen.
+interface VerseBudget {
+  /** Die Grenze der Ausgabe, oder null: dann gibt es keine. */
+  readonly verseMax: number | null;
+  /** Der Name der Ausgabe, für die Meldung. */
+  readonly ausgabe: string;
+  /**
+   * Bewilligt bis zu `anzahl` Verse und liefert, wie viele davon Wortlaut
+   * tragen dürfen. Für Listen, die sich an beliebiger Stelle abschneiden
+   * lassen, weil jeder Eintrag für sich steht (Verse eines Kapitels, Treffer
+   * einer Suche).
+   */
+  nimm(anzahl: number): number;
+  /**
+   * Bewilligt `anzahl` Verse ganz oder gar nicht, und sperrt nach der ersten
+   * Ablehnung jede weitere Anfrage. Für Einheiten, die nur vollständig
+   * ausgegeben werden dürfen: Ein zur Hälfte gelieferter Querverweis behielte
+   * seine Stellenangabe über den ganzen Abschnitt und sähe vollständig aus.
+   * Die Sperre verhindert, dass danach noch ein kürzerer Verweis durchrutscht
+   * und in der Antwort ein Loch entsteht.
+   */
+  nimmGanz(anzahl: number): boolean;
+  /** Verse, die mit Wortlaut hinausgehen. */
+  readonly imWortlaut: number;
+  /** Verse, die wegen der Grenze ohne Wortlaut blieben. */
+  readonly ohneWortlaut: number;
+  /** Hat die Grenze in dieser Antwort gegriffen? */
+  readonly gekuerzt: boolean;
+}
+
+function verseBudget(code: TranslationCode): VerseBudget {
+  const verseMax = TRANSLATIONS[code].verseMax;
+  let imWortlaut = 0;
+  let ohneWortlaut = 0;
+  let gesperrt = false;
+  return {
+    verseMax,
+    ausgabe: TRANSLATIONS[code].name,
+    get imWortlaut() {
+      return imWortlaut;
+    },
+    get ohneWortlaut() {
+      return ohneWortlaut;
+    },
+    get gekuerzt() {
+      return ohneWortlaut > 0;
+    },
+    nimm(anzahl) {
+      if (verseMax === null) {
+        imWortlaut += anzahl;
+        return anzahl;
+      }
+      const bewilligt = Math.min(anzahl, Math.max(verseMax - imWortlaut, 0));
+      imWortlaut += bewilligt;
+      ohneWortlaut += anzahl - bewilligt;
+      return bewilligt;
+    },
+    nimmGanz(anzahl) {
+      if (verseMax === null) {
+        imWortlaut += anzahl;
+        return true;
+      }
+      if (!gesperrt && imWortlaut + anzahl <= verseMax) {
+        imWortlaut += anzahl;
+        return true;
+      }
+      gesperrt = true;
+      ohneWortlaut += anzahl;
+      return false;
+    },
+  };
+}
+
+/**
+ * Das Feld `gekuerzt`, oder nichts, wenn die Grenze nicht gegriffen hat. Es
+ * steht neben dem Satz im `hinweis` und nicht an seiner Stelle: Der Satz ist für
+ * das Modell geschrieben, die drei Zahlen sind für den, der nachrechnet.
+ */
+function gekuerztFeld(b: VerseBudget, noten?: VerseBudget): Record<string, unknown> {
+  const notenGekuerzt = noten !== undefined && noten.gekuerzt;
+  if (b.verseMax === null || (!b.gekuerzt && !notenGekuerzt)) return {};
+  return {
+    gekuerzt: {
+      verse_max: b.verseMax,
+      im_wortlaut: b.imWortlaut,
+      ohne_wortlaut: b.ohneWortlaut,
+      ...(notenGekuerzt
+        ? { fussnoten_gezeigt: noten.imWortlaut, fussnoten_entfallen: noten.ohneWortlaut }
+        : {}),
+    },
+  };
+}
+
+/**
+ * Der Satz für den `hinweis`, oder null, wenn nichts zu melden ist. Er nennt die
+ * Ausgabe und die Grenze, und er fordert nicht dazu auf, den Rest in einem
+ * zweiten Aufruf zu holen: Die Zusage gilt je Abruf, und eine Anleitung zum
+ * Umgehen gehört nicht in die Antwort, die sie einhält.
+ */
+function verseMaxHinweis(
+  b: VerseBudget,
+  lage:
+    | { art: "verse"; gefunden: number }
+    | { art: "verweise"; mitText: number; gesamt: number }
+    | { art: "treffer"; mitText: number; gesamt: number }
+): string | null {
+  if (b.verseMax === null || !b.gekuerzt) return null;
+  const kopf =
+    `Für die ${b.ausgabe} gibt dieser Server je Abruf höchstens ` +
+    `${b.verseMax} Verse im Wortlaut aus.`;
+  switch (lage.art) {
+    case "verse":
+      return (
+        `${kopf} Gefunden wurden ${lage.gefunden} Verse; enthalten sind die ` +
+        `ersten ${b.imWortlaut}. Welche enthalten sind, sagt 'reference'.`
+      );
+    case "verweise":
+      return (
+        `${kopf} ${lage.mitText} der ${lage.gesamt} Verweise tragen deshalb ` +
+        `ihren Text, die übrigen allein 'stelle' und 'votes'. Die Zahl der ` +
+        `Verweise ist davon nicht berührt.`
+      );
+    case "treffer":
+      return (
+        `${kopf} Die ersten ${lage.mitText} gelisteten Treffer tragen deshalb ` +
+        `'text', die übrigen ${lage.gesamt - lage.mitText} allein 'stelle'. Die ` +
+        `Trefferzahl und die Auszählungen sind davon nicht berührt.`
+      );
+  }
+}
+
+/**
+ * Der Satz zum Anmerkungsapparat, oder null. Eigene Meldung, weil es eine eigene
+ * Grenze ist: Der Nutzer soll nicht raten, welche der beiden gegriffen hat.
+ */
+function noteMaxHinweis(noten: VerseBudget): string | null {
+  if (noten.verseMax === null || !noten.gekuerzt) return null;
+  return (
+    `Der Anmerkungsapparat dieser Ausgabe ist an derselben Grenze gekürzt: ` +
+    `enthalten sind ${noten.imWortlaut} Anmerkungen, ${noten.ohneWortlaut} ` +
+    `weitere zu denselben Versen nicht.`
+  );
+}
+
 // --- Helfer für bible_lookup -----------------------------------------------
 /**
  * Liest eine Versangabe wie "4", "16-17", "1,3,5", "1-3,7" und liefert die
@@ -1367,17 +1522,39 @@ function lookupPayload(
   const results = lookupVerses(code, bookId, chapter, versesStr);
   if (results.length === 0) return null;
 
-  const verse_einzeln = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
+  // Gekürzt wird hier, vor allem, was aus dem Versbestand abgeleitet wird: So
+  // ziehen `reference`, der Klammerhinweis und die Fußnoten von selbst nach,
+  // statt dass drei Stellen die Grenze noch einmal kennen müssten. Die Verse
+  // liegen aufsteigend (alle drei Statements sortieren so), „die ersten" sind
+  // also die niedrigsten Versnummern.
+  const budget = verseBudget(code);
+  const gefunden = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
+  const verse_einzeln = gefunden.slice(0, budget.nimm(gefunden.length));
   const reference =
     `${getBookDisplayName(bookId)} ${chapter},` +
     formatVerseReference(verse_einzeln.map((r) => r.verse));
-  const hinweise = bracketHints(verse_einzeln.map((r) => r.text));
-  const fussnoten = verseNotes(
-    code,
-    bookId,
-    chapter,
-    new Set(verse_einzeln.map((r) => r.verse))
-  );
+  // Die Noten folgen dem gelieferten Versbestand, weil sie aus ihm abgeleitet
+  // werden: Zu einem Vers, den die Antwort nicht enthält, kann keine Note
+  // erscheinen. Darüber hinaus bekommen sie ein **eigenes** Budget derselben
+  // Größe. Ob Notentext als Wortlaut im Sinn der Zusage zählt, ist nicht
+  // entschieden (siehe `TODO.md`); dieses zweite Budget beantwortet die Frage
+  // nicht, sondern stellt sicher, dass der Apparat die Grenze auch dann nicht
+  // überschreiten kann, wenn sie später bejaht wird.
+  //
+  // Es greift beim heutigen Bestand nie: Ein Kapitel führt höchstens 15 Noten,
+  // innerhalb der ersten 20 Verse höchstens 12, je Vers höchstens 3 (gemessen
+  // 05.08.2026 über 1220 Noten). Wie `MAX_VERSES_LENGTH` ist das Vorsorge und
+  // keine laufende Regel, und wie dort gibt es aus demselben Grund keinen
+  // Testfall dafür: Er ließe sich mit diesen Daten nicht herstellen. Käme eine
+  // Ausgabe mit dichterem Apparat dazu, meldet die Kürzung sich selbst.
+  const notenBudget = verseBudget(code);
+  const alleNoten = verseNotes(code, bookId, chapter, new Set(verse_einzeln.map((r) => r.verse)));
+  const fussnoten = alleNoten.slice(0, notenBudget.nimm(alleNoten.length));
+  const hinweise = [
+    verseMaxHinweis(budget, { art: "verse", gefunden: gefunden.length }),
+    noteMaxHinweis(notenBudget),
+    ...bracketHints(verse_einzeln.map((r) => r.text)),
+  ].filter((h): h is string => h !== null);
 
   return {
     reference,
@@ -1391,6 +1568,7 @@ function lookupPayload(
       : { verse_einzeln }),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
     ...(fussnoten.length > 0 ? { fussnoten } : {}),
+    ...gekuerztFeld(budget, notenBudget),
     quellen: quellen(translationQuelle(code)),
   };
 }
@@ -1751,12 +1929,52 @@ const QUELLEN_SCHEMA = {
   },
 };
 
-/** Bedingt, zwei Felder:
+/** In drei Werkzeugen dieselbe Gestalt, deshalb einmal deklariert: die Auskunft
+ *  darüber, dass die Wortlaut-Grenze einer Ausgabe gegriffen hat. Sie steht
+ *  neben dem Satz im `hinweis` und nicht an seiner Stelle, denn der Satz ist für
+ *  das Modell geschrieben und diese drei Zahlen für den, der nachrechnet.
+ *  `ohne_wortlaut` meint zwei verschiedene Lagen, und welche vorliegt, sagt der
+ *  `hinweis`: In `bible_lookup` fehlen diese Verse ganz, in `bible_search` und
+ *  `bible_crossrefs` steht ihre Stellenangabe da, nur ohne Text. */
+const GEKUERZT_SCHEMA = {
+  type: "object",
+  properties: {
+    verse_max: {
+      type: "integer",
+      description: "Maximum number of verses this edition may quote per call.",
+    },
+    im_wortlaut: { type: "integer" },
+    ohne_wortlaut: { type: "integer" },
+    fussnoten_gezeigt: {
+      type: "integer",
+      description:
+        "Only in bible_lookup, and only when the edition's notes hit the same cap; " +
+        "the notes have their own budget of the same size.",
+    },
+    fussnoten_entfallen: { type: "integer" },
+  },
+  required: ["verse_max", "im_wortlaut", "ohne_wortlaut"],
+};
+
+/** Bedingt, drei Felder:
  *  `hinweis`, nur wenn der Text Wörter in Klammern trägt (Menge 137 Verse,
- *  Schlachter 2000 1925; Luther, Schlachter 1951 und Elberfelder keine).
+ *  Schlachter 2000 1925; Luther, Schlachter 1951 und Elberfelder keine) oder
+ *  wenn die Wortlaut-Grenze gegriffen hat. Das Feld hat seit der Grenze zwei
+ *  Ursachen, es kann also auch ohne Klammerverse dastehen.
  *  `fussnoten`, nur wenn die Ausgabe zu einem der gelieferten Verse eine
  *  Anmerkung führt: allein Schlachter 2000, dort an 1134 von 31 171 Versen
- *  (rund 3,6 %, gemessen 05.08.2026). */
+ *  (rund 3,6 %, gemessen 05.08.2026). Die Noten haben ein eigenes Budget
+ *  derselben Größe wie die Verse; es greift beim heutigen Bestand nie (höchstens
+ *  15 Noten je Kapitel, 12 innerhalb der ersten 20 Verse, 3 je Vers), und
+ *  `gekuerzt.fussnoten_gezeigt`/`fussnoten_entfallen` stehen deshalb bisher in
+ *  keiner Antwort.
+ *  `gekuerzt`, nur wenn die Ausgabe eine Wortlaut-Grenze hat und diese Antwort
+ *  an sie stieß. Betroffen sind die Kapitel oberhalb ihrer Grenze; bei der heute
+ *  eingetragenen Zahl sind das 768 der 1189 Kapitel in der Schlachter 2000 und
+ *  765 in der Schlachter 1951 (gemessen 05.08.2026). Luther,
+ *  Elberfelder und Menge kennen die Bedingung nicht, dort fehlt das Feld in
+ *  jeder Antwort. Auf dem Ressourcenpfad ist es wie `verse_einzeln` gar nicht
+ *  deklariert: Ressourcen werden gegen kein `outputSchema` geprüft. */
 const LOOKUP_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1776,8 +1994,11 @@ const LOOKUP_OUTPUT = {
         required: ["vers", "stelle", "text"],
       },
     },
+    gekuerzt: GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
+  // `text` bleibt erforderlich: Der Leerfall ist vorher abgefangen, und die
+  // Wortlaut-Grenze lässt immer mindestens einen Vers durch.
   required: ["reference", "translation", "text", "quellen"],
 };
 
@@ -1818,7 +2039,13 @@ const ORIGINAL_OUTPUT = {
 
 /** Bedingt: `verweise[].verse_einzeln`, nur bei einem mehrversigen Ziel innerhalb
  *  eines Kapitels; `lesehinweis`, nur wenn ein Verweis ihn trägt; `hinweis` bei
- *  Wörtern in Klammern. */
+ *  Wörtern in Klammern oder wenn die Wortlaut-Grenze gegriffen hat.
+ *  `verweise[].text` fehlt ab dem Verweis, mit dem die Wortlaut-Grenze der
+ *  Ausgabe erschöpft ist, und dann bei allen folgenden; nur in Schlachter 1951
+ *  und Schlachter 2000, in den drei gemeinfreien Ausgaben steht es in jeder
+ *  Antwort. Bei `limit: 30` überschreiten 8941 der 29 364 möglichen Abrufe die
+ *  Grenze, bei der Vorgabe `limit: 10` sind es 1053 (gemessen 05.08.2026).
+ *  `gekuerzt` wie in bible_lookup. */
 const CROSSREFS_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1830,7 +2057,13 @@ const CROSSREFS_OUTPUT = {
         properties: {
           stelle: { type: "string" },
           votes: { type: "integer" },
-          text: { type: "string" },
+          text: {
+            type: "string",
+            description:
+              "Absent once the edition's verbatim quota for this response is used up, and " +
+              "absent for every later entry; also absent when the target verse is missing " +
+              "from this translation. `stelle` and `votes` are always there.",
+          },
           verse_einzeln: {
             type: "array",
             items: {
@@ -1843,11 +2076,12 @@ const CROSSREFS_OUTPUT = {
               "from here; the joined `text` gets cut at both ends when consumers split it.",
           },
         },
-        required: ["stelle", "votes", "text"],
+        required: ["stelle", "votes"],
       },
     },
     lesehinweis: { type: "string" },
     hinweis: { type: "string" },
+    gekuerzt: GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
   required: ["reference", "verweise", "quellen"],
@@ -1904,7 +2138,13 @@ const CONCORDANCE_OUTPUT = {
 /** Bedingt: `vorkommen_gesamt`, nur wenn gezählt wurde UND die Zahl von
  *  `treffer` abweicht; `verteilung`, nur wenn gezählt wurde und es mehr als eine
  *  Gruppe gibt. Beide entfallen oberhalb von OCCURRENCE_SCAN_LIMIT, und
- *  `hinweis` sagt das dann. */
+ *  `hinweis` sagt das dann.
+ *  `verse[].text` fehlt jenseits der Wortlaut-Grenze der Ausgabe: In Schlachter
+ *  1951 und Schlachter 2000 tragen die ersten gelisteten Treffer bis zu dieser
+ *  Grenze ihren Text, alle weiteren allein die Stellenangabe. Sichtbar wird das
+ *  nur, wenn `limit` über der Grenze liegt; die Vorgabe ist 10 und liegt darunter.
+ *  Bei der heute eingetragenen Zahl haben in der Schlachter 1951 2564 von 25 844
+ *  Wörtern mehr Treffer als erlaubt (9,9 %). `gekuerzt` wie in bible_lookup. */
 const SEARCH_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1942,11 +2182,19 @@ const SEARCH_OUTPUT = {
       type: "array",
       items: {
         type: "object",
-        properties: { stelle: { type: "string" }, text: { type: "string" } },
-        required: ["stelle", "text"],
+        properties: {
+          stelle: { type: "string" },
+          text: {
+            type: "string",
+            description:
+              "Absent beyond the edition's verbatim quota; the hit still counts towards `treffer`.",
+          },
+        },
+        required: ["stelle"],
       },
     },
     hinweis: { type: "string" },
+    gekuerzt: GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
   required: ["suche", "uebersetzung", "treffer", "verse", "hinweis", "quellen"],
@@ -2193,7 +2441,9 @@ const handleListTools = async () => ({
           verses: {
             type: "string",
             description:
-              'Verse(s): single "4", range "16-17", list "1,3,5", or combined "1-3,7". Omit for full chapter.',
+              'Verse(s): single "4", range "16-17", list "1,3,5", or combined "1-3,7". Omit for the ' +
+              "whole chapter. Some editions cap how many verses one call may quote; the response " +
+              "then says so in `hinweis` and `gekuerzt`, and `reference` names what it contains.",
           },
           translation: {
             type: "string",
@@ -2247,8 +2497,9 @@ const handleListTools = async () => ({
       annotations: READ_ONLY_LOCAL,
       description:
         "Find cross-references (related/parallel passages) for one Bible verse, ranked by " +
-        "relevance votes, each with its German text (default: Luther 1912). Use this to find " +
-        "where a theme, quote or promise recurs elsewhere in Scripture. Data: Treasury of " +
+        "relevance votes, with the German text of the targets (default: Luther 1912; in editions " +
+        "that cap verbatim quoting, the later targets carry `stelle` and `votes` only). Use this " +
+        "to find where a theme, quote or promise recurs elsewhere in Scripture. Data: Treasury of " +
         "Scripture Knowledge (expanded), OpenBible.info, CC-BY.",
       inputSchema: {
         type: "object" as const,
@@ -2585,10 +2836,22 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
     const apparat = hasVerseNotes
       ? " Trägt eine Antwort das Feld 'fussnoten', gehört es in den Vergleich: Dort sagt die Ausgabe selbst, welche andere Wiedergabe sie erwogen hat."
       : "";
+    // Dieser Prompt lässt dieselbe Stelle in jeder Ausgabe abrufen und nach
+    // ausgelassenen Wörtern fragen. Bei einem ganzen Kapitel liefern die
+    // Ausgaben mit Wortlaut-Grenze weniger Verse als die übrigen, und der
+    // nächstliegende Fehlschluss ist genau der falsche: „diese Ausgabe lässt
+    // die Verse 21 bis 176 aus." Der `hinweis` der Antwort sagt das Gegenteil,
+    // aber er sagt es erst hinterher; hier steht es vorher. Die Bedingung fragt
+    // den geladenen Bestand ab, damit der Satz in einer Datenbank ohne begrenzte
+    // Ausgabe wegfällt, statt vor etwas zu warnen, das dort nicht vorkommt.
+    const mitGrenze = loadedTranslationCodes().some((c) => TRANSLATIONS[c].verseMax !== null);
+    const grenze = mitGrenze
+      ? " Trägt eine Antwort das Feld 'gekuerzt', gibt diese Ausgabe je Abruf nur eine begrenzte Zahl Verse im Wortlaut aus: Vergleiche dann allein die Verse, die alle Antworten enthalten. Fehlende Verse sind eine Grenze dieses Servers und keine Auslassung der Ausgabe."
+      : "";
     text =
       `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
       `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab: ${liste || "keine (in dieser Datenbank ist keine Übersetzung geladen)"}.\n` +
-      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${klammern}${apparat}\n` +
+      `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${grenze}${klammern}${apparat}\n` +
       `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab (AT: hebräischer WLC; NT: nach texttyp) und kläre, welche Wiedergabe dem Grundtext am nächsten kommt. Bei NT-Versen zusätzlich bible_compare, denn die Übersetzungen können verschiedenen Editionen folgen.\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
   } else {
@@ -2874,11 +3137,16 @@ function translationsPayload(): Record<string, unknown> {
       name: TRANSLATIONS[code].name,
       lizenz: TRANSLATIONS[code].license,
       nennung: TRANSLATIONS[code].attribution,
+      // Wie `nennung` eine Bedingung, die am Text hängt und nicht am Server,
+      // und wie dort ist null eine Aussage: Diese Ausgabe hat keine Grenze.
+      verse_max: TRANSLATIONS[code].verseMax,
     })),
     voreinstellung: DEFAULT_TRANSLATION,
     hinweis:
       "Aufgeführt ist, was diese Instanz geladen hat. Steht bei 'nennung' null, " +
-      "verlangt die Lizenz keine Namensnennung.",
+      "verlangt die Lizenz keine Namensnennung. Steht bei 'verse_max' eine Zahl, " +
+      "gibt der Server aus dieser Ausgabe je Abruf höchstens so viele Verse im " +
+      "Wortlaut aus; steht dort null, gibt es keine solche Grenze.",
   };
 }
 
@@ -3458,8 +3726,8 @@ function handleOriginal(args: {
 
 /**
  * Bedient das Werkzeug `bible_crossrefs`: liefert die Querverweise zu einem
- * Vers, nach den Bewertungen von OpenBible.info geordnet, jeden mit seinem
- * deutschen Zieltext.
+ * Vers, nach den Bewertungen von OpenBible.info geordnet, mit dem deutschen
+ * Zieltext, soweit die Wortlaut-Grenze der Ausgabe ihn zulässt.
  */
 function handleCrossrefs(args: {
   book?: unknown;
@@ -3495,6 +3763,7 @@ function handleCrossrefs(args: {
     return errorResult(verseOutOfRange);
   }
   const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 30);
+  const budget = verseBudget(translation);
 
   const bookId = resolveBook(book);
   if (bookId === null) {
@@ -3525,7 +3794,18 @@ function handleCrossrefs(args: {
     // schneiden dabei die äußeren Ränder weg (beobachtet am 25.07.2026,
     // Joh 11,25-26 zitiert ohne „Jesus spricht zu ihr:" und ohne die
     // abschließende Frage).
-    let text = "";
+    //
+    // Die Wortlaut-Grenze wird hier je Verweis genommen, nicht je Vers
+    // (`nimmGanz`), und beide Textfelder werden aus derselben bewilligten Liste
+    // gebaut, damit ein Vers einmal zählt, obwohl er zweimal hinausgeht. Eine
+    // Grenze auf Versebene schnitte in gemessen 3335 von 29 364 möglichen
+    // Abrufen mitten in eine Spanne: `stelle` nennte weiter den ganzen
+    // Abschnitt, `verse_einzeln` trüge einen Teil davon, und die Ellipse unten
+    // greift nur bei `span > CAP`, sagte es also nicht. Wer ein drittes
+    // verstragendes Feld ergänzt, leitet es ebenfalls aus dieser Liste ab.
+    // Verbraucht wird in `votes`-Reihenfolge (das Statement sortiert so): Die
+    // bestbewerteten Verweise behalten ihren Text.
+    let text: string | null = null;
     let einzeln: Array<{ nr: number; text: string }> | null = null;
     if (sameChapter) {
       const span = r.to_verse_end - r.to_verse + 1;
@@ -3533,24 +3813,44 @@ function handleCrossrefs(args: {
       const verses = stmtVerseRange.all(
         translation, r.to_book, r.to_chapter, r.to_verse, Math.min(r.to_verse_end, r.to_verse + CAP - 1)
       );
-      text = verses
-        .map((v) => (span > 1 ? `${v.verse} ${stripHtml(v.text)}` : stripHtml(v.text)))
-        .join(" ");
-      if (span > CAP) text += ` … [bis V. ${r.to_verse_end}]`;
-      if (span > 1) einzeln = verses.map((v) => ({ nr: v.verse, text: stripHtml(v.text) }));
+      // Findet sich kein Vers, fehlt das Feld, statt leer dazustehen. Ein leerer
+      // String war nie eine Aussage: Er sagte weder, dass es den Vers in dieser
+      // Übersetzung nicht gibt, noch sonst etwas, und seit die Grenze dasselbe
+      // Feld weglassen kann, stünden zwei Bedeutungen nebeneinander.
+      if (verses.length > 0 && budget.nimmGanz(verses.length)) {
+        text = verses
+          .map((v) => (span > 1 ? `${v.verse} ${stripHtml(v.text)}` : stripHtml(v.text)))
+          .join(" ");
+        if (span > CAP) text += ` … [bis V. ${r.to_verse_end}]`;
+        if (span > 1) einzeln = verses.map((v) => ({ nr: v.verse, text: stripHtml(v.text) }));
+      }
     } else {
+      // Erst holen, dann bewilligen: Umgekehrt verbrauchte ein Ziel ohne
+      // gefundenen Vers Budget, das kein Wortlaut aufbraucht.
       const v = stmtVerse.get(translation, r.to_book, r.to_chapter, r.to_verse);
-      if (v) text = `${stripHtml(v.text)} … [Abschnitt bis ${r.to_chapter_end},${r.to_verse_end}]`;
+      if (v && budget.nimmGanz(1)) {
+        text = `${stripHtml(v.text)} … [Abschnitt bis ${r.to_chapter_end},${r.to_verse_end}]`;
+      }
     }
     return {
       stelle,
       votes: r.votes,
-      text,
+      ...(text !== null ? { text } : {}),
       ...(einzeln !== null ? { verse_einzeln: einzeln } : {}),
     };
   });
 
-  const hinweise = bracketHints(verweise.map((v) => v.text));
+  // Nur der Text, der wirklich hinausgeht: Sonst warnte die Antwort vor
+  // Klammern in Versen, die sie nicht geliefert hat.
+  const texte = verweise.flatMap((v) => (typeof v.text === "string" ? [v.text] : []));
+  const hinweise = [
+    verseMaxHinweis(budget, {
+      art: "verweise",
+      mitText: texte.length,
+      gesamt: verweise.length,
+    }),
+    ...bracketHints(texte),
+  ].filter((h): h is string => h !== null);
   const response = {
     reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
     verweise,
@@ -3563,6 +3863,7 @@ function handleCrossrefs(args: {
         }
       : {}),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
+    ...gekuerztFeld(budget),
     quellen: quellen(DATASET_QUELLEN.crossrefs, translationQuelle(translation)),
   };
 
@@ -3768,6 +4069,7 @@ function handleSearch(args: {
     return errorResult("Error: 'query' enthält kein durchsuchbares Wort.");
   }
   const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 50);
+  const budget = verseBudget(translation);
 
   let bookId: number | null = null;
   if (args.book !== undefined && args.book !== null && args.book !== "") {
@@ -3846,30 +4148,59 @@ function handleSearch(args: {
     }
   }
 
+  // Die gelistete Trefferliste entsteht genau einmal und speist alles Weitere.
+  // `rows` ist dafür untauglich: Dort trägt jede Zeile ihren Text, auch die, die
+  // wegen der Grenze keinen ausliefert, und `bracketHints` weiter unten warnte
+  // dann vor Klammern in Versen, die die Antwort nicht enthält. Der Typecheck
+  // fängt das nicht, weil `r.text` auf der Datenbankzeile weiter eine
+  // Zeichenkette ist. `rows` steht in Trefferreihenfolge, die ersten Treffer
+  // tragen also den Text.
+  const verse = rows.map((r) => ({
+    stelle: `${getBookDisplayName(r.book_id)} ${r.chapter},${r.verse}`,
+    ...(budget.nimm(1) === 1 ? { text: r.text } : {}),
+  }));
+  const gelisteteTexte = verse.flatMap((v) => (typeof v.text === "string" ? [v.text] : []));
+
+  // `treffer`, `vorkommen_gesamt` und `verteilung` bleiben von der Grenze
+  // unberührt: Das sind Zählungen über die Datenbank, und eine Zahl ist kein
+  // Wortlaut.
   const response: Record<string, unknown> = {
     suche: query,
     uebersetzung: TRANSLATIONS[translation].name,
     treffer: total,
     ...(vorkommen !== null && vorkommen !== total ? { vorkommen_gesamt: vorkommen } : {}),
     ...(verteilung.length > 0 ? { verteilung } : {}),
-    verse: rows.map((r) => ({
-      stelle: `${getBookDisplayName(r.book_id)} ${r.chapter},${r.verse}`,
-      text: r.text,
-    })),
+    verse,
   };
+  // Die Grenze steht vor allem anderen: Sie sagt, was in der Antwort fehlt, und
+  // das schränkt jeden folgenden Satz ein.
   const hinweise: string[] = [];
+  const grenzHinweis = verseMaxHinweis(budget, {
+    art: "treffer",
+    mitText: gelisteteTexte.length,
+    gesamt: verse.length,
+  });
+  if (grenzHinweis !== null) {
+    hinweise.push(grenzHinweis);
+  }
   if (total > rows.length) {
     hinweise.push(
       `Nur die ersten ${rows.length} von ${total} Treffern gelistet (limit erhöhen oder auf ein Buch einschränken).`
     );
   }
+  // „Im Verstext" wird unwahr, sobald gelistete Treffer ohne Text dabei sind:
+  // Die Aufforderung, je Vers abzuzählen, ginge dann auch an die, die keinen
+  // Text tragen, und wer ihr folgte, käme auf null Vorkommen.
+  const markerSatz = budget.gekuerzt
+    ? "Die Fundstellen sind in den Versen markiert, die 'text' tragen (⟦…⟧): " +
+      "dort je Vers daran abzählen, nicht schätzen."
+    : "Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: " +
+      "je Vers daran abzählen, nicht schätzen.";
   hinweise.push(
     vorkommen !== null && vorkommen !== total
       ? `'treffer' zählt Verse (${total}), nicht Wortvorkommen: in manchen Versen passt der Suchbegriff mehrfach, ` +
-          `zusammen ${vorkommen} Vorkommen ('vorkommen_gesamt'). Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: ` +
-          "je Vers daran abzählen, nicht schätzen."
-      : "'treffer' zählt Verse, nicht Wortvorkommen. Die Fundstellen im Verstext sind mit ⟦…⟧ markiert: " +
-          "je Vers daran abzählen, nicht schätzen."
+          `zusammen ${vorkommen} Vorkommen ('vorkommen_gesamt'). ${markerSatz}`
+      : `'treffer' zählt Verse, nicht Wortvorkommen. ${markerSatz}`
   );
   // Oberhalb der Scan-Grenze entfallen beide gezählten Felder, und lange sagte
   // das nichts: Die Antwort nannte `treffer` und forderte weiter dazu auf, die
@@ -3895,8 +4226,9 @@ function handleSearch(args: {
         "('vorkommen'). Diese Zahlen übernehmen, nicht aus der Trefferliste selbst aufteilen."
     );
   }
-  hinweise.push(...bracketHints(rows.map((r) => r.text)));
+  hinweise.push(...bracketHints(gelisteteTexte));
   response.hinweis = hinweise.join(" ");
+  Object.assign(response, gekuerztFeld(budget));
   response.quellen = quellen(translationQuelle(translation));
 
   return jsonResult(response);

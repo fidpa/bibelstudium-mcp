@@ -26,7 +26,7 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 - **Exakter deutscher Verstext** (`bible_lookup`) – vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge 1939
 - **Grundtext Wort für Wort** (`bible_original`) – ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
 - **Konkordanz / Wortstudie** (`bible_concordance`): alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
-- **Querverweise** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, jeweils mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt (`verse_einzeln`)
+- **Querverweise** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt (`verse_einzeln`). In einer Ausgabe mit Wortlaut-Grenze tragen die bestbewerteten Verweise ihren Text, die übrigen nur `stelle` und `votes`; die Zahl der Verweise bleibt gleich
 - **Volltextsuche** (`bible_search`): FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
 - **Editionsvergleich** (`bible_compare`): Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
 - **Geführte Arbeitsabläufe**: drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
@@ -43,6 +43,7 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 > - Die **Lexikondaten** (Strong, Abbott-Smith, Glossen) sind **englisch**: Ein frei lizenziertes deutsches Lexikon vergleichbarer Tiefe existiert nicht
 > - Die NT-Voreinstellung ist der **Byzantinische Mehrheitstext**, eine dokumentierte redaktionelle Entscheidung, keine Aussage über den Forschungskonsens; SBLGNT (kritisch) und Textus Receptus sind einen Parameter entfernt
 > - Die vier deutschen Übersetzungen sind älteren Datums (1871–1951); zeitgenössische Übersetzungen sind nicht frei lizenziert
+> - Die **Schlachter 1951** gibt je Abruf höchstens 20 Verse im Wortlaut aus, gleich mit welchem Werkzeug: ein freiwilliges Entgegenkommen gegenüber der Genfer Bibelgesellschaft, die den Text freigegeben hat. Greift die Grenze, sagt die Antwort es im Feld `gekuerzt` und im `hinweis`; welche Verse enthalten sind, nennt `reference`. Die drei gemeinfreien Übersetzungen sind davon nicht betroffen, und `bible://uebersetzungen` nennt zu jeder Ausgabe ihr `verse_max`
 > - Tool-Namen und Tool-Beschreibungen sind **englisch** (Entwickler-Oberfläche), die Ausgabefelder deutsch (`bedeutung`, `bezeugung`, `verweise`, …)
 
 ## Voraussetzungen
@@ -196,10 +197,10 @@ Zum Testen ohne MCP-Client lassen sich JSON-RPC-Zeilen direkt in den Server leit
 
 | Werkzeug | Zweck |
 |----------|-------|
-| `bible_lookup` | Exakter Verstext nach Stellenangabe (Buch/Kapitel/Verse, Übersetzung wählbar) |
+| `bible_lookup` | Exakter Verstext nach Stellenangabe (Buch/Kapitel/Verse, Übersetzung wählbar); in Ausgaben mit Wortlaut-Grenze bis zu deren `verse_max` |
 | `bible_original` | Ein Vers Wort für Wort auf Hebräisch/Griechisch mit Grundform, Strong-Nummer, dekodierter Morphologie |
 | `bible_concordance` | Alle Vorkommen eines Grundtext-Wortes (Strong/Grundform) mit Statistik und Lexikondaten |
-| `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext |
+| `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext, soweit die Wortlaut-Grenze der Ausgabe ihn zulässt |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
 | `bible_server_info` | Fassung dieses Servers, welche Bibeldaten er geladen hat und welche Ressourcen er anbietet. Liefert keinen Bibeltext |
@@ -222,7 +223,7 @@ Werkzeuge und Prompts wählt das Modell, eine Ressource hängt der Nutzer selbst
 | URI | Inhalt |
 |-----|--------|
 | `bible://buecher` | Die 66 Bücher mit Nummer, Name, Kapitelzahl, Testament |
-| `bible://uebersetzungen` | Geladene Übersetzungen mit Lizenz und geforderter Namensnennung |
+| `bible://uebersetzungen` | Geladene Übersetzungen mit Lizenz, geforderter Namensnennung und `verse_max` |
 | `bible://editionen` | Geladene Grundtext-Editionen mit Sprache, Eigenheiten der Schreibung, Lizenz |
 | `bible://quellen` | Alle Quellen, aus denen diese Instanz tatsächlich Daten führt |
 
@@ -230,7 +231,7 @@ Der Bibeltext selbst kommt über URI-Vorlagen. Sonderzeichen im Buchnamen werden
 
 | Vorlage | Inhalt | Beispiel |
 |---------|--------|----------|
-| `bible://kapitel/{uebersetzung}/{buch}/{kapitel}` | Ganzes Kapitel, Vers für Vers | `bible://kapitel/LUT/Psalter/23` |
+| `bible://kapitel/{uebersetzung}/{buch}/{kapitel}` | Ganzes Kapitel, Vers für Vers; in Ausgaben mit Wortlaut-Grenze bis zu deren `verse_max` | `bible://kapitel/LUT/Psalter/23` |
 | `bible://vers/{uebersetzung}/{buch}/{kapitel}/{verse}` | Einzelvers, Bereich oder Liste | `bible://vers/SCH/Johannes/3/16-17` |
 | `bible://grundtext/{edition}/{buch}/{kapitel}/{vers}` | Ein Vers Wort für Wort | `bible://grundtext/wlc/1%20Mose/1/1` |
 

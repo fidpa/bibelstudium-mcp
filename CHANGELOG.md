@@ -6,6 +6,18 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.0] - 2026-08-05
+
+### Geändert (nicht abwärtskompatibel)
+
+- **`verweise[].text` in `bible_crossrefs` und `verse[].text` in `bible_search` stehen nicht mehr in `required`.** Eine Ausgabe kann eine Höchstzahl Verse führen, die eine Antwort im Wortlaut tragen darf; jenseits davon bleibt die Stellenangabe stehen und das Textfeld entfällt. Wer `text` bisher als gesetzt annahm, prüft es jetzt. `bible_crossrefs` lässt das Feld auch dann weg, wenn der Zielvers in der gewählten Übersetzung fehlt; vorher stand dort eine leere Zeichenkette.
+- **Schlachter 1951 gibt je Abruf höchstens 20 Verse im Wortlaut aus**, gleich mit welchem Werkzeug: ein freiwilliges Entgegenkommen gegenüber der Genfer Bibelgesellschaft. Luther 1912, Elberfelder 1871 und Menge 1939 sind nicht betroffen. Gekürzt wird meldend, nie still: `reference` nennt die gelieferten Verse, `hinweis` den Grund.
+
+### Hinzugefügt
+
+- Bedingtes Feld **`gekuerzt`** an `bible_lookup`, `bible_crossrefs` und `bible_search` mit `verse_max`, `im_wortlaut` und `ohne_wortlaut`.
+- **`verse_max`** je Ausgabe in `bible://uebersetzungen`; `null` heißt: keine Grenze.
+
 ## [0.5.16] - 2026-08-05
 
 ### Hinzugefügt

@@ -23,9 +23,32 @@
  * mit `quelle: "lokal"` liegt nicht bei bolls.life; stünde er ohne dieses Feld
  * hier, versuchte jeder `bun run setup` und jedes `bible_setup` einen Abruf, der
  * mit 404 endet, und die sieben folgenden Datensätze fielen mit aus.
+ *
+ * `verseMax` ist die Höchstzahl Verse, die eine Antwort aus dieser Ausgabe im
+ * Wortlaut tragen darf, und `null` dort, wo es keine Grenze gibt. Sie steht hier
+ * aus demselben Grund wie `license` und `attribution`: Es ist eine Bedingung,
+ * die am Text hängt und nicht am Server, und ein globaler Schalter beschnitte
+ * die gemeinfreien Ausgaben mit. Auch hier ist `null` eine Aussage und kein
+ * vergessener Wert; `satisfies` unten erzwingt sie bei jedem neuen Eintrag.
  */
+
+/**
+ * Verse im Wortlaut je Abruf, für beide Schlachter-Ausgaben zugesagt. Eine
+ * einzige Zahl, weil es im Code dieselbe Regel ist; die Rechtsgründe der beiden
+ * Ausgaben unterscheiden sich, ihr Verhalten nicht. Wer die Grenze ändern oder
+ * aufheben will, ändert diese Zeile und die Registry-Einträge darunter: Kein
+ * Handler kennt den Wert, alle fragen `verseBudget()` in `server.ts`.
+ */
+const VERSE_MAX_GBG = 20;
+
 export const TRANSLATIONS = {
-  LUT: { name: "Luther 1912", license: "Public Domain", attribution: null, quelle: "bolls" },
+  LUT: {
+    name: "Luther 1912",
+    license: "Public Domain",
+    attribution: null,
+    quelle: "bolls",
+    verseMax: null,
+  },
   SCH: {
     name: "Schlachter 1951",
     license: "CC BY 4.0 (Genfer Bibelgesellschaft / ebible.org)",
@@ -34,14 +57,28 @@ export const TRANSLATIONS = {
       "(Geneva Bible Society), bereitgestellt unter CC BY 4.0, " +
       "https://ebible.org/deu1951/copyright.htm",
     quelle: "bolls",
+    verseMax: VERSE_MAX_GBG,
   },
-  ELB: { name: "Elberfelder 1871", license: "Public Domain", attribution: null, quelle: "bolls" },
-  MB: { name: "Menge 1939", license: "Public Domain", attribution: null, quelle: "bolls" },
+  ELB: {
+    name: "Elberfelder 1871",
+    license: "Public Domain",
+    attribution: null,
+    quelle: "bolls",
+    verseMax: null,
+  },
+  MB: {
+    name: "Menge 1939",
+    license: "Public Domain",
+    attribution: null,
+    quelle: "bolls",
+    verseMax: null,
+  },
   SLT: {
     name: "Schlachter 2000",
     license: "Abkommen mit der Genfer Bibelgesellschaft (nur der gehostete Dienst)",
     attribution: "© 2000 Genfer Bibelgesellschaft",
     quelle: "lokal",
+    verseMax: VERSE_MAX_GBG,
   },
 } as const satisfies Record<string, TranslationMeta>;
 
@@ -55,6 +92,7 @@ interface TranslationMeta {
   readonly license: string;
   readonly attribution: string | null;
   readonly quelle: "bolls" | "lokal";
+  readonly verseMax: number | null;
 }
 
 export type TranslationCode = keyof typeof TRANSLATIONS;
