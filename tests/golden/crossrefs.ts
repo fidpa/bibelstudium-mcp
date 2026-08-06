@@ -30,9 +30,20 @@ export const crossrefsBuendel = buendel({
     // einzige Angabe, die `requireBookName` seit dem 06.08.2026 als Parameter
     // bekommt, und ein Einbau, der die eines anderen Werkzeugs setzte, blieb grün.
     xrefBuchFehlt: ["bible_crossrefs", { chapter: 1, verse: 1 }],
+    // Die beiden Abkürzungen langer Ziele. Ein Ziel über mehr als vier Verse
+    // wird beschnitten, eines über eine Kapitelgrenze ebenfalls, und beide
+    // hängen eine Ellipse samt Endangabe an. Genau diese Angabe liest ein
+    // Konsument als Vollständigkeitssignal; bis zum 06.08.2026 war sie von
+    // keiner Zusicherung berührt. 1. Mose 1,1 verweist auf Sprüche 8,22-30
+    // (neun Verse), 1. Mose 11,31 auf 1. Mose 11,32 bis 12,1.
+    xrefLangeSpanne: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1, limit: 30 }],
+    xrefUeberKapitel: ["bible_crossrefs", { book: "1. Mose", chapter: 11, verse: 31, limit: 30 }],
+    // Kein Verweis ist ein Ergebnis, keine Panne.
+    xrefKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 13 }],
   },
   pruefe({ res }) {
     const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
+    const { xrefLangeSpanne, xrefUeberKapitel, xrefKeine } = res;
 
     eq("bible_crossrefs verse: Text", xrefVerse999.text, VERSE_AUSSERHALB);
     eq("bible_crossrefs verse: isError", xrefVerse999.isError, true);
@@ -55,6 +66,30 @@ export const crossrefsBuendel = buendel({
     eq("Joh 11,25-26: zwei Einzelverse", einzeln.length, 2);
     eq("Joh 11,25-26: erste Versnummer", einzeln[0]?.nr, 25);
     has("Joh 14,6: lesehinweis gesetzt", String(xrefJoh146.json?.lesehinweis ?? ""), "vollständig übernehmen");
+
+    // Die Ellipse innerhalb eines Kapitels: Sie nennt den letzten Vers, den sie
+    // weglässt, und ohne diese Zahl läse sich der abgeschnittene Text
+    // vollständig.
+    const spanne = ((xrefLangeSpanne.json?.verweise ?? []) as Array<Json>).find((x) =>
+      String(x.stelle).startsWith("Sprüche 8,22")
+    );
+    check("1. Mose 1,1: Sprüche 8,22-30 enthalten", spanne !== undefined);
+    has("lange Spanne: Ellipse nennt den letzten Vers", String(spanne?.text ?? ""), "… [bis V. 30]");
+
+    // Und über die Kapitelgrenze hinweg mit Kapitel UND Vers: Eine bloße
+    // Versnummer wäre dort mehrdeutig.
+    const ueber = ((xrefUeberKapitel.json?.verweise ?? []) as Array<Json>).find((x) =>
+      String(x.stelle).includes("11,32")
+    );
+    check("1. Mose 11,31: Ziel über die Kapitelgrenze enthalten", ueber !== undefined);
+    has(
+      "über Kapitelgrenze: Ellipse nennt Kapitel und Vers",
+      String(ueber?.text ?? ""),
+      "… [Abschnitt bis 12,1]"
+    );
+
+    eq("ohne Querverweise: isError", xrefKeine.isError, true);
+    eq("ohne Querverweise: nennt die Stelle", xrefKeine.text, "Keine Querverweise für 1 Mose 1,13 gefunden.");
   },
 });
 

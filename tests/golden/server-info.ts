@@ -55,8 +55,16 @@ export const serverInfoBuendel = buendel({
       check(`zusatzdaten.${key} ist bool`, typeof zusatz[key] === "boolean");
     }
     lacks("keine Verszahl", serverInfo.text, "verse_gesamt");
-    lacks("keine Host-Details: kein Pfad", serverInfo.text, "/opt/");
-    lacks("keine Host-Details: keine Laufzeit", serverInfo.text, "uptime");
+    // Bis zum 06.08.2026 stand hier ein einzelnes `lacks(…, "/opt/")` unter der
+    // Überschrift „kein Pfad". Es konnte nicht fehlschlagen: Die Datenbank liegt
+    // in der Entwicklung unter `/home/`, in der Erweiterung unter
+    // `~/.local/share/`, und `/opt/` kommt auf keiner der beiden Maschinen vor.
+    // Leckte `bible_server_info` seinen Datenbankpfad, ginge die Zusicherung
+    // durch. Geprüft wird jetzt dieselbe Liste, die `tests/lib/buendel.ts` über
+    // die Ressourcen legt; dort deckte sie den Werkzeugkanal nicht mit ab.
+    for (const verboten of ["/home/", "/Users/", "/opt/", "process", "uptime", "hostname"]) {
+      lacks(`keine Host-Angabe: ${verboten}`, serverInfo.text, verboten);
+    }
   },
 });
 

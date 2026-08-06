@@ -8,7 +8,8 @@
 import { resolve, dirname } from "node:path";
 import type { Json } from "./zusicherungen.ts";
 
-// Zwei Ebenen hoch: diese Datei liegt in tests/lib/, der Server in der Wurzel.
+// Zwei Ebenen hoch in die Wurzel: diese Datei liegt in tests/lib/, der Server
+// seit dem 05.08.2026 in src/.
 const SERVER = resolve(dirname(dirname(import.meta.dirname)), "src/server.ts");
 
 /**

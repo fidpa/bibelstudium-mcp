@@ -12,7 +12,12 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss } from "../lib/zusicherungen.ts";
-import { BUCH_KEINE_ZEICHENKETTE, BUCH_ZU_LANG, VERSE_AUSSERHALB } from "../lib/meldungen.ts";
+import {
+  BUCH_KEINE_ZEICHENKETTE,
+  BUCH_ZU_LANG,
+  KAPITEL_AUSSERHALB,
+  VERSE_AUSSERHALB,
+} from "../lib/meldungen.ts";
 
 export const compareBuendel = buendel({
   name: "compare",
@@ -33,10 +38,30 @@ export const compareBuendel = buendel({
     // Test fuhr bis dahin einen falsy Nicht-String, und `!book` hätte hier still
     // die andere Meldung geliefert (gemessen 06.08.2026).
     cmpBuchNull: ["bible_compare", { book: 0, chapter: 1, verse: 1 }],
+    // Die fachliche Abweisung dieses Werkzeugs, und bis zum 06.08.2026 die
+    // einzige ohne jeden Aufruf: Fürs AT gibt es nur eine Edition, ein Vergleich
+    // hat dort nichts zu vergleichen. Sie trägt die Grenze `book_id < 40`, auf
+    // der die gesamte AT/NT-Weiche des Servers beruht.
+    cmpAltesTestament: ["bible_compare", { book: "Psalter", chapter: 23, verse: 1 }],
+    // Kapitel jenseits der Grenze: als einziges der vier Stellen-Werkzeuge
+    // prüfte `bible_compare` bisher nur `verse`, nicht `chapter`.
+    cmpKapitel999: ["bible_compare", { book: "1Joh", chapter: 999, verse: 1 }],
   },
   pruefe({ res }) {
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpBuchZahl } = res;
-    const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull } = res;
+    const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;
+
+    eq("bible_compare AT: abgewiesen", cmpAltesTestament.isError, true);
+    // Zeichengleich, nicht als Teilstring: Der Satz nennt den Grund (eine
+    // einzige Edition) und ist damit die Auskunft, die den Aufrufer davon
+    // abhält, es mit einem anderen AT-Buch erneut zu versuchen.
+    eq(
+      "bible_compare AT: nennt den Grund",
+      cmpAltesTestament.text,
+      "Der Editionsvergleich gilt nur fürs NT; fürs AT gibt es nur eine Edition (hebräischer WLC)."
+    );
+    eq("bible_compare chapter: Text", cmpKapitel999.text, KAPITEL_AUSSERHALB);
+    eq("bible_compare chapter: isError", cmpKapitel999.isError, true);
 
     eq("bible_compare verse: Text", cmpVerse999.text, VERSE_AUSSERHALB);
     eq("bible_compare verse: isError", cmpVerse999.isError, true);

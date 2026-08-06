@@ -43,8 +43,20 @@ export function has(name: string, haystack: string, needle: string): void {
   check(name, h.includes(n), `"${needle}" fehlt in: ${haystack.slice(0, 160)}…`);
 }
 
+/**
+ * Das Gegenstück, und aus demselben Grund normalisiert.
+ *
+ * Bis zum 06.08.2026 normalisierte `has()` und `lacks()` nicht. Folgenlos war
+ * das nur, solange kein Aufruf griechischen Text prüfte: Beim ersten solchen
+ * bestünde die Zusicherung genau aus dem Grund, den der Kommentar über `has()`
+ * beschreibt, und zwar in der gefährlicheren Richtung. Ein `has()`, das
+ * fälschlich fehlschlägt, meldet sich; ein `lacks()`, das fälschlich besteht,
+ * schweigt.
+ */
 export function lacks(name: string, haystack: string, needle: string): void {
-  check(name, !haystack.includes(needle), `"${needle}" stand unerwartet drin`);
+  const h = haystack.normalize("NFC");
+  const n = needle.normalize("NFC");
+  check(name, !h.includes(n), `"${needle}" stand unerwartet drin`);
 }
 
 /** Der `hinweis` einer Antwort, leer wenn keiner dasteht. */

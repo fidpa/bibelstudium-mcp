@@ -6,6 +6,41 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.8] - 2026-08-06
+
+### Ergänzt
+
+- **Die Schlachter 2000 ist dokumentiert.** `README.md` und
+  `THIRD_PARTY_LICENSES.md` nennen die Ausgabe, ihre Namensnennung
+  (© 2000 Genfer Bibelgesellschaft) und die Grenze, die sie von den übrigen vier
+  trennt: Das Abkommen deckt **allein den gehosteten Dienst**. Weder das
+  MCPB-Bundle noch eine selbst aufgebaute Datenbank führen sie, denn
+  `bible_setup` fragt sie nirgends ab und ihre Quelldateien sind nicht Teil
+  dieses Repositories. Die Schlachter **1951** ist davon unberührt: CC BY 4.0,
+  überall enthalten. Beide Ausgaben geben höchstens 20 Verse je Abruf im
+  Wortlaut aus; im README stand diese Grenze bisher nur für die 1951er.
+
+- **113 Zusicherungen in den Golden-Tests, Messlatte 510 → 623**, dazu zehn im
+  HTTP-Test (47 → 57). Sie schließen gemessene Lücken: der datenlose Zustand
+  hatte keine Zusicherung über `tools/list`, `bible_server_info` oder einen
+  unbekannten Werkzeugnamen; die nachsichtige Wandlung von `chapter: "3"` war
+  ungedeckt, ebenso die AT-Abweisung von `bible_compare`, fünf Abweisungen von
+  `bible_concordance`, beide Ellipsen von `bible_crossrefs` und der Phrasenzweig
+  der Suche. `MAX_CHAPTER`, `MAX_VERSE`, `MAX_BOOK_LENGTH` und
+  `MAX_QUERY_LENGTH` haben jetzt je einen Fall **an** der Grenze, nicht nur
+  dahinter. Über HTTP werden Inhaltstyp, CORS-Werte und der Antwortrumpf
+  geprüft, wo bisher der Statuscode die ganze Aussage war.
+
+### Geändert
+
+- Zwei bestehende Zusicherungen. `bible_server_info` wurde auf „kein Pfad" nur
+  gegen `/opt/` geprüft, das auf keiner beteiligten Maschine vorkommt; geprüft
+  wird jetzt dieselbe Liste, die für Ressourcen gilt. Und der Fall „unbekannter
+  Prompt" rief `word-study` **ohne Argument** auf, traf also einen anderen
+  Zweig; der unbekannte Name steht jetzt daneben.
+
+- `lacks()` normalisiert wie `has()` nach NFC.
+
 ## [0.6.7] - 2026-08-06
 
 ### Geändert

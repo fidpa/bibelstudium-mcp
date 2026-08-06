@@ -44,13 +44,78 @@ export const searchBuendel = buendel({
     // trägt keiner der ersten zwanzig Treffer Klammern, ein späterer schon.
     klammerSucheGrenze: ["bible_search", { query: "Bund", translation: "SLT", limit: 50 }],
     klammerSucheMb: ["bible_search", { query: "Bethlehem", book: "1. Mose", translation: "MB", limit: 30 }],
+    // Der Phrasenzweig von `buildFtsQuery`. Er wird von der Fehlermeldung des
+    // Werkzeugs ausdrücklich beworben ('"Gnade um Gnade"'), und bis zum
+    // 06.08.2026 betrat ihn kein einziger Aufruf: geprüft war allein die
+    // Präfixsuche. Eine Bewerbung ohne Absicherung ist die schlechtere Hälfte.
+    searchPhrase: ["bible_search", { query: "Gnade um Gnade" }],
+    // Eine Eingabe ohne durchsuchbares Wort und eine ohne Treffer. Beides sind
+    // Ergebnisse, keine Pannen, und beide Meldungen nennen einen Ausweg.
+    searchOhneWort: ["bible_search", { query: "???" }],
+    searchOhneTreffer: ["bible_search", { query: "Xyzzyfoo" }],
+    // Die beiden Längengrenzen an der Grenze selbst. Geprüft war bisher nur ein
+    // Wert dahinter (60 bzw. 101), und ein Wechsel auf `>=` wiese gültige
+    // Eingabe ab, ohne dass ein Lauf rot würde.
+    searchBuch50: ["bible_search", { query: "Gnade", book: "J".repeat(50) }],
+    searchBuch51: ["bible_search", { query: "Gnade", book: "J".repeat(51) }],
+    searchQuery100: ["bible_search", { query: "a".repeat(100) }],
+    searchQuery101: ["bible_search", { query: "a".repeat(101) }],
   },
   pruefe({ res }, ctx) {
     const {
       searchLieb, searchLongBook, searchOverLimit,
       searchQueryZahl, searchQueryZuLang, searchQueryFehlt,
       klammerSucheGrenze, klammerSucheMb,
+      searchPhrase, searchOhneWort, searchOhneTreffer,
+      searchBuch50, searchBuch51, searchQuery100, searchQuery101,
     } = res;
+
+    // 50 Zeichen kommen durch die Längenprüfung und scheitern erst an der
+    // Buchauflösung; 51 werden von der Länge abgewiesen. Die Meldungen sind
+    // verschieden, und genau das ist die Aussage: Eine Länge, die als „kein
+    // Buchname" gemeldet wird, schickt den Aufrufer auf die falsche Suche.
+    has("book mit 50 Zeichen: Grenze noch gültig", searchBuch50.text, "ist kein Buch dieser Bibel-Datenbank");
+    eq("book mit 51 Zeichen: Grenze überschritten", searchBuch51.text, BUCH_ZU_LANG);
+    // 100 Zeichen werden gesucht (und finden nichts), 101 abgewiesen.
+    has("query mit 100 Zeichen: Grenze noch gültig", searchQuery100.text, "Keine Treffer für");
+    eq(
+      "query mit 101 Zeichen: Grenze überschritten",
+      searchQuery101.text,
+      "Error: 'query' must be at most 100 characters"
+    );
+
+    // Die Phrase wird als Phrase gesucht, nicht als drei einzelne Wörter: Sonst
+    // stiege die Trefferzahl um Größenordnungen, denn "um" allein steht in
+    // Tausenden von Versen.
+    eq("Phrasensuche: kein Fehler", searchPhrase.isError, false);
+    eq("Phrasensuche: Treffer", searchPhrase.json?.treffer, 16);
+    check(
+      "Phrasensuche: jeder Treffer trägt die Phrase",
+      ((searchPhrase.json?.verse ?? []) as Array<{ text?: string }>).every((v) =>
+        (v.text ?? "").includes("Gnade")
+      )
+    );
+
+    eq("Suche ohne durchsuchbares Wort: isError", searchOhneWort.isError, true);
+    eq(
+      "Suche ohne durchsuchbares Wort: Meldung",
+      searchOhneWort.text,
+      "Error: 'query' enthält kein durchsuchbares Wort."
+    );
+    eq("Suche ohne Treffer: isError", searchOhneTreffer.isError, true);
+    // Die Meldung nennt Ausdruck UND Übersetzung: Trefferzahlen gelten je
+    // Ausgabe, und „nichts gefunden" ohne diese Angabe verleitet dazu, das
+    // Ergebnis für die Bibel überhaupt zu halten.
+    has(
+      "Suche ohne Treffer: nennt Ausdruck und Übersetzung",
+      searchOhneTreffer.text,
+      'Keine Treffer für "Xyzzyfoo" (Luther 1912).'
+    );
+    has(
+      "Suche ohne Treffer: nennt den Ausweg",
+      searchOhneTreffer.text,
+      "Präfixsuche"
+    );
 
     // Drei Bedingungen, drei Meldungen, und jede nennt die verletzte. Der zu
     // lange Ausdruck ist der Fall, der vorher am irreführendsten war: Er hörte

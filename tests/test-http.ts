@@ -32,7 +32,7 @@
 import { resolve, dirname } from "node:path";
 // Geteilt mit den Golden-Tests. Der Kern hängt an nichts weiter: Diese Datei
 // bleibt datenunabhängig und damit die einzige, die auch in der CI laufen kann.
-import { abschluss, check, eq } from "./lib/zusicherungen.ts";
+import { abschluss, check, eq, has, lacks } from "./lib/zusicherungen.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "src/server.ts");
 
@@ -120,7 +120,15 @@ async function start(extraEnv: Record<string, string> = {}): Promise<Server> {
   );
 }
 
-type Probe = { status: number; allow: string | null; corsMethods: string | null; body: string };
+type Probe = {
+  status: number;
+  allow: string | null;
+  corsMethods: string | null;
+  contentType: string | null;
+  corsOrigin: string | null;
+  corsHeaders: string | null;
+  body: string;
+};
 
 /**
  * Jede Antwort wird vollständig gelesen. POST antwortet als `text/event-stream`;
@@ -134,6 +142,9 @@ async function probe(path: string, init: RequestInit = {}): Promise<Probe> {
     status: res.status,
     allow: res.headers.get("allow"),
     corsMethods: res.headers.get("access-control-allow-methods"),
+    contentType: res.headers.get("content-type"),
+    corsOrigin: res.headers.get("access-control-allow-origin"),
+    corsHeaders: res.headers.get("access-control-allow-headers"),
     body,
   };
 }
@@ -152,9 +163,20 @@ try {
     });
     eq("POST /mcp: 200", post.status, 200);
     eq("POST /mcp: nennt die Methoden des Pfads", post.corsMethods, "POST, OPTIONS");
+    // Der Inhaltstyp und der Rumpf, nicht nur die 200. Bis zum 06.08.2026 war
+    // der Statuscode die ganze Aussage dieser Datei über `/mcp`: Eine 200, die
+    // einen JSON-RPC-Fehler oder gar nichts trägt, bestand jede Prüfung hier.
+    eq("POST /mcp: antwortet als Ereignisstrom", post.contentType, "text/event-stream");
+    has("POST /mcp: Rumpf ist ein SSE-Ereignis", post.body, "event: message");
+    has("POST /mcp: Rumpf trägt ein Ergebnis", post.body, '"result"');
+    lacks("POST /mcp: Rumpf trägt keinen Fehler", post.body, '"error"');
+    has("POST /mcp: die Werkzeugliste steht darin", post.body, '"name":"bible_lookup"');
+    // Der Endpunkt ist öffentlich und authlos, aber schreibende Werkzeuge gibt
+    // es dort nicht. Die Liste ist kein Schutz, sie ist die Zusage.
+    lacks("POST /mcp: bible_setup wird nicht angeboten", post.body, "bible_setup");
 
     // Der Wert von `Allow`, nicht nur der Statuscode. Vor dem 03.08.2026 kam
-    // die 405 für diese vier Methoden aus dem SDK und trug dessen eigene Liste
+    // die 405 für diese fünf Methoden aus dem SDK und trug dessen eigene Liste
     // `GET, POST, DELETE`, also die Auskunft eines anderen Servers als dieser.
     for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"]) {
       const r = await probe("/mcp", { method });
@@ -274,9 +296,24 @@ try {
       get.body.slice(0, 120)
     );
     eq("GET /health: Methoden", get.corsMethods, "GET, HEAD, OPTIONS");
+    eq("GET /health: Inhaltstyp", get.contentType, "application/json");
+
+    // Die Werte aus CORS_HEADERS, zeichengleich. Sie stehen an genau einer
+    // Stelle im Server und gelten für jede Antwort; ungeprüft war bisher jeder
+    // einzelne von ihnen. Ein verlorenes `accept` in der Kopfzeilenliste
+    // brächte jeden Browser-Client zu Fall, und zwar erst beim Nutzer.
+    eq("GET /health: erlaubte Herkunft", get.corsOrigin, "*");
+    eq(
+      "GET /health: erlaubte Kopfzeilen",
+      get.corsHeaders,
+      "content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id"
+    );
 
     const head = await probe("/health", { method: "HEAD" });
     eq("HEAD /health: gleicher Status wie GET", head.status, get.status);
+    // HEAD ist GET ohne Rumpf. Geprüft war bisher nur der Status, und ein
+    // mitgeschickter Rumpf verletzte die Spezifikation, ohne aufzufallen.
+    eq("HEAD /health: ohne Rumpf", head.body, "");
 
     // Bis zum 03.08.2026 beantwortete die Zustandsauskunft jede Methode mit
     // 200, ein DELETE eingeschlossen.

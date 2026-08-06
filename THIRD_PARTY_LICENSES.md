@@ -27,6 +27,32 @@ Namensnennung-Lizenz 4.0 bereitgestellt; Lizenzerklärung:
 gespeichert; die Quelle enthält kein Markup (geprüft am 28.07.2026 über alle
 31 101 Verse, zeichengenau gegen den statischen Export).
 
+## Schlachter 2000 (nur der gehostete Dienst)
+
+| Kürzel | Übersetzung | Lizenz |
+|--------|-------------|--------|
+| SLT | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft, beschränkt auf den gehosteten Dienst |
+
+**Namensnennung Schlachter 2000:** © 2000 Genfer Bibelgesellschaft.
+
+Diese Ausgabe steht **nicht** unter einer freien Lizenz und kommt nicht über
+bolls.life, sondern aus einer USX-Lieferung des Rechteinhabers. Sie unterliegt
+drei Beschränkungen, die die übrigen vier nicht kennen:
+
+- **Der gehostete Dienst allein.** Das Abkommen deckt
+  `mcp.bibelstudium-mcp.de`. Es deckt nicht das MCPB-Bundle, keine selbst
+  aufgebaute Datenbank und keine Weitergabe des Textes.
+- **Die Quelldateien werden nicht mitgeliefert** und sind nicht Teil dieses
+  Repositories. `bible_setup` fragt sie nirgends ab; `scripts/import-schlachter2000.ts`
+  läuft ausschließlich beim Betreiber gegen eine lokale Lieferung. Eine aus
+  diesem Repository aufgebaute Datenbank enthält die Ausgabe deshalb nicht.
+- **Höchstens 20 Verse im Wortlaut je Abruf**, samt Anmerkungsapparat, gemeldet
+  über `gekuerzt` und den `hinweis`.
+
+Die Laufzeit des Abkommens beträgt drei Jahre. Zur Schlachter **1951** steht
+alles davon in keinem Zusammenhang: Sie ist CC BY 4.0 und in jeder Installation
+enthalten, auch im Bundle.
+
 ## Grundtexte & Morphologie
 
 | Quelle | Daten | Lizenz |

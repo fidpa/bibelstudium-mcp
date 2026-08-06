@@ -64,6 +64,28 @@ export const lookupBuendel = buendel({
     // anderen Buchprüfungen in `requireBookName` liegt: Ein Einbau, der
     // MAX_BOOK_LENGTH aufhob, blieb in diesem Bündel grün (gemessen).
     buchZuLang: ["bible_lookup", { book: "J".repeat(60), chapter: 3 }],
+    // Die nachsichtige Wandlung, absichtlich so gebaut: Sprachmodelle schicken
+    // regelmäßig "3", wo das Schema eine Zahl vorsieht, und eine Zahl, wo es
+    // eine Zeichenkette vorsieht. Bis zum 06.08.2026 schickte kein einziger
+    // Aufruf der Suite einen solchen Wert; ein Rückbau auf eine strenge
+    // Typprüfung hätte reale Clients gebrochen und wäre grün geblieben.
+    lookupStrings: ["bible_lookup", { book: "Joh", chapter: "3", verses: 16 }],
+    // Die Grenze selbst, nicht weit dahinter: 150 ist gültig und scheitert erst
+    // am Bestand, 151 wird abgewiesen. Geprüft wurde bisher nur 999, was einen
+    // Wechsel auf `>=` nicht bemerkt hätte.
+    kapitelGrenze: ["bible_lookup", { book: "Joh", chapter: 150, verses: "1" }],
+    kapitelUeberGrenze: ["bible_lookup", { book: "Joh", chapter: 151, verses: "1" }],
+    // Dasselbe für MAX_VERSE: 200 besteht die Wertprüfung, 201 nicht. Geprüft
+    // war bisher nur "1-500", was ein `>=` nicht bemerkt hätte.
+    versGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: "200" }],
+    versUeberGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: "201" }],
+    // `translation` erreicht `requireTranslation` über den Werkzeugkanal. Geprüft
+    // war bisher allein der Ressourcenweg, der die Meldung als JSON-RPC-Fehler
+    // führt statt als `isError`-Ergebnis: zwei verschiedene Kanäle.
+    lookupUnbekannteAusgabe: [
+      "bible_lookup",
+      { book: "Joh", chapter: 3, verses: "16", translation: "XYZ" },
+    ],
     // Fußnoten: der Apparat einer Ausgabe. Vier Fälle, denn `fussnoten` ist
     // bedingt und die Bedingung hat mehr als eine Richtung: mit Note, ohne Note,
     // drei Noten am selben Vers, und dieselbe Stelle in einer Ausgabe ohne
@@ -81,9 +103,57 @@ export const lookupBuendel = buendel({
       versesTooMany, versesSpanTooHigh, versesSpanWithComma, versesTooLong,
       versesNotAString, versesMaxValid, keinVers, buchZahl, buchFehlt, buchZuLang,
       noteEine, noteKeine, noteDrei, noteMehrvers,
+      lookupStrings, kapitelGrenze, kapitelUeberGrenze, lookupUnbekannteAusgabe,
+      versGrenze, versUeberGrenze,
     } = res;
 
+    // 200 ist gültig und scheitert am Bestand (Ps 119 hat 176 Verse), 201 wird
+    // von der Wertprüfung abgewiesen. Die beiden Meldungen müssen deshalb
+    // auseinandergehen.
+    eq(
+      "verses=200: Grenze noch gültig",
+      versGrenze.text,
+      "No verses found for Ps 119,200. Check chapter and verse numbers."
+    );
+    eq(
+      "verses=201: Grenze überschritten",
+      versUeberGrenze.text,
+      "Error: every verse number in 'verses' must be between 1 and 200"
+    );
+
     eq("bible_lookup chapter", lookupChap999.text, KAPITEL_AUSSERHALB);
+
+    // Die Wandlung greift, und sie liefert denselben Vers wie die typrichtige
+    // Anfrage: Verglichen wird gegen `joh316`, nicht gegen ein Literal, damit
+    // hier nicht ein zweites Mal Bibeltext gepflegt wird.
+    eq("chapter als Zeichenkette, verses als Zahl: kein Fehler", lookupStrings.isError, false);
+    eq("chapter als Zeichenkette: dieselbe Stelle", lookupStrings.json?.reference, "Johannes 3,16");
+    eq("chapter als Zeichenkette: derselbe Wortlaut", lookupStrings.json?.text, joh316.json?.text);
+
+    // 150 besteht die Wertprüfung und scheitert am Bestand: Die Meldung ist die
+    // des fehlenden Verses, nicht die der Grenze. Genau das unterscheidet die
+    // Grenze von einem `>=`.
+    // Die Meldung gibt die Eingabe wieder ("Joh"), nicht den aufgelösten Namen:
+    // Der Aufrufer soll seine eigene Angabe wiedererkennen.
+    eq(
+      "chapter=150: Grenze noch gültig",
+      kapitelGrenze.text,
+      "No verses found for Joh 150,1. Check chapter and verse numbers."
+    );
+    eq("chapter=151: Grenze überschritten", kapitelUeberGrenze.text, KAPITEL_AUSSERHALB);
+
+    eq("unbekannte Übersetzung: isError", lookupUnbekannteAusgabe.isError, true);
+    eq("unbekannte Übersetzung: kein JSON-RPC-Fehler", lookupUnbekannteAusgabe.code, NO_ERROR);
+    has(
+      "unbekannte Übersetzung: nennt den Wert",
+      lookupUnbekannteAusgabe.text,
+      'Unknown translation "XYZ"'
+    );
+    // Und zählt die erlaubten auf: Ohne diese Liste weiß der Aufrufer nicht, was
+    // er stattdessen schicken soll, und rät.
+    for (const code of ["LUT", "SCH", "ELB", "MB"]) {
+      has(`unbekannte Übersetzung: nennt ${code}`, lookupUnbekannteAusgabe.text, `"${code}"`);
+    }
 
     eq(
       "Ps 117,5: nicht vorhanden",

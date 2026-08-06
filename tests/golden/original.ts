@@ -16,6 +16,7 @@ import {
   KAPITEL_AUSSERHALB,
   VERSE_AUSSERHALB,
 } from "../lib/meldungen.ts";
+import { NO_ERROR } from "../lib/mcp-client.ts";
 
 export const originalBuendel = buendel({
   name: "original",
@@ -46,6 +47,21 @@ export const originalBuendel = buendel({
     // 05.08.2026 von keiner Zusicherung gedeckt: Ein eingebauter Fehler, der sie
     // auf 'tr' umstellte, lieferte eine andere Textform und blieb grün.
     origNtVorgabe: ["bible_original", { book: "1Joh", chapter: 5, verse: 7 }],
+    // Ein `texttyp` an einem AT-Buch ist kein Fehler, sondern gegenstandslos:
+    // Geliefert wird der WLC, und der `hinweis` sagt, dass die Angabe übergangen
+    // wurde. Ohne diesen Satz sähe die Antwort so aus, als hätte sie den
+    // gewünschten Texttyp geliefert.
+    origAtMitTexttyp: [
+      "bible_original",
+      { book: "Psalter", chapter: 23, verse: 1, texttyp: "sblgnt" },
+    ],
+    // Ein ungültiger `texttyp` am NT-Buch. Geprüft war bis zum 06.08.2026 allein
+    // der Ressourcenweg, der die Meldung als JSON-RPC-Fehler führt: über das
+    // Werkzeug ist sie ein `isError`-Ergebnis, also ein anderer Kanal.
+    origTexttypUngueltig: [
+      "bible_original",
+      { book: "Joh", chapter: 3, verse: 16, texttyp: "quatsch" },
+    ],
   },
   pruefe({ res }) {
     const {
@@ -58,7 +74,32 @@ export const originalBuendel = buendel({
       ps231,
       origSblgnt,
       origNtVorgabe,
+      origAtMitTexttyp,
+      origTexttypUngueltig,
     } = res;
+
+    // AT mit `texttyp`: geliefert wird der WLC, und der Hinweis sagt es.
+    eq("AT mit texttyp: kein Fehler", origAtMitTexttyp.isError, false);
+    eq("AT mit texttyp: liefert dennoch den WLC", origAtMitTexttyp.json?.texttyp, "wlc");
+    has(
+      "AT mit texttyp: der Hinweis benennt die übergangene Angabe",
+      String(origAtMitTexttyp.json?.hinweis ?? ""),
+      'Der Texttyp "sblgnt" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.'
+    );
+
+    // Ungültiger texttyp am NT-Buch: über das Werkzeug ein `isError`-Ergebnis,
+    // kein JSON-RPC-Fehler. Die Meldung zählt die drei erlaubten Werte auf, denn
+    // ohne sie rät der Aufrufer.
+    eq("ungültiger texttyp: isError", origTexttypUngueltig.isError, true);
+    eq("ungültiger texttyp: kein JSON-RPC-Fehler", origTexttypUngueltig.code, NO_ERROR);
+    has(
+      "ungültiger texttyp: nennt den Wert",
+      origTexttypUngueltig.text,
+      'Unbekannter oder fürs NT ungültiger texttyp "quatsch"'
+    );
+    for (const erlaubt of ["byzantine", "sblgnt", "tr"]) {
+      has(`ungültiger texttyp: nennt ${erlaubt}`, origTexttypUngueltig.text, `"${erlaubt}"`);
+    }
 
     eq("bible_original verse: Text", origVerse999.text, VERSE_AUSSERHALB);
     eq("bible_original verse: isError", origVerse999.isError, true);
