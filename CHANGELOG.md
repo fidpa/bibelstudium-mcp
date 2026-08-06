@@ -6,6 +6,21 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.9] - 2026-08-06
+
+### Geändert
+
+- **Die Angaben zur Schlachter 2000 nennen die Verfügbarkeit, nicht die
+  Vereinbarung dahinter.** Das Feld `lizenz` liefert bei `SLT` jetzt „Mit
+  Genehmigung der Genfer Bibelgesellschaft" statt einer Beschreibung des
+  Vertragsumfangs; `nennung` bleibt unverändert. Ebenso gekürzt in `README.md`
+  und `THIRD_PARTY_LICENSES.md`. Was ein Aufrufer braucht, ist die Bedingung
+  und die Namensnennung, nicht die Reichweite eines Vertrags. Der Abschnitt zu
+  0.6.8 beschreibt Letztere noch; er bleibt als Stand seines Releases stehen.
+
+- Die Ausgabe ist über den gehosteten Dienst verfügbar. Eine selbst aufgebaute
+  Datenbank führt sie weiterhin nicht, `bible_setup` lädt sie nicht.
+
 ## [0.6.8] - 2026-08-06
 
 ### Ergänzt

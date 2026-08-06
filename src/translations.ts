@@ -75,7 +75,10 @@ export const TRANSLATIONS = {
   },
   SLT: {
     name: "Schlachter 2000",
-    license: "Abkommen mit der Genfer Bibelgesellschaft (nur der gehostete Dienst)",
+    // Was das Feld beantwortet, ist „unter welchen Bedingungen", nicht „aufgrund
+    // welcher Vereinbarung": Der Umfang eines Vertrags geht den Aufrufer nichts
+    // an. Bis 0.6.8 stand hier dessen Reichweite, und zwar in jeder Antwort.
+    license: "Mit Genehmigung der Genfer Bibelgesellschaft",
     attribution: "© 2000 Genfer Bibelgesellschaft",
     quelle: "lokal",
     verseMax: VERSE_MAX_GBG,

@@ -23,7 +23,7 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 
 ## Funktionen
 
-- **Exakter deutscher Verstext** (`bible_lookup`) – vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge 1939. Der gehostete Dienst unter `mcp.bibelstudium-mcp.de` führt zusätzlich die **Schlachter 2000**; sie beruht auf einem Abkommen mit der Genfer Bibelgesellschaft, das allein diesen Dienst deckt, und ist deshalb weder im Bundle noch in einer selbst aufgebauten Datenbank enthalten
+- **Exakter deutscher Verstext** (`bible_lookup`) – vier frei lizenzierte Übersetzungen: Luther 1912 (Voreinstellung), Schlachter 1951, Elberfelder 1871, Menge 1939. Der gehostete Dienst unter `mcp.bibelstudium-mcp.de` führt zusätzlich die **Schlachter 2000**
 - **Grundtext Wort für Wort** (`bible_original`) – ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
 - **Konkordanz / Wortstudie** (`bible_concordance`): alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
 - **Querverweise** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt (`verse_einzeln`). In einer Ausgabe mit Wortlaut-Grenze tragen die bestbewerteten Verweise ihren Text, die übrigen nur `stelle` und `votes`; die Zahl der Verweise bleibt gleich
@@ -42,8 +42,8 @@ Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext,
 >
 > - Die **Lexikondaten** (Strong, Abbott-Smith, Glossen) sind **englisch**: Ein frei lizenziertes deutsches Lexikon vergleichbarer Tiefe existiert nicht
 > - Die NT-Voreinstellung ist der **Byzantinische Mehrheitstext**, eine dokumentierte redaktionelle Entscheidung, keine Aussage über den Forschungskonsens; SBLGNT (kritisch) und Textus Receptus sind einen Parameter entfernt
-> - Die vier frei lizenzierten deutschen Übersetzungen sind älteren Datums (1871–1951); zeitgenössische Übersetzungen sind nicht frei lizenziert. Die einzige Ausnahme ist die Schlachter 2000, und sie steht nur im gehosteten Dienst
-> - Die **Schlachter 1951** gibt je Abruf höchstens 20 Verse im Wortlaut aus, gleich mit welchem Werkzeug: ein freiwilliges Entgegenkommen gegenüber der Genfer Bibelgesellschaft, die den Text freigegeben hat. Dieselbe Grenze gilt für die **Schlachter 2000**, dort aus dem Abkommen. Greift sie, sagt die Antwort es im Feld `gekuerzt` und im `hinweis`; welche Verse enthalten sind, nennt `reference`. Die drei gemeinfreien Übersetzungen sind davon nicht betroffen, und `bible://uebersetzungen` nennt zu jeder Ausgabe ihr `verse_max`
+> - Die vier frei lizenzierten deutschen Übersetzungen sind älteren Datums (1871–1951); zeitgenössische Übersetzungen sind nicht frei lizenziert. Die Ausnahme ist die Schlachter 2000 über den gehosteten Dienst
+> - Die beiden **Schlachter**-Ausgaben geben je Abruf höchstens 20 Verse im Wortlaut aus, gleich mit welchem Werkzeug: ein Entgegenkommen gegenüber der Genfer Bibelgesellschaft, die die Texte freigegeben hat. Greift die Grenze, sagt die Antwort es im Feld `gekuerzt` und im `hinweis`; welche Verse enthalten sind, nennt `reference`. Die drei gemeinfreien Übersetzungen sind davon nicht betroffen, und `bible://uebersetzungen` nennt zu jeder Ausgabe ihr `verse_max`
 > - Tool-Namen und Tool-Beschreibungen sind **englisch** (Entwickler-Oberfläche), die Ausgabefelder deutsch (`bedeutung`, `bezeugung`, `verweise`, …)
 
 ## Voraussetzungen
@@ -247,16 +247,13 @@ In Claude Code werden Ressourcen mit `@` angehängt (`@bibelstudium:bible://quel
 | `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) |
 | `ELB` | Elberfelder 1871 | Public Domain |
 | `MB` | Menge 1939 | Public Domain |
-| `SLT` | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft, **nur der gehostete Dienst** |
+| `SLT` | Schlachter 2000 | © 2000 Genfer Bibelgesellschaft |
 
-Die ersten vier stehen jedem zur Verfügung, der den Server selbst betreibt:
-`bible_setup` lädt sie von ihren Originalquellen. Die **Schlachter 2000** ist
-davon ausgenommen. Das Abkommen deckt allein den gehosteten Dienst, ihre
-Quelldateien werden nicht mitgeliefert, und `bible_setup` fragt sie nirgends ab:
-Eine selbst aufgebaute Datenbank führt sie deshalb nicht, und `SLT` läuft dort
-in die Meldung „nicht geladen". Wer sie braucht, spricht den gehosteten Dienst
-an. Welche Ausgaben eine laufende Instanz tatsächlich führt, sagt
-`bible_server_info`.
+Die ersten vier lädt `bible_setup` von ihren Originalquellen, sie stehen also
+jeder Installation zur Verfügung. Die **Schlachter 2000** gibt es über den
+gehosteten Dienst; eine selbst aufgebaute Datenbank führt sie nicht, und `SLT`
+läuft dort in die Meldung „nicht geladen". Welche Ausgaben eine laufende Instanz
+tatsächlich führt, sagt `bible_server_info`.
 
 ## Editionen & Voreinstellungen
 
