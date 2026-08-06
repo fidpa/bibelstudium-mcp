@@ -200,6 +200,21 @@ export const stmtBooks = db.prepare<{ book_id: number; name: string; chapters: n
   "SELECT book_id, name, chapters FROM books ORDER BY book_id"
 );
 
+/**
+ * Wie viele Bücher diese Datenbank führt, für `bible_server_info`. Gezählt statt
+ * behauptet: Der Umfang stand bislang allein in der Meldung „Buch nicht
+ * gefunden" (siehe `bookNotFoundMessage` in werkzeug-helfer.ts), also erst
+ * hinter einem Fehlgriff. Ein Aufrufer, der vorher wissen will, ob Sirach hier
+ * überhaupt vorkommen kann, musste ihn provozieren.
+ *
+ * Einmal abgefragt, wie die übrigen Bestandsmerkmale: Die Tabelle steht für die
+ * Lebensdauer der Datei fest. Ohne Datenbank ist es die leere Tabelle aus
+ * `emptyDatabase()`, das Ergebnis also 0.
+ */
+export const bookCount: number = (
+  db.query("SELECT COUNT(*) AS n FROM books").get() as { n: number }
+).n;
+
 // --- Grundtext: Morphologie ------------------------------------------------
 // Die Tabelle `original_words` ist optional, es gibt sie erst, nachdem
 // download-morph.ts gelaufen ist. Die Absicherung sorgt dafür, dass der Server

@@ -11,7 +11,7 @@
  * Einzeln lauffähig: `bun run tests/golden/compare.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
-import { check, eq, has, abschluss } from "../lib/zusicherungen.ts";
+import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
   BUCH_ZU_LANG,
@@ -25,8 +25,15 @@ export const compareBuendel = buendel({
     cmpVerse999: ["bible_compare", { book: "1Joh", chapter: 5, verse: 999 }],
     comma: ["bible_compare", { book: "1Joh", chapter: 5, verse: 7 }],
     mk1446: ["bible_compare", { book: "Mk", chapter: 14, verse: 46 }],
-    // Keine TAGNT-Zeile: neun NT-Verse haben keine, `bezeugung` fehlt dann zu Recht.
+    // Keine TAGNT-Zeile: neun NT-Verse haben keine, `bezeugung` fehlt dann zu
+    // Recht, muss das aber sagen.
     cmpOhneBezeugung: ["bible_compare", { book: "Joh", chapter: 7, verse: 53 }],
+    // Der Gegenfall zu 1Joh 5,7: ein Vers, dessen Bezeugung tatsächlich eine
+    // Variantennotiz führt (γένεσις/γέννησις). Nur so lässt sich messen, dass der
+    // Hinweis auf 'bedeutungsvariante' dort steht, wo das Feld auch kommt: Bloß
+    // seine Abwesenheit zu prüfen, ginge auch bei einem Hinweis durch, der ihn
+    // nie nennt.
+    cmpMitNotiz: ["bible_compare", { book: "Mt", chapter: 1, verse: 18 }],
     cmpBuchZahl: ["bible_compare", { book: 123, chapter: 1, verse: 1 }],
     // Seit dem 06.08.2026 liegen die drei Buchprüfungen in `requireBookName`.
     // Die eigene „is required"-Meldung dieses Werkzeugs nennt als einzige nur
@@ -48,7 +55,7 @@ export const compareBuendel = buendel({
     cmpKapitel999: ["bible_compare", { book: "1Joh", chapter: 999, verse: 1 }],
   },
   pruefe({ res }) {
-    const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpBuchZahl } = res;
+    const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;
 
     eq("bible_compare AT: abgewiesen", cmpAltesTestament.isError, true);
@@ -106,6 +113,62 @@ export const compareBuendel = buendel({
 
     check("Joh 7,53: ohne bezeugung", !("bezeugung" in (cmpOhneBezeugung.json ?? {})));
     eq("Joh 7,53: kein Fehler", cmpOhneBezeugung.isError, false);
+    // Das fehlende Feld muss als fehlend dastehen. Ein fremder Client stand hier
+    // vor der Wahl, die Lücke als „nicht bezeugt" zu lesen (06.08.2026), und der
+    // Vers ist in byzantine und tr vorhanden: Die Deutung wäre falsch gewesen.
+    has(
+      "Joh 7,53: nennt den Grund für die fehlende Bezeugung",
+      String(cmpOhneBezeugung.json?.bezeugung_fehlt ?? ""),
+      "keine Zeile"
+    );
+    lacks(
+      "Joh 7,53: hinweis verweist nicht auf das fehlende Feld",
+      String(cmpOhneBezeugung.json?.hinweis ?? ""),
+      "steht in 'bezeugung'"
+    );
+    // Und er nennt nicht „die aufgeführten Formen": Hier ist keine aufgeführt.
+    // Der Satz gilt zwei verschiedenen Lagen, ohne Bezeugung und mit einer ohne
+    // Notiz, und darf nicht die eine mit den Worten der anderen beschreiben.
+    has(
+      "Joh 7,53: hinweis nennt die richtige Lage",
+      String(cmpOhneBezeugung.json?.hinweis ?? ""),
+      "keine Bezeugung vor, siehe 'bezeugung_fehlt'"
+    );
+
+    // Der Hinweis folgt dem Bestand der Antwort, nicht einer festen Formulierung.
+    // 1Joh 5,7 führt 22 Wörter und keine einzige Notiz, Mt 1,18 eine; bis 0.6.12
+    // verwies der Hinweis in beiden Fällen gleich, also bei 55,6 % der
+    // aufgeführten Wörter auf ein Feld, das nicht dasteht, und verbot im selben
+    // Satz, die Art zu erschließen.
+    lacks(
+      "1Joh 5,7 ohne Notiz: kein Verweis auf 'bezeugung'",
+      String(comma.json?.hinweis ?? ""),
+      "steht in 'bezeugung'"
+    );
+    has(
+      "1Joh 5,7 ohne Notiz: sagt, dass die Art offen bleibt",
+      String(comma.json?.hinweis ?? ""),
+      "sagt diese Antwort nicht"
+    );
+    has(
+      "Mt 1,18 mit Notiz: verweist auf 'bezeugung'",
+      String(cmpMitNotiz.json?.hinweis ?? ""),
+      "steht in 'bezeugung'"
+    );
+    const mtAbw = ((cmpMitNotiz.json?.bezeugung ?? {}) as Record<string, unknown>)["abweichend"];
+    check(
+      "Mt 1,18: eine Notiz steht tatsächlich da",
+      Array.isArray(mtAbw) &&
+        mtAbw.some((e) => typeof e === "object" && e !== null && "bedeutungsvariante" in e)
+    );
+    // Die acht Apparatzeugen tragen dieselben Namen wie geladene Editionen, „Byz"
+    // insbesondere. Die Legende muss den Unterschied benennen: In 10,8 % der
+    // NT-Verse gehen Apparatspalte und Editionstext auseinander.
+    has(
+      "Bezeugung: Apparatzeugen von den Editionen abgegrenzt",
+      String(((cmpMitNotiz.json?.bezeugung ?? {}) as Record<string, unknown>)["quelle"] ?? ""),
+      "nicht der oben verglichene Text 'byzantine'"
+    );
   },
 });
 

@@ -49,6 +49,7 @@ import {
   SETUP_CLI,
   availableEditions,
   availableTranslations,
+  bookCount,
   dataFetchedAt,
   dataMissing,
   db,
@@ -339,8 +340,9 @@ const CROSSREFS_OUTPUT = {
 /** Bedingt: die sechs Lexikonfelder (`strong`, `umschrift`, `kurzbedeutung`,
  *  `bedeutung`, `kjv_woerter`, `lexikon`; das letzte gibt es nur im
  *  Griechischen, und alle setzen voraus, dass strong_defs geladen ist und einen
- *  Eintrag führt), sowie `hinweis`, nur wenn `limit` die Vorkommensliste
- *  gekürzt hat. */
+ *  Eintrag führt), sowie `hinweis`: Er trägt die Kürzung durch `limit` und, wenn
+ *  `kjv_woerter` dasteht, den Satz zu dessen Herkunft; beides zugleich ist
+ *  möglich. */
 const CONCORDANCE_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -350,7 +352,12 @@ const CONCORDANCE_OUTPUT = {
     umschrift: { type: "string" },
     kurzbedeutung: { type: "string" },
     bedeutung: { type: "string" },
-    kjv_woerter: { type: "string" },
+    kjv_woerter: {
+      type: "string",
+      description:
+        "English renderings the King James Version uses for this word. A statement about " +
+        "that translation, not about the Greek or Hebrew word itself.",
+    },
     lexikon: { type: "string" },
     texttyp: { type: "string" },
     edition: { type: "string" },
@@ -451,8 +458,9 @@ const SEARCH_OUTPUT = {
 
 /** Bedingt: `warnung` und `quellenkonflikte`, nur wenn die TAGNT-Bezeugung dem
  *  Editionstext widerspricht; `bezeugung`, nur wenn TAGNT den Vers kennt (neun
- *  NT-Verse haben überhaupt keine Zeile), und darin `lesehinweis`,
- *  `bedeutungsvariante`, `schreibvariante`, `in_dieser_db`, `abgleich`.
+ *  NT-Verse haben überhaupt keine Zeile, dann steht `bezeugung_fehlt` da), und
+ *  darin `lesehinweis`, `bedeutungsvariante`, `schreibvariante`, `in_dieser_db`,
+ *  `abgleich`.
  *  `vergleiche[]` hat zwei Gestalten, deshalb ist allein `paar` erforderlich. */
 const COMPARE_OUTPUT = {
   type: "object" as const,
@@ -471,6 +479,12 @@ const COMPARE_OUTPUT = {
       description:
         "Per affected form, what the edition actually reads. The edition text governs, not the " +
         "TAGNT note.",
+    },
+    bezeugung_fehlt: {
+      type: "string",
+      description:
+        "Why `bezeugung` is absent for this verse. A gap in the source, not a statement " +
+        "about the verse.",
     },
     editionen: {
       type: "array",
@@ -551,7 +565,18 @@ const SERVER_INFO_OUTPUT = {
       type: "array",
       items: {
         type: "object",
-        properties: { code: { type: "string" }, name: { type: "string" } },
+        properties: {
+          code: { type: "string" },
+          name: { type: "string" },
+          lizenz: { type: "string" },
+          nennung: { type: ["string", "null"] },
+          verse_max: {
+            type: ["number", "null"],
+            description:
+              "Maximum verses this edition may be quoted verbatim in one call; " +
+              "null means no such limit.",
+          },
+        },
         required: ["code", "name"],
       },
     },
@@ -573,6 +598,10 @@ const SERVER_INFO_OUTPUT = {
       properties: {
         strong_lexikon: { type: "boolean" },
         strong_lexikon_vollstaendig: { type: "boolean" },
+        strong_lexikon_sprache: {
+          type: "string",
+          description: "Language of the lexicon entries, present only if a lexicon is loaded.",
+        },
         editionsbezeugung: { type: "boolean" },
         querverweise: { type: "boolean" },
         volltextsuche: { type: "boolean" },
@@ -591,7 +620,18 @@ const SERVER_INFO_OUTPUT = {
       },
       required: ["statisch", "vorlagen"],
     },
-    daten_stand: { type: "string" },
+    kanon: {
+      type: "object",
+      properties: {
+        buecher: { type: "number" },
+        umfang: { type: "string" },
+      },
+      required: ["buecher", "umfang"],
+    },
+    daten_stand: {
+      type: "string",
+      description: "Date of the most recent source download, not a deployment date.",
+    },
     hinweis: { type: "string" },
   },
   required: [
@@ -910,8 +950,10 @@ const handleListTools = async () => ({
       name: "bible_server_info",
       annotations: READ_ONLY_LOCAL,
       description:
-        "Report this server's own release version and which Bible data it has loaded. " +
-        "Use when asked which version runs, or when collecting facts for a bug report. " +
+        "Report this server's own release version and which Bible data it has loaded, " +
+        "including each edition's licence, required attribution and how many verses it " +
+        "may quote verbatim per call. Use when asked which version runs, when collecting " +
+        "facts for a bug report, and before planning a longer quotation. " +
         "Returns no scripture — use bible_lookup for verse text.",
       inputSchema: {
         type: "object" as const,
@@ -1714,10 +1756,33 @@ function handleServerInfo() {
   const result = {
     server: "bibelstudium-mcp",
     version: PACKAGE_VERSION,
-    uebersetzungen: [...availableTranslations].sort().map((code) => ({
-      code,
-      name: TRANSLATIONS[code as TranslationCode]?.name ?? code,
-    })),
+    // Lizenz, Nennung und Wortlaut-Grenze stehen zusätzlich in
+    // `bible://uebersetzungen`, und sie stehen aus demselben Grund auch hier wie
+    // `voreinstellung` darunter: Dieses Werkzeug ist der Kanal, den das Modell
+    // nachweislich sieht, eine Ressource liest es womöglich nie. Es sind
+    // Bedingungen, die vor dem Abruf gebraucht werden, nicht danach: Wer ein
+    // Kapitel plant, muss wissen, dass zwei der Ausgaben je Abruf 20 Verse im
+    // Wortlaut hergeben, und wer zitiert, ob ein Dokument eine Namensnennung
+    // tragen muss. Beides erschien bis 0.6.12 in keiner Werkzeugantwort außer
+    // dem `quellen`-Feld des Abrufs selbst, also erst hinterher.
+    //
+    // Die drei Felder fehlen bei einem Kürzel, das die Datenbank führt und die
+    // Registry nicht kennt; für den Namen greift dort seit je der Rückfall auf
+    // das Kürzel, für eine Lizenz gibt es keinen ehrlichen. Deshalb stehen sie
+    // nicht in `required`: Ein erfundener Lizenztext wäre schlimmer als ein
+    // fehlendes Feld.
+    uebersetzungen: [...availableTranslations].sort().map((code) => {
+      const meta = TRANSLATIONS[code as TranslationCode] as
+        | (typeof TRANSLATIONS)[TranslationCode]
+        | undefined;
+      return {
+        code,
+        name: meta?.name ?? code,
+        ...(meta !== undefined
+          ? { lizenz: meta.license, nennung: meta.attribution, verse_max: meta.verseMax }
+          : {}),
+      };
+    }),
     // Welche Ausgabe ein Abruf ohne `translation` liefert. Die Angabe steht
     // zusätzlich in `bible://uebersetzungen`, aber dieses Werkzeug ist der
     // Kanal, den das Modell nachweislich sieht, und eine Ressource liest es
@@ -1742,6 +1807,14 @@ function handleServerInfo() {
       // Ältere Datenbanken haben strong_defs ohne die STEPBible-Spalten, dann
       // fehlen Gloss und Bedeutung trotz vorhandenem Lexikon.
       strong_lexikon_vollstaendig: hasStepCols,
+      // Der einzige Bestandteil dieses Servers, der nicht deutsch antwortet:
+      // Beide Quellen des Lexikons sind englisch (Strong über openscriptures,
+      // Bedeutung und Gloss aus STEPBible). In einem sonst durchgehend deutschen
+      // Ablauf ist das eine Angabe, die vor dem Aufruf zählt, und aus
+      // `strong_lexikon: true` allein geht sie nicht hervor. Nur mitgeliefert,
+      // wenn es ein Lexikon gibt: eine Sprachangabe zu nicht vorhandenen
+      // Einträgen sagt nichts aus.
+      ...(hasStrongDefs ? { strong_lexikon_sprache: "en" } : {}),
       editionsbezeugung: hasTagnt,
       querverweise: hasXrefs,
       volltextsuche: hasFts,
@@ -1763,6 +1836,20 @@ function handleServerInfo() {
       statisch: dataMissing !== null ? [] : RESOURCES.map((r) => r.uri),
       vorlagen: dataMissing !== null ? [] : RESOURCE_TEMPLATES.map((t) => t.uriTemplate),
     },
+    // Welche Bücher es überhaupt geben kann. Die Zahl ist gezählt, nicht
+    // behauptet, und die Angabe kam bislang allein aus einer Fehlermeldung: Wer
+    // wissen wollte, ob die Apokryphen hier vorkommen, musste einen Fehlgriff
+    // provozieren. Ohne Datenbank entfällt sie, statt 0 Bücher zu melden.
+    ...(dataMissing === null
+      ? {
+          kanon: {
+            buecher: bookCount,
+            umfang:
+              "Protestantischer Kanon. Apokryphen und deuterokanonische Schriften " +
+              "führt dieser Server nicht.",
+          },
+        }
+      : {}),
     ...(dataFetchedAt !== null ? { daten_stand: dataFetchedAt } : {}),
     ...(dataMissing !== null ? { hinweis: dataMissing } : {}),
   };

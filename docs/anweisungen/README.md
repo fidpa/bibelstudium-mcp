@@ -33,12 +33,14 @@ Gemessen am 06.08.2026:
 
 | Posten | Zeichen | wann geladen |
 |---|---|---|
-| `tools/list` | 19 186 | jede Sitzung mit Connector |
-| **diese Anweisungen** | **2 228** | jede Sitzung |
+| `tools/list` | 20 181 | jede Sitzung mit Connector |
+| **diese Anweisungen** | **2 287** | jede Sitzung |
 | `instructions` aus dem Handshake | 176 | jede Sitzung |
 
 Am selben Tag von 3526 auf 2228 Zeichen gekürzt, 14 Regeln auf 9, ohne dass eine
-Verhaltensregel entfiel.
+Verhaltensregel entfiel; seither 2287, weil die Regel zur Variantenart eine
+falsche Zusage enthielt (sie nannte `schreibvariante` und `bedeutungsvariante`
+als gesetzt, während sie bei 55,6 % der aufgeführten Formen fehlen).
 
 ## Regeln für das Pflegen dieser Datei
 

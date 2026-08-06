@@ -64,7 +64,7 @@
     },
     {
       "name": "bible_server_info",
-      "description": "Fassung des Servers und Bestand der geladenen Bibeldaten, für Rückfragen und Fehlerberichte."
+      "description": "Fassung des Servers, Bestand der geladenen Bibeldaten und die Bedingungen je Ausgabe (Lizenz, Namensnennung, Verse je Abruf), für Rückfragen und Fehlerberichte."
     },
     {
       "name": "bible_setup",

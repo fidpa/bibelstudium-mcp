@@ -83,6 +83,14 @@ export const ohneDatenbankBuendel = buendel({
       Array.isArray(leerServerInfo.json?.uebersetzungen) &&
         leerServerInfo.json.uebersetzungen.length === 0
     );
+    // Kein Kanon ohne Bücher: Die Angabe wird gezählt, und eine leere Tabelle
+    // ergäbe „0 Bücher", was wie ein beschnittener Kanon aussähe statt wie eine
+    // fehlende Datenbank.
+    eq(
+      "bible_server_info ohne Datenbank: kein Kanon gemeldet",
+      leerServerInfo.json?.kanon,
+      undefined
+    );
     // Auch der leere Bestand meldet keine Host-Details, und gerade hier ist die
     // Versuchung groß, den gesuchten Pfad in die Antwort zu schreiben.
     for (const verboten of ["/home/", "/Users/", "uptime", "hostname"]) {

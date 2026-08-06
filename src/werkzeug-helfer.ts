@@ -683,6 +683,31 @@ function zaehlungHinweis(
 }
 
 /**
+ * Der Satz zur Namensnennung, oder null bei einer Ausgabe, deren Lizenz keine
+ * verlangt.
+ *
+ * Die Nennung selbst steht seit je in `quellen`, am Ende der Nutzlast neben
+ * Lizenztexten und URLs, und das reicht nicht: Gemessen am 06.08.2026 hat ein
+ * fremder Client ein Arbeitsdokument mit rund einem Dutzend Zitaten der
+ * Schlachter 2000 erzeugt, ohne die geforderte Nennung mitzunehmen, obwohl sie
+ * jeder einzelnen Antwort beilag. `quellen` liest sich als Herkunftsangabe,
+ * nicht als Auflage; nichts in der Antwort sagte, dass sie mitgehen muss.
+ *
+ * Deshalb hier und nicht als weiteres Feld: Derselbe Client befolgte
+ * durchgehend, was in `hinweis` stand, und übersah, was danebenstand. Der Satz
+ * wiederholt die Nennung nicht, sondern verweist auf sie; sie ist bei der
+ * Schlachter 1951 rund 180 Zeichen lang und stünde sonst zweimal in jeder
+ * Antwort.
+ */
+export function nennungHinweis(code: TranslationCode): string | null {
+  if (TRANSLATIONS[code].attribution === null) return null;
+  return (
+    `Die Lizenz dieser Ausgabe verlangt eine Namensnennung. Wer diesen Wortlaut ` +
+    `in ein Dokument übernimmt, übernimmt die Nennung aus 'quellen' mit.`
+  );
+}
+
+/**
  * Die Versnutzlast, die sich `bible_lookup` und die beiden Textressourcen
  * teilen. Liefert null, wenn die Stellenangabe auf gar keinen Vers führt; den
  * Fehlgriff formuliert der Aufrufer, denn nur er weiß, wie die Angabe
@@ -742,6 +767,7 @@ export function lookupPayload(
     verseMaxHinweis(budget, { art: "verse", gefunden: gefunden.length }),
     noteMaxHinweis(notenBudget),
     zaehlungHinweis(code, bookId, chapter),
+    nennungHinweis(code),
     ...bracketHints(verse_einzeln.map((r) => r.text)),
   ].filter((h): h is string => h !== null);
 

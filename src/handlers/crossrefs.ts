@@ -22,6 +22,7 @@ import {
   jsonResult,
   markerAbschnitt,
   markerBisVers,
+  nennungHinweis,
   requireBookName,
   requireTranslation,
   resolveBook,
@@ -195,6 +196,7 @@ export function handleCrossrefs(args: {
       mitText: texte.length,
       gesamt: verweise.length,
     }),
+    nennungHinweis(translation),
     ...bracketHints(texte),
   ].filter((h): h is string => h !== null);
   const response = {

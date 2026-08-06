@@ -6,6 +6,34 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.13] - 2026-08-06
+
+### Ergänzt
+
+- **`bible_server_info` nennt die Bedingungen je Ausgabe**: `lizenz`, `nennung`
+  und `verse_max` stehen jetzt neben Kürzel und Namen, dazu `kanon` (66 Bücher,
+  ohne Apokryphen) und die Sprache des Lexikons (`en`). Beides stand bisher nur
+  in `bible://uebersetzungen` oder in einer Fehlermeldung; ein Client, der
+  Ressourcen nie abruft, kam nicht daran. Der Eintrag je Ausgabe wächst dadurch
+  von 57 auf 92 bis 294 Zeichen, je nach Länge der geforderten Nennung.
+- **`bible_compare` meldet eine fehlende Bezeugung**: Wo TAGNT keine Zeile führt
+  (9 NT-Verse, darunter Joh 7,53), steht `bezeugung_fehlt` mit dem Grund, statt
+  dass das Feld ersatzlos verschwindet.
+
+### Geändert
+
+- **Ausgaben mit Nennungspflicht sagen es im `hinweis`.** `bible_lookup`,
+  `bible_search` und `bible_crossrefs` weisen darauf hin, dass die Nennung aus
+  `quellen` in jedes Dokument mitgeht, das den Wortlaut übernimmt. Gemeinfreie
+  Ausgaben bleiben unberührt.
+- **Der `hinweis` von `bible_compare` verweist nur noch dann auf
+  `schreibvariante` und `bedeutungsvariante`, wenn die Antwort sie führt.** Von
+  13 950 aufgeführten Wörtern tragen 6194 eine solche Notiz (44,4 %); sonst sagt
+  der Hinweis, dass die Art der Variante offenbleibt. Die Legende grenzt die
+  acht Apparatzeugen von den verglichenen Editionen ab, insbesondere `Byz`.
+- **`kjv_woerter` ist als Wiedergabe der King James gekennzeichnet**, nicht als
+  Bedeutungsangabe. Der `hinweis` der Konkordanz trägt jetzt mehrere Sätze.
+
 ## [0.6.12] - 2026-08-06
 
 ### Ergänzt

@@ -480,10 +480,10 @@ ist nicht Fleißarbeit, sondern der eigentliche Entwurf.
 | `bible_lookup` | `hinweis`, `fussnoten` | `hinweis` nur bei Klammerwörtern; `fussnoten` an 1134 von 31 171 Versen (3,6 %) |
 | `bible_original` | `woerter[].strong` | 137 554 von 137 554 SBLGNT-Wörtern ohne Strong-Nummer, WLC 5951 ohne, byzantine 0 ohne |
 | `bible_crossrefs` | `verse_einzeln`, `lesehinweis`, `hinweis` | `verse_einzeln` nur bei mehrversigem Ziel im selben Kapitel |
-| `bible_concordance` | sechs Lexikonfelder, `hinweis` | `hinweis` nur bei gekürzter Liste: G26 mit `limit=50` hat ihn, mit `limit=200` nicht |
+| `bible_concordance` | sechs Lexikonfelder, `hinweis` | `hinweis` bei gekürzter Liste **oder** vorhandenem `kjv_woerter`; beide Sätze können zusammen dastehen |
 | `bible_search` | `vorkommen_gesamt`, `verteilung` | beide entfallen oberhalb `OCCURRENCE_SCAN_LIMIT`, gemessen an „der" mit 13 033 Treffern |
-| `bible_compare` | `warnung`, `quellenkonflikte`, `bezeugung` | `bezeugung` fehlt bei **9** NT-Versen ohne TAGNT-Zeile, darunter Joh 7,53 |
-| `bible_server_info` | `daten_stand`, `hinweis` | |
+| `bible_compare` | `warnung`, `quellenkonflikte`, `bezeugung`, `bezeugung_fehlt` | `bezeugung` fehlt bei **9** NT-Versen ohne TAGNT-Zeile, darunter Joh 7,53; dort steht `bezeugung_fehlt` mit dem Grund |
+| `bible_server_info` | `daten_stand`, `hinweis`, `kanon`, `zusatzdaten.strong_lexikon_sprache`, je Ausgabe `lizenz`/`nennung`/`verse_max` | `kanon` nur mit Datenbank, sonst wären es 0 Bücher; die Sprachangabe nur mit geladenem Lexikon; die drei Ausgabefelder fehlen bei einem Kürzel, das die Registry nicht kennt |
 
 Dazu drei Formen, die man beim Draufsehen übersieht: `vergleiche[]` hat zwei
 Gestalten (`ergebnis` oder `unterschiede`), weshalb nur `paar` Pflicht ist;

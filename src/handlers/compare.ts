@@ -129,9 +129,32 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
   // acht Editionen bezeugen, werden nur gezählt; aufgelistet sind die, deren
   // Zeugenmenge abweicht, denn dort sitzt das textkritische Signal.
   let bezeugung: Record<string, unknown> | undefined;
+  // Warum die Bezeugung fehlt, wenn sie fehlt. Ein weggelassenes Feld ist keine
+  // Aussage, und hier wurde es als eine gelesen: Zu Johannes 7,53 fehlte
+  // `bezeugung` ersatzlos, während der `hinweis` weiter darauf verwies, und ein
+  // fremder Client stand vor der Wahl, das als „nicht bezeugt" zu deuten
+  // (gemessen 06.08.2026). Nicht bezeugt heißt es gerade nicht: byzantine und tr
+  // führen den Vers mit je sieben Wörtern, allein SBLGNT lässt ihn aus. Neun
+  // NT-Verse haben keine TAGNT-Zeile. Der Fall, dass die Tabelle ganz fehlt,
+  // bleibt draußen: Den beantwortet bible_server_info für die ganze Instanz,
+  // nicht jeder einzelne Vers aufs Neue.
+  let bezeugungFehlt: string | undefined;
+  // Ob überhaupt eine Variantennotiz in dieser Antwort steht. Der Hinweis unten
+  // verwies bis 0.6.12 unbedingt auf 'schreibvariante' und 'bedeutungsvariante'
+  // und verbot im selben Satz, die Art der Variante zu erschließen. Beides
+  // zusammen ist eine Sackgasse, wo die Felder fehlen, und sie fehlen bei der
+  // Mehrheit: Von 13 950 aufgeführten Wörtern tragen 6194 eine solche Notiz,
+  // also 44,4 % (gemessen 06.08.2026 gegen tagnt_words).
+  let hatVariantennotiz = false;
   const quellenkonflikte: string[] = [];
   if (stmtTagnt) {
     const rows = stmtTagnt.all(bookId, chapter, verse);
+    if (rows.length === 0) {
+      bezeugungFehlt =
+        "Für diesen Vers führt die TAGNT-Bezeugung keine Zeile, das Feld 'bezeugung' " +
+        "fehlt deshalb hier. Das ist eine Lücke der Quelle und keine Aussage über den " +
+        "Vers: Was die geladenen Editionen lesen, steht in 'editionen'.";
+    }
     if (rows.length > 0) {
       const FULL = "NA28+NA27+Tyn+SBL+WH+Treg+TR+Byz";
       const abweichend = rows.filter(
@@ -139,6 +162,7 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
       );
       const eintraege = abweichend.map((r) => {
         const notiz = [r.meaning_variant, r.spelling_variant].filter((s) => s !== "").join(" ; ");
+        if (notiz !== "") hatVariantennotiz = true;
         const check = notiz !== "" ? crossCheckVariant(notiz, r.surface, texts) : undefined;
         if (check !== undefined) {
           for (const w of check.abgleich) quellenkonflikte.push(`${r.surface}: ${w}`);
@@ -157,9 +181,12 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
       });
       bezeugung = {
         quelle:
-          "STEPBible TAGNT (CC BY 4.0); Editionen: NA28, NA27, Tyn(dale House), SBL, " +
-          "WH (Westcott-Hort), Treg(elles), TR, Byz. typ: N=Nestle-Aland, K=KJV/TR-Tradition, " +
-          "O=andere; Kleinbuchstabe = ohne Übersetzungsrelevanz; »n/«n = Wortstellung verschoben.",
+          "STEPBible TAGNT (CC BY 4.0); Zeugen des Apparats, nicht die oben verglichenen " +
+          "Editionen: NA28, NA27, Tyn(dale House), SBL, WH (Westcott-Hort), Treg(elles), TR, " +
+          "Byz. Insbesondere ist 'Byz' hier eine Apparatspalte und nicht der oben verglichene " +
+          "Text 'byzantine' (Robinson-Pierpont 2005); beide gehen in 10,8 % der NT-Verse " +
+          "auseinander. typ: N=Nestle-Aland, K=KJV/TR-Tradition, O=andere; Kleinbuchstabe = " +
+          "ohne Übersetzungsrelevanz; »n/«n = Wortstellung verschoben.",
         woerter_gesamt: rows.length,
         von_allen_acht_bezeugt: rows.length - abweichend.length,
         ...(eintraege.some((e) => "in_dieser_db" in e)
@@ -203,19 +230,32 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
     })),
     vergleiche,
     ...(bezeugung !== undefined ? { bezeugung } : {}),
+    ...(bezeugungFehlt !== undefined ? { bezeugung_fehlt: bezeugungFehlt } : {}),
     // Hier kein Beispiel für eine Variantenart: Das frühere „(z. B. bewegliches
     // Ny)" wurde als Etikett aufgegriffen und auf einen Fall gesetzt, der nichts
     // damit zu tun hat. ἐπέβαλον / ἐπέβαλαν in Mk 14,46 hieß dann bewegliches Ny,
     // obwohl es um thematische gegen Alpha-Aoristendung geht (25.07.2026). Auf
     // die klassifizierenden Felder zeigen, statt einen Fachbegriff einzustreuen.
-    hinweis:
+    hinweis: [
       "Vergleich ignoriert Akzente, Groß-/Kleinschreibung und Schlusssigma (byzantine/tr sind " +
-      "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
-      "Schreibvarianten. Welche Art vorliegt, steht in 'bezeugung' ('schreibvariante' bzw. " +
-      "'bedeutungsvariante', dazu 'typ'). Nicht aus diesem Hinweis erschließen und die " +
-      "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht. " +
+        "unakzentuiert gespeichert). Verbleibende Unterschiede sind echte Textvarianten oder " +
+        "Schreibvarianten.",
+      // Auf die klassifizierenden Felder zeigen, aber nur, wenn diese Antwort sie
+      // führt. Sonst steht hier, dass die Art ungeklärt bleibt, und das Verbot
+      // gilt weiter: Es ist der Grund für den ganzen Satz.
+      hatVariantennotiz
+        ? "Welche Art vorliegt, steht in 'bezeugung' ('schreibvariante' bzw. " +
+          "'bedeutungsvariante', dazu 'typ'). Nicht aus diesem Hinweis erschließen und die " +
+          "sprachliche Erscheinung nicht benennen, wenn sie dort nicht steht."
+        : "Welche Art vorliegt, sagt diese Antwort nicht: " +
+          (bezeugung !== undefined
+            ? "Zu den aufgeführten Formen führt die Quelle keine Notiz. "
+            : "Zu diesem Vers liegt keine Bezeugung vor, siehe 'bezeugung_fehlt'. ") +
+          "Die sprachliche Erscheinung deshalb nicht benennen, auch nicht aus diesem " +
+          "Hinweis erschlossen.",
       "Wortzahlen stehen im Ergebnis: je Edition in 'woerter', je Unterschied in Klammern " +
-      "hinter der Lesart; diese Zahlen übernehmen, nicht selbst nachzählen.",
+        "hinter der Lesart; diese Zahlen übernehmen, nicht selbst nachzählen.",
+    ].join(" "),
     // Aus `editions`, nicht aus einer festen Dreierliste: die Auswahl ist nach
     // dem tatsächlich geladenen Bestand gefiltert und kann zwei Editionen
     // umfassen. TAGNT nur, wenn eine Bezeugung in der Antwort steht.

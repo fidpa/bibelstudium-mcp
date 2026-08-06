@@ -3,7 +3,10 @@
  *
  * Zwei Themen: die Grenzen und die Abweisungen. `lemma` hat eine eigene
  * Längengrenze, weil es ein eigenes Feld ist; eine vollständig gelistete Ausgabe
- * darf keinen Kürzungshinweis tragen, eine gekürzte muss einen tragen. Die fünf
+ * darf keinen Kürzungshinweis tragen, eine gekürzte muss einen tragen. Seit
+ * 0.6.13 trägt `hinweis` zwei Sätze, die einander nicht ausschließen: die
+ * Kürzung und die Herkunft von `kjv_woerter`. Geprüft wird deshalb der
+ * Kürzungssatz für sich, nicht das ganze Feld. Die fünf
  * Abweisungen stehen dabei, weil sie je einen eigenen Ausweg nennen: Bis zum
  * 06.08.2026 hatte dieses Werkzeug zwölf Verzweigungen und zwei Zusicherungen,
  * und keine davon berührte eine Fehlermeldung.
@@ -11,7 +14,7 @@
  * Einzeln lauffähig: `bun run tests/golden/concordance.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
-import { check, eq, has, abschluss } from "../lib/zusicherungen.ts";
+import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 
 export const concordanceBuendel = buendel({
   name: "concordance",
@@ -64,16 +67,35 @@ export const concordanceBuendel = buendel({
       concordanceLongLemma.text,
       "Error: 'lemma' must be at most 50 characters"
     );
-    check("G26 vollständig gelistet: ohne hinweis", !("hinweis" in (concordVollstaendig.json ?? {})));
+    // Nicht mehr „kein hinweis": Das Feld trägt jetzt auch den Satz zum englischen
+    // Lexikon. Gemeint war immer die Kürzung, und genau die darf hier fehlen.
+    lacks(
+      "G26 vollständig gelistet: kein Kürzungshinweis",
+      String(concordVollstaendig.json?.hinweis ?? ""),
+      "Nur die ersten"
+    );
+    // Die Wiedergabe der King James ist keine Bedeutungsangabe, und das Feld sagt
+    // es nicht von selbst: „charity" für ἀγάπη färbt das Wort im Deutschen falsch.
+    check(
+      "G26: kjv_woerter vorhanden",
+      typeof concordVollstaendig.json?.kjv_woerter === "string"
+    );
+    has(
+      "G26: kjv_woerter wird als KJV-Wiedergabe gekennzeichnet",
+      String(concordVollstaendig.json?.hinweis ?? ""),
+      "King James Version"
+    );
 
     // Gekürzt wird gemeldet, und zwar mit beiden Zahlen. Zeichengleich, weil der
     // gesamte Informationsgehalt des Satzes in ihnen liegt: „die ersten 5 von
     // 116" hält sowohl die Klemmung als auch die Gesamtzahl fest, und eine
     // vertauschte Zahl läse sich unverdächtig.
-    eq(
+    check(
       "G26 mit limit=5: Kürzung wird gemeldet",
-      concordGekuerzt.json?.hinweis,
-      "Nur die ersten 5 von 116 Vorkommen gelistet; 'buecher' zeigt die vollständige Verteilung."
+      String(concordGekuerzt.json?.hinweis ?? "").startsWith(
+        "Nur die ersten 5 von 116 Vorkommen gelistet; 'buecher' zeigt die vollständige Verteilung."
+      ),
+      `war "${String(concordGekuerzt.json?.hinweis ?? "")}"`
     );
     check(
       "G26 mit limit=5: genau fünf Vorkommen",

@@ -219,10 +219,32 @@ export function handleConcordance(args: {
     stelle: `${name(r.book_id)} ${r.chapter},${r.verse}`,
     wort: r.surface,
   }));
+  // Zwei Hinweise, die einander nicht ausschließen: die gekürzte Liste und das
+  // englische Lexikon. Bis 0.6.12 trug das Feld nur den ersten, und der zweite
+  // hatte keinen Platz.
+  const hinweise: string[] = [];
   if (rows.length > limit) {
-    response.hinweis =
+    hinweise.push(
       `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +
-      "'buecher' zeigt die vollständige Verteilung.";
+        "'buecher' zeigt die vollständige Verteilung."
+    );
+  }
+  // Die Lexikonfelder sind der einzige Teil dieses Servers, der nicht deutsch
+  // antwortet, und `kjv_woerter` ist darunter der einzige, der auch inhaltlich
+  // nicht meint, was er zu meinen scheint: Die Liste sagt, wie die King James
+  // das Wort wiedergibt, nicht was es heißt. „charity" für ἀγάπη liest sich
+  // heute als Wohltätigkeit und färbte das Wort in einem deutschen Ablauf genau
+  // falsch (gemessen 06.08.2026 an G26). Der Satz steht deshalb neben der Liste
+  // und nicht in der Dokumentation.
+  if (response.kjv_woerter !== undefined) {
+    hinweise.push(
+      "Die Lexikonfelder sind englisch. 'kjv_woerter' ist dabei keine Bedeutungsangabe, " +
+        "sondern die Wiedergabe in der King James Version: eine Aussage über jene " +
+        "Übersetzung, nicht über das Urtextwort, und teils in veraltetem Wortgebrauch."
+    );
+  }
+  if (hinweise.length > 0) {
+    response.hinweis = hinweise.join(" ");
   }
   response.quellen = quellen(
     meta0.quelle,

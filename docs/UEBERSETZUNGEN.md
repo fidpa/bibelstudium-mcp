@@ -110,8 +110,14 @@ stdio-Client an `JSON.stringify(result)`:
 | Stelle | Zuwachs je zusätzlicher Übersetzung | Wann es anfällt |
 |---|---|---|
 | `tools/list` (Beschreibung von `bible_lookup`) | +28 Zeichen (7201 auf 7229) | jede Sitzung |
-| `bible_server_info` | +57 Zeichen | je Aufruf |
+| `bible_server_info` | +93 bis +295 Zeichen, je nach Länge der geforderten Nennung (gemessen 06.08.2026: Luther 1912 92, Schlachter 1951 294 Zeichen je Eintrag, dazu ein Trennzeichen) | je Aufruf |
 | Fehlermeldung „Unknown translation" | +25 Zeichen, dynamisch aus `TRANSLATIONS` | nur im Fehlerfall |
+
+Der Eintrag in `bible_server_info` trug bis 0.6.12 nur Kürzel und Namen und
+kostete 57 Zeichen; seit 0.6.13 stehen Lizenz, geforderte Nennung und `verse_max`
+dabei, weil ein Aufrufer diese Bedingungen vor dem Zitieren braucht und ein
+fremder Client die Ressource `bible://uebersetzungen` nachweislich nie abrief
+(06.08.2026).
 
 Nicht betroffen: `bible_lookup` liefert je Aufruf genau eine Übersetzung, der
 Payload wächst also nicht. `bible_compare` vergleicht Urtext-**Editionen**, nicht

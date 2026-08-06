@@ -33,6 +33,7 @@ import {
   errorResult,
   getBookDisplayName,
   jsonResult,
+  nennungHinweis,
   queryNotAString,
   queryTooLong,
   requireTranslation,
@@ -277,6 +278,10 @@ export function handleSearch(args: {
         `je ${bookId === null ? "Buch" : "Kapitel"} die Zahl der Verse ('treffer') und der Vorkommen ` +
         "('vorkommen'). Diese Zahlen übernehmen, nicht aus der Trefferliste selbst aufteilen."
     );
+  }
+  const nennung = nennungHinweis(translation);
+  if (nennung !== null) {
+    hinweise.push(nennung);
   }
   hinweise.push(...bracketHints(gelisteteTexte));
   response.hinweis = hinweise.join(" ");
