@@ -29,6 +29,7 @@ import {
   jsonResult,
   requireBookName,
   resolveBook,
+  stellenangabe,
   toInt,
   verseOutOfRange,
 } from "../werkzeug-helfer.ts";
@@ -210,7 +211,7 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
   // erreichen sie nie: Mk 14,46 wurde ohne den Vorbehalt gemeldet (25.07.2026).
   // Deshalb oben in der Antwort wiederholt, vor den Daten, die sie einschränken.
   const response = {
-    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    ...stellenangabe(bookId, chapter, verse),
     sprache: "Griechisch (Koine)",
     ...(quellenkonflikte.length > 0
       ? {

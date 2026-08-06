@@ -143,6 +143,9 @@ export const originalBuendel = buendel({
     eq("1Joh 5,7 ohne texttyp: Vorgabe byzantine", origNtVorgabe.json?.texttyp, "byzantine");
     eq("1Joh 5,7 ohne texttyp: Wortzahl des Mehrheitstextes",
       ((origNtVorgabe.json?.woerter ?? []) as Array<Json>).length, 5);
+    // Die Kopiervorlage, hier aus dem AT: Der Datenbankname lautet „Psalter".
+    eq("kurzref: Ps 23,1", ps231.json?.kurzref, "Ps 23,1");
+
   },
 });
 

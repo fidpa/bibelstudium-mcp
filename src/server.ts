@@ -198,6 +198,12 @@ const LOOKUP_OUTPUT = {
   type: "object" as const,
   properties: {
     reference: { type: "string" },
+    kurzref: {
+      type: "string",
+      description:
+        "Same reference in the short German citation form (\"2Kor 8,9.13-15\"). Copy this " +
+        "into prose; `reference` spells the book out and is not the citation form.",
+    },
     translation: { type: "string" },
     text: { type: "string" },
     hinweis: { type: "string" },
@@ -218,7 +224,7 @@ const LOOKUP_OUTPUT = {
   },
   // `text` bleibt erforderlich: Der Leerfall ist vorher abgefangen, und die
   // Wortlaut-Grenze lässt immer mindestens einen Vers durch.
-  required: ["reference", "translation", "text", "quellen"],
+  required: ["reference", "kurzref", "translation", "text", "quellen"],
 };
 
 /** Bedingt: `woerter[].strong`, fehlt bei allen 137 554 SBLGNT-Wörtern und bei
@@ -227,6 +233,12 @@ const ORIGINAL_OUTPUT = {
   type: "object" as const,
   properties: {
     reference: { type: "string" },
+    kurzref: {
+      type: "string",
+      description:
+        "Same reference in the short German citation form (\"2Kor 8,9.13-15\"). Copy this " +
+        "into prose; `reference` spells the book out and is not the citation form.",
+    },
     texttyp: { type: "string" },
     edition: { type: "string" },
     sprache: { type: "string" },
@@ -253,7 +265,7 @@ const ORIGINAL_OUTPUT = {
     },
     quellen: QUELLEN_SCHEMA,
   },
-  required: ["reference", "texttyp", "edition", "sprache", "hinweis", "woerter", "quellen"],
+  required: ["reference", "kurzref", "texttyp", "edition", "sprache", "hinweis", "woerter", "quellen"],
 };
 
 /** Bedingt: `verweise[].verse_einzeln`, nur bei einem mehrversigen Ziel innerhalb
@@ -273,6 +285,12 @@ const CROSSREFS_OUTPUT = {
   type: "object" as const,
   properties: {
     reference: { type: "string" },
+    kurzref: {
+      type: "string",
+      description:
+        "Same reference in the short German citation form (\"2Kor 8,9.13-15\"). Copy this " +
+        "into prose; `reference` spells the book out and is not the citation form.",
+    },
     gesamt: {
       type: "integer",
       description:
@@ -334,7 +352,7 @@ const CROSSREFS_OUTPUT = {
     gekuerzt: GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
-  required: ["reference", "gesamt", "verweise", "quellen"],
+  required: ["reference", "kurzref", "gesamt", "verweise", "quellen"],
 };
 
 /** Bedingt: die sechs Lexikonfelder (`strong`, `umschrift`, `kurzbedeutung`,
@@ -466,6 +484,12 @@ const COMPARE_OUTPUT = {
   type: "object" as const,
   properties: {
     reference: { type: "string" },
+    kurzref: {
+      type: "string",
+      description:
+        "Same reference in the short German citation form (\"2Kor 8,9.13-15\"). Copy this " +
+        "into prose; `reference` spells the book out and is not the citation form.",
+    },
     sprache: { type: "string" },
     warnung: {
       type: "string",
@@ -551,7 +575,7 @@ const COMPARE_OUTPUT = {
     hinweis: { type: "string" },
     quellen: QUELLEN_SCHEMA,
   },
-  required: ["reference", "sprache", "editionen", "vergleiche", "hinweis", "quellen"],
+  required: ["reference", "kurzref", "sprache", "editionen", "vergleiche", "hinweis", "quellen"],
 };
 
 /** Bedingt: `daten_stand`, erst wenn ein Download eine Herkunft vermerkt hat;

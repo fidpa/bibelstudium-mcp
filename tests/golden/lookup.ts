@@ -19,6 +19,8 @@ import {
   VERSLISTE_ZU_LANG,
 } from "../lib/meldungen.ts";
 import { NO_ERROR } from "../lib/mcp-client.ts";
+import { stmtAlias } from "../../src/db.ts";
+import { BUCH_KUERZEL_LISTE } from "../../src/werkzeug-helfer.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 
 // Eingabe genau an und knapp jenseits der abgeleiteten Grenzen von `verses`
@@ -33,6 +35,13 @@ export const lookupBuendel = buendel({
   name: "lookup",
   calls: {
     lookupChap999: ["bible_lookup", { book: "Ps", chapter: 999 }],
+    // Die Kopiervorlage `kurzref`, an den drei Fällen, die ein fremder Client von
+    // Hand falsch umgeschrieben hat: ein Buch mit abweichendem Datenbanknamen
+    // („Psalter"), eine gezählte Epistel und eine zusammengesetzte Versliste.
+    kurzPs: ["bible_lookup", { book: "Psalmen", chapter: 22, verses: "25" }],
+    kurzKor: ["bible_lookup", { book: "2. Korinther", chapter: 8, verses: "9,13-15" }],
+    // Und der Rücklauf: die Kurzform aus der vorigen Antwort wieder als `book`.
+    kurzRuecklauf: ["bible_lookup", { book: "2Kor", chapter: 8, verses: "9" }],
     // Buchauflösung
     hesekiel: ["bible_lookup", { book: "Hesekiel-Zusatz", chapter: 1, verses: "1" }],
     sirach: ["bible_lookup", { book: "Sirach", chapter: 1, verses: "1" }],
@@ -130,7 +139,27 @@ export const lookupBuendel = buendel({
       lookupStrings, kapitelGrenze, kapitelUeberGrenze, lookupUnbekannteAusgabe,
       versGrenze, versUeberGrenze,
       versesTeilUnlesbar, versesGanzUnlesbar, versesFormGueltig,
+      kurzPs, kurzKor, kurzRuecklauf,
     } = res;
+
+    // `reference` trägt den Buchnamen der Datenbank und ist keine Zitierform:
+    // „Psalter", „2 Korinther". Ein fremder Client schrieb ihn deshalb selbst um
+    // und erzeugte dabei „2 Korinther8,9.13-15" (06.08.2026). `kurzref` ist die
+    // Vorlage, und der Versteil ist in beiden derselbe: Er entsteht einmal.
+    eq("kurzref: Psalter wird zu Ps", kurzPs.json?.kurzref, "Ps 22,25");
+    eq("kurzref: Versliste bleibt erhalten", kurzKor.json?.kurzref, "2Kor 8,9.13-15");
+    eq("kurzref: Langform unverändert", kurzKor.json?.reference, "2 Korinther 8,9.13-15");
+    // Der Rücklauf ist der eigentliche Zweck: Was herauskommt, geht wieder hinein.
+    eq("kurzref: als 'book' wieder eingebbar", kurzRuecklauf.json?.reference, "2 Korinther 8,9");
+
+    // Und das für alle 66, gegen die Aliastabelle statt gegen 66 Aufrufe. Ohne
+    // diese Prüfung wäre „1Thes" durchgegangen: Die Registry führt „1Thess", und
+    // die unscharfe Suche schlug auf „1Thes" ausgerechnet „Hesekiel" vor.
+    const ohneAlias = BUCH_KUERZEL_LISTE.filter(
+      ([id, kurz]) => stmtAlias.get(kurz.toLowerCase())?.book_id !== id
+    ).map(([, kurz]) => kurz);
+    eq("alle 66 Kurzformen sind Aliase", ohneAlias.join(", "), "");
+    eq("Kurzformen: 66 Bücher abgedeckt", BUCH_KUERZEL_LISTE.length, 66);
 
     // 200 ist gültig und scheitert am Bestand (Ps 119 hat 176 Verse), 201 wird
     // von der Wertprüfung abgewiesen. Die beiden Meldungen müssen deshalb

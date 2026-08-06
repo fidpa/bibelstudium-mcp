@@ -485,6 +485,15 @@ ist nicht Fleißarbeit, sondern der eigentliche Entwurf.
 | `bible_compare` | `warnung`, `quellenkonflikte`, `bezeugung`, `bezeugung_fehlt` | `bezeugung` fehlt bei **9** NT-Versen ohne TAGNT-Zeile, darunter Joh 7,53; dort steht `bezeugung_fehlt` mit dem Grund |
 | `bible_server_info` | `daten_stand`, `hinweis`, `kanon`, `zusatzdaten.strong_lexikon_sprache`, je Ausgabe `lizenz`/`nennung`/`verse_max` | `kanon` nur mit Datenbank, sonst wären es 0 Bücher; die Sprachangabe nur mit geladenem Lexikon; die drei Ausgabefelder fehlen bei einem Kürzel, das die Registry nicht kennt |
 
+Die vier Werkzeuge mit einer Kopf-Stellenangabe (`bible_lookup`, `bible_original`,
+`bible_crossrefs`, `bible_compare`) tragen sie doppelt: `reference` mit dem
+Buchnamen der Datenbank und `kurzref` in der deutschen Kurzform. Der Grund ist
+gemessen: Ein fremder Client schrieb `reference` beim Zitieren von Hand um und
+erzeugte dabei Formen wie „2 Korinther8,9.13-15“ (06.08.2026). Alle 66 Kurzformen
+sind zugleich Aliase, die Angabe geht also wieder als `book` hinein; in den
+Trefferlisten steht sie bewusst nicht, dort wögen bis zu 200 zusätzliche
+Zeichenketten je Antwort schwerer als der eine Handgriff.
+
 Dazu drei Formen, die man beim Draufsehen übersieht: `vergleiche[]` hat zwei
 Gestalten (`ergebnis` oder `unterschiede`), weshalb nur `paar` Pflicht ist;
 `verteilung[]` trägt `buch` **oder** `kapitel`; `in_dieser_db` ist eine Abbildung

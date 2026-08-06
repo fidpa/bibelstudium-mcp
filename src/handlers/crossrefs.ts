@@ -26,6 +26,7 @@ import {
   requireBookName,
   requireTranslation,
   resolveBook,
+  stellenangabe,
   stripHtml,
   toInt,
   verseOutOfRange,
@@ -200,7 +201,7 @@ export function handleCrossrefs(args: {
     ...bracketHints(texte),
   ].filter((h): h is string => h !== null);
   const response = {
-    reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    ...stellenangabe(bookId, chapter, verse),
     gesamt,
     verweise,
     ...(verweise.some((v) => "verse_einzeln" in v)

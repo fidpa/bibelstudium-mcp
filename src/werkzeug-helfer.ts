@@ -248,6 +248,57 @@ export function getBookDisplayName(bookId: number): string {
   return result?.name ?? `Buch ${bookId}`;
 }
 
+/**
+ * Die deutsche Kurzform je Buch, in der Schreibung der deutschsprachigen
+ * Bibelarbeit. Im Code und nicht in `books`, weil sie eine Setzung dieses
+ * Servers ist und keine Angabe der Quelle; die Wahl der Norm steht in
+ * `docs/ENTSCHEIDUNGEN.md`.
+ *
+ * **Jede der 66 ist zugleich ein Alias**, die Stellenangabe geht also wieder als
+ * `book` hinein (der Testfall in `tests/golden/lookup.ts` hält es fest). Deshalb
+ * `1Thess`: `1Thes` führt die Registry nicht, und die unscharfe Suche schlug
+ * darauf „Hesekiel" vor (06.08.2026). Wer eine Kurzform ändert, prüft den Alias
+ * im selben Zug.
+ */
+const BUCH_KUERZEL: Readonly<Record<number, string>> = {
+  1: "1Mo", 2: "2Mo", 3: "3Mo", 4: "4Mo", 5: "5Mo", 6: "Jos", 7: "Ri", 8: "Rut",
+  9: "1Sam", 10: "2Sam", 11: "1Kön", 12: "2Kön", 13: "1Chr", 14: "2Chr", 15: "Esr",
+  16: "Neh", 17: "Est", 18: "Hi", 19: "Ps", 20: "Spr", 21: "Pred", 22: "Hld",
+  23: "Jes", 24: "Jer", 25: "Kla", 26: "Hes", 27: "Dan", 28: "Hos", 29: "Joel",
+  30: "Am", 31: "Obd", 32: "Jona", 33: "Mi", 34: "Nah", 35: "Hab", 36: "Zef",
+  37: "Hag", 38: "Sach", 39: "Mal",
+  40: "Mt", 41: "Mk", 42: "Lk", 43: "Joh", 44: "Apg", 45: "Röm", 46: "1Kor",
+  47: "2Kor", 48: "Gal", 49: "Eph", 50: "Phil", 51: "Kol", 52: "1Thess",
+  53: "2Thess", 54: "1Tim", 55: "2Tim", 56: "Tit", 57: "Phlm", 58: "Hebr",
+  59: "Jak", 60: "1Petr", 61: "2Petr", 62: "1Joh", 63: "2Joh", 64: "3Joh",
+  65: "Jud", 66: "Offb",
+};
+
+/** Für den Testfall, der die Kurzformen gegen die Aliase hält. */
+export const BUCH_KUERZEL_LISTE: ReadonlyArray<readonly [number, string]> = Object.entries(
+  BUCH_KUERZEL
+).map(([id, kurz]) => [Number(id), kurz] as const);
+
+/**
+ * Die Stellenangabe einer Antwort, in beiden Formen.
+ *
+ * `reference` trägt den Buchnamen der Datenbank („Psalter", „2 Korinther") und
+ * ist damit keine Zitierform; `kurzref` ist die Kopiervorlage. Beide entstehen
+ * hier, aus einem einmal gebildeten Versteil, damit sie nicht auseinanderlaufen.
+ * Der gemessene Anlass steht in `docs/ENTSCHEIDUNGEN.md`.
+ */
+export function stellenangabe(
+  bookId: number,
+  chapter: number,
+  verseTeil: string | number
+): { reference: string; kurzref: string } {
+  const kurz = BUCH_KUERZEL[bookId] ?? getBookDisplayName(bookId);
+  return {
+    reference: `${getBookDisplayName(bookId)} ${chapter},${verseTeil}`,
+    kurzref: `${kurz} ${chapter},${verseTeil}`,
+  };
+}
+
 let aliasCache: Array<{ alias: string; book_id: number }> | null = null;
 
 // Deuterokanonische und apokryphe Bücher, damit ein Fehlgriff darauf genau
@@ -736,16 +787,18 @@ export function lookupPayload(
   if (results.length === 0) return null;
 
   // Gekürzt wird hier, vor allem, was aus dem Versbestand abgeleitet wird: So
-  // ziehen `reference`, der Klammerhinweis und die Fußnoten von selbst nach,
+  // ziehen beide Stellenangaben, der Klammerhinweis und die Fußnoten von selbst nach,
   // statt dass drei Stellen die Grenze noch einmal kennen müssten. Die Verse
   // liegen aufsteigend (alle drei Statements sortieren so), „die ersten" sind
   // also die niedrigsten Versnummern.
   const budget = verseBudget(code);
   const gefunden = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
   const verse_einzeln = gefunden.slice(0, budget.nimm(gefunden.length));
-  const reference =
-    `${getBookDisplayName(bookId)} ${chapter},` +
-    formatVerseReference(verse_einzeln.map((r) => r.verse));
+  const stelle = stellenangabe(
+    bookId,
+    chapter,
+    formatVerseReference(verse_einzeln.map((r) => r.verse))
+  );
   // Die Noten folgen dem gelieferten Versbestand, weil sie aus ihm abgeleitet
   // werden: Zu einem Vers, den die Antwort nicht enthält, kann keine Note
   // erscheinen. Darüber hinaus bekommen sie ein **eigenes** Budget derselben
@@ -772,7 +825,7 @@ export function lookupPayload(
   ].filter((h): h is string => h !== null);
 
   return {
-    reference,
+    ...stelle,
     translation: TRANSLATIONS[code].name,
     ...(form === "text"
       ? {
@@ -878,7 +931,7 @@ export function originalPayload(
 
   return {
     payload: {
-      reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+      ...stellenangabe(bookId, chapter, verse),
       texttyp: edition,
       edition: meta0.label,
       sprache: meta0.sprache,

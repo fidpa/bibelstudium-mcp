@@ -169,6 +169,8 @@ export const compareBuendel = buendel({
       String(((cmpMitNotiz.json?.bezeugung ?? {}) as Record<string, unknown>)["quelle"] ?? ""),
       "nicht der oben verglichene Text 'byzantine'"
     );
+    eq("kurzref: 1Joh 5,7", comma.json?.kurzref, "1Joh 5,7");
+
   },
 });
 

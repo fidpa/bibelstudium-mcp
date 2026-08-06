@@ -153,6 +153,9 @@ export const crossrefsBuendel = buendel({
 
     eq("ohne Querverweise: isError", xrefKeine.isError, true);
     eq("ohne Querverweise: nennt die Stelle", xrefKeine.text, "Keine Querverweise für 1 Mose 1,13 gefunden.");
+    // Auch die Verweisantwort trägt die Kopiervorlage: Aus ihr wird zitiert.
+    eq("kurzref: Joh 14,6", xrefJoh146.json?.kurzref, "Joh 14,6");
+
   },
 });
 

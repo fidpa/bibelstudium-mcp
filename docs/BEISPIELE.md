@@ -71,6 +71,7 @@ und dieselbe Stellenangabe trifft dann verschiedene Texte.
 ```json
 {
   "reference": "3 Mose 6,20",
+  "kurzref": "3Mo 6,20",
   "translation": "Elberfelder 1871",
   "text": "Alles, was sein Fleisch anrührt, wird heilig sein; …",
   "hinweis": "Die geführten Ausgaben zählen dieses Kapitel verschieden: Elberfelder 1871 hat hier 23 Verse, Luther 1912 30, Schlachter 1951 30. …",
@@ -81,6 +82,10 @@ und dieselbe Stellenangabe trifft dann verschiedene Texte.
 `quellen` steht unter jeder Antwort und nennt nur die Quellen, die diese Antwort
 tatsächlich benutzt hat. `nennung: null` heißt, dass die Lizenz keine
 Namensnennung verlangt.
+
+`reference` trägt den Buchnamen der Datenbank, `kurzref` dieselbe Stelle in der
+deutschen Kurzform („3Mo 6,20“, „2Kor 8,9.13-15“). Die Kurzform ist zum Zitieren
+gedacht und geht unverändert wieder als `book` in ein Werkzeug hinein.
 
 ## Selbst ausprobieren, ohne MCP-Client
 

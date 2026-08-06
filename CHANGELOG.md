@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.14] - 2026-08-06
+
+### Ergänzt
+
+- **`kurzref`: die Stellenangabe in der deutschen Kurzform**, neben dem
+  bisherigen `reference`. Aus „Psalter 22,25" wird „Ps 22,25", aus
+  „2 Korinther 8,9.13-15" wird „2Kor 8,9.13-15". `reference` bleibt unverändert.
+  Das Feld tragen die vier Werkzeuge mit einer Kopf-Stellenangabe
+  (`bible_lookup`, `bible_original`, `bible_crossrefs`, `bible_compare`) und
+  damit auch die drei Textressourcen; in den Trefferlisten steht es bewusst
+  nicht, dort wögen bis zu 200 weitere Zeichenketten je Antwort schwerer als der
+  eine Handgriff.
+
+  Alle 66 Kurzformen sind zugleich Aliase, die Angabe geht also unverändert
+  wieder als `book` in ein Werkzeug hinein; ein Testfall hält das gegen die
+  Aliastabelle. Die Schreibung folgt der deutschsprachigen Bibelarbeit
+  (`1Mo`, `Ps`, `Röm`, `1Kor`, `1Thess`, `Offb`).
+
+### Geändert (Dokumentation)
+
+- **Der Anweisungstext nennt `kurzref` als Zitierform**, von 2287 auf 2450
+  Zeichen. `tools/list` wächst mit den neuen Feldbeschreibungen von 20 181 auf
+  21 017 Zeichen (gemessen über einen stdio-Client an `JSON.stringify(result)`).
+
 ## [0.6.13] - 2026-08-06
 
 ### Ergänzt
