@@ -29,11 +29,36 @@ export const concordanceBuendel = buendel({
     concordLemmaLatein: ["bible_concordance", { lemma: "Liebe" }],
     concordTexttyp: ["bible_concordance", { strong: "G26", texttyp: "quatsch" }],
     concordOhneTreffer: ["bible_concordance", { strong: "G99999" }],
+    // `sblgnt` führt in 0 von 137 554 Wörtern eine Strong-Nummer, eine Suche
+    // danach kann dort also nie etwas finden. Bis zum 06.08.2026 kam dieselbe
+    // Meldung wie bei einer ergebnislosen Suche, und die riet, „im Zweifel
+    // Strong-Nummer verwenden", also zu genau dem, was gerade gescheitert war.
+    // Die Lemma-Suche funktioniert dort und muss unberührt bleiben.
+    concordStrongOhneDaten: ["bible_concordance", { strong: "G26", texttyp: "sblgnt" }],
+    concordLemmaSblgnt: ["bible_concordance", { lemma: "ἀγάπη", texttyp: "sblgnt", limit: 2 }],
+    concordStrongMitDaten: ["bible_concordance", { strong: "G26", texttyp: "tr", limit: 2 }],
   },
   pruefe({ res }) {
     const { concordanceLongLemma, concordVollstaendig, concordGekuerzt } = res;
     const { concordFormat, concordOhneAngabe, concordLemmaLatein } = res;
     const { concordTexttyp, concordOhneTreffer } = res;
+    const { concordStrongOhneDaten, concordLemmaSblgnt, concordStrongMitDaten } = res;
+
+    // Die verletzte Bedingung wird benannt, und der Ausweg ist einer, den der
+    // Aufrufer gehen kann.
+    eq("Strong gegen sblgnt: isError", concordStrongOhneDaten.isError, true);
+    has("Strong gegen sblgnt: nennt die Bedingung",
+      concordStrongOhneDaten.text, 'Die Edition "sblgnt" führt keine Strong-Nummern');
+    has("Strong gegen sblgnt: nennt Editionen mit Strong-Nummern",
+      concordStrongOhneDaten.text, "byzantine");
+    has("Strong gegen sblgnt: nennt den gangbaren Weg",
+      concordStrongOhneDaten.text, "'lemma'");
+    // Der alte Rat darf gerade hier nicht mehr stehen, er führte im Kreis.
+    check("Strong gegen sblgnt: rät nicht zur Strong-Nummer",
+      !concordStrongOhneDaten.text.includes("im Zweifel Strong-Nummer verwenden"));
+    // Zwei Gegenproben, damit die neue Sperre nicht zu weit greift.
+    eq("Lemma gegen sblgnt: unberührt", concordLemmaSblgnt.isError, false);
+    eq("Strong gegen tr: unberührt", concordStrongMitDaten.isError, false);
     eq(
       "bible_concordance: langes lemma hat eigene Grenze",
       concordanceLongLemma.text,

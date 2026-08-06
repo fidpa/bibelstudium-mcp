@@ -60,6 +60,13 @@ export const searchBuendel = buendel({
     searchBuch51: ["bible_search", { query: "Gnade", book: "J".repeat(51) }],
     searchQuery100: ["bible_search", { query: "a".repeat(100) }],
     searchQuery101: ["bible_search", { query: "a".repeat(101) }],
+    // `limit` wird auf 50 geklemmt. Der Hinweis darf dann nicht mehr zum
+    // Erhöhen auffordern: Am 06.08.2026 tat er es am laufenden Dienst
+    // (`limit: 1000`, fünfzig Treffer, „limit erhöhen"), und das schickt den
+    // Aufrufer in eine Wiederholung, die nichts ändert. Beide Richtungen, denn
+    // unterhalb der Grenze ist das Erhöhen der richtige Ausweg.
+    searchLimitUeber: ["bible_search", { query: "Gnade", limit: 1000 }],
+    searchLimitUnter: ["bible_search", { query: "Gnade", limit: 5 }],
   },
   pruefe({ res }, ctx) {
     const {
@@ -68,7 +75,16 @@ export const searchBuendel = buendel({
       klammerSucheGrenze, klammerSucheMb,
       searchPhrase, searchOhneWort, searchOhneTreffer,
       searchBuch50, searchBuch51, searchQuery100, searchQuery101,
+      searchLimitUeber, searchLimitUnter,
     } = res;
+
+    // Die Klemmung selbst und der Ausweg, den sie übrig lässt.
+    eq("limit=1000: auf 50 geklemmt", (searchLimitUeber.json?.verse as unknown[] ?? []).length, 50);
+    has("limit=1000: Kürzung wird gemeldet", hint(searchLimitUeber.json), "Nur die ersten 50 von");
+    lacks("limit=1000: fordert nicht zum Erhöhen auf", hint(searchLimitUeber.json), "limit erhöhen");
+    has("limit=1000: nennt den gangbaren Ausweg", hint(searchLimitUeber.json), "auf ein Buch einschränken");
+    has("limit=5: Erhöhen bleibt der Ausweg", hint(searchLimitUnter.json), "limit erhöhen");
+    eq("limit=5: fünf Treffer gelistet", (searchLimitUnter.json?.verse as unknown[] ?? []).length, 5);
 
     // 50 Zeichen kommen durch die Längenprüfung und scheitern erst an der
     // Buchauflösung; 51 werden von der Länge abgewiesen. Die Meldungen sind

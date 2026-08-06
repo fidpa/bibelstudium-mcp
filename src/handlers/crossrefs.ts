@@ -8,7 +8,7 @@
  * abgeschnitten, weil die eingeflochtenen Versnummern wie Fließtext aussehen.
  */
 
-import { stmtVerse, stmtVerseRange, stmtXrefs } from "../db.ts";
+import { stmtVerse, stmtVerseRange, stmtXrefs, stmtXrefsCount } from "../db.ts";
 import { DATASET_QUELLEN, quellen, translationQuelle } from "../editions.ts";
 import { gekuerztFeld, verseBudget, verseMaxHinweis } from "../verse-budget.ts";
 import {
@@ -27,6 +27,10 @@ import {
   toInt,
   verseOutOfRange,
 } from "../werkzeug-helfer.ts";
+
+/** Obergrenze für `limit`. Ein größerer Wert wird darauf geklemmt; wie viele
+ *  Verweise es wirklich gibt, sagt `gesamt`. */
+const MAX_XREF_LIMIT = 30;
 
 /**
  * Bedient das Werkzeug `bible_crossrefs`: liefert die Querverweise zu einem
@@ -68,7 +72,7 @@ export function handleCrossrefs(args: {
   if (verse === null || verse < 1 || verse > MAX_VERSE) {
     return errorResult(verseOutOfRange);
   }
-  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 30);
+  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), MAX_XREF_LIMIT);
   const budget = verseBudget(translation);
 
   const bookId = resolveBook(book);
@@ -149,7 +153,20 @@ export function handleCrossrefs(args: {
   // Nur der Text, der wirklich hinausgeht: Sonst warnte die Antwort vor
   // Klammern in Versen, die sie nicht geliefert hat.
   const texte = verweise.flatMap((v) => (typeof v.text === "string" ? [v.text] : []));
+  // Wie viele Verweise es überhaupt gibt. Zwei Kürzungen wirken hier
+  // unabhängig voneinander und dürfen nicht verwechselt werden: `limit` schneidet
+  // die Liste der Verweise, die Wortlaut-Grenze schneidet nur deren Text.
+  // `gekuerzt` meint allein die zweite; für die erste steht `gesamt` da, und der
+  // Satz unten nennt beide Zahlen. Ohne ihn sah eine auf 10 von 62 gekürzte
+  // Antwort vollständig aus.
+  const gesamt = stmtXrefsCount?.get(bookId, chapter, verse)?.n ?? verweise.length;
   const hinweise = [
+    gesamt > verweise.length
+      ? `Nur die ${verweise.length} bestbewerteten von ${gesamt} Verweisen gelistet` +
+        (verweise.length < MAX_XREF_LIMIT
+          ? " (limit erhöhen)."
+          : `; mehr als ${MAX_XREF_LIMIT} gibt dieses Werkzeug je Abruf nicht aus.`)
+      : null,
     verseMaxHinweis(budget, {
       art: "verweise",
       mitText: texte.length,
@@ -159,6 +176,7 @@ export function handleCrossrefs(args: {
   ].filter((h): h is string => h !== null);
   const response = {
     reference: `${getBookDisplayName(bookId)} ${chapter},${verse}`,
+    gesamt,
     verweise,
     ...(verweise.some((v) => "verse_einzeln" in v)
       ? {

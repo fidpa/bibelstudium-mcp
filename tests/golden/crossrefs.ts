@@ -8,7 +8,7 @@
  * Einzeln lauffähig: `bun run tests/golden/crossrefs.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
-import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
+import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
   BUCH_ZU_LANG,
@@ -40,10 +40,34 @@ export const crossrefsBuendel = buendel({
     xrefUeberKapitel: ["bible_crossrefs", { book: "1. Mose", chapter: 11, verse: 31, limit: 30 }],
     // Kein Verweis ist ein Ergebnis, keine Panne.
     xrefKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 13 }],
+    // `gesamt` und der Kürzungssatz. 1. Mose 1,1 führt 62 Verweise; bis zum
+    // 06.08.2026 lieferte das Werkzeug 10 bzw. 30 davon und sagte es nirgends,
+    // also stilles Kürzen in 13 548 von 29 364 möglichen Abrufen. Drei Fälle,
+    // weil der Ausweg dreimal verschieden ist: unter dem Maximum hilft Erhöhen,
+    // am Maximum hilft es nicht mehr, und ungekürzt darf kein Satz dastehen.
+    xrefGesamtVorgabe: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1 }],
+    xrefGesamtMax: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1, limit: 100 }],
+    xrefGesamtVoll: ["bible_crossrefs", { book: "Psalm", chapter: 2, verse: 7, limit: 30 }],
   },
   pruefe({ res }) {
     const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
     const { xrefLangeSpanne, xrefUeberKapitel, xrefKeine } = res;
+    const { xrefGesamtVorgabe, xrefGesamtMax, xrefGesamtVoll } = res;
+
+    // Die Zahl steht als Feld da, nicht nur im Fließtext: Was ein Konsument
+    // ableiten muss, schätzt er (25.07.2026 über sechs Läufe gemessen).
+    eq("1Mo 1,1 (Vorgabe): gesamt nennt alle 62", xrefGesamtVorgabe.json?.gesamt, 62);
+    eq("1Mo 1,1 (Vorgabe): zehn geliefert", (xrefGesamtVorgabe.json?.verweise as unknown[] ?? []).length, 10);
+    has("1Mo 1,1 (Vorgabe): Kürzung gemeldet", hint(xrefGesamtVorgabe.json), "Nur die 10 bestbewerteten von 62 Verweisen");
+    has("1Mo 1,1 (Vorgabe): Erhöhen ist der Ausweg", hint(xrefGesamtVorgabe.json), "limit erhöhen");
+    eq("1Mo 1,1 (limit=100): auf 30 geklemmt", (xrefGesamtMax.json?.verweise as unknown[] ?? []).length, 30);
+    eq("1Mo 1,1 (limit=100): gesamt unverändert 62", xrefGesamtMax.json?.gesamt, 62);
+    lacks("1Mo 1,1 (limit=100): fordert nicht zum Erhöhen auf", hint(xrefGesamtMax.json), "limit erhöhen");
+    has("1Mo 1,1 (limit=100): nennt die Obergrenze", hint(xrefGesamtMax.json), "mehr als 30 gibt dieses Werkzeug");
+    // Die Gegenprobe: Wo nichts abgeschnitten wurde, darf kein Kürzungssatz
+    // stehen. Ohne sie bliebe ein Satz, der immer erscheint, unbemerkt.
+    eq("Ps 2,7: gesamt gleich der Zahl der Verweise", xrefGesamtVoll.json?.gesamt, 18);
+    lacks("Ps 2,7: kein Kürzungssatz", hint(xrefGesamtVoll.json), "gelistet");
 
     eq("bible_crossrefs verse: Text", xrefVerse999.text, VERSE_AUSSERHALB);
     eq("bible_crossrefs verse: isError", xrefVerse999.isError, true);

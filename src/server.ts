@@ -92,6 +92,8 @@ import {
   rpcError,
   toInt,
   verseOutOfRange,
+  unparsableVersePart,
+  versesNotParsable,
   versesOutOfBounds,
   versesTooLong,
   versesTooManyParts,
@@ -256,7 +258,11 @@ const ORIGINAL_OUTPUT = {
 
 /** Bedingt: `verweise[].verse_einzeln`, nur bei einem mehrversigen Ziel innerhalb
  *  eines Kapitels; `lesehinweis`, nur wenn ein Verweis ihn trägt; `hinweis` bei
- *  Wörtern in Klammern oder wenn die Wortlaut-Grenze gegriffen hat.
+ *  Wörtern in Klammern, wenn `limit` die Liste geschnitten hat oder wenn die
+ *  Wortlaut-Grenze gegriffen hat. `gesamt` steht in jeder Erfolgsantwort und
+ *  meint die Zahl der vorhandenen Verweise, nicht die der gelieferten: Bis zum
+ *  06.08.2026 gab es sie nicht, und eine auf 10 von 62 geschnittene Antwort sah
+ *  vollständig aus.
  *  `verweise[].text` fehlt ab dem Verweis, mit dem die Wortlaut-Grenze der
  *  Ausgabe erschöpft ist, und dann bei allen folgenden; nur in Schlachter 1951
  *  und Schlachter 2000, in den drei gemeinfreien Ausgaben steht es in jeder
@@ -267,6 +273,13 @@ const CROSSREFS_OUTPUT = {
   type: "object" as const,
   properties: {
     reference: { type: "string" },
+    gesamt: {
+      type: "integer",
+      description:
+        "Number of references that exist for this verse, independent of `limit`. " +
+        "Larger than `verweise.length` means the list was cut; take this number, do not " +
+        "derive one from the list.",
+    },
     verweise: {
       type: "array",
       items: {
@@ -301,7 +314,7 @@ const CROSSREFS_OUTPUT = {
     gekuerzt: GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
-  required: ["reference", "verweise", "quellen"],
+  required: ["reference", "gesamt", "verweise", "quellen"],
 };
 
 /** Bedingt: die sechs Lexikonfelder (`strong`, `umschrift`, `kurzbedeutung`,
@@ -1309,6 +1322,12 @@ function segmentVerses(segment: string): string {
     return value < 1 || value > MAX_VERSE;
   });
   if (ausserhalb) throw rpcError(ErrorCode.InvalidParams, versesOutOfBounds);
+  // Die zweite Tür zu derselben Nutzlast, also dieselbe Formprüfung wie in
+  // bible_lookup: Sonst verschluckte die Vorlage ein unlesbares Segment weiter,
+  // während das Werkzeug es abweist.
+  if (segment !== "" && unparsableVersePart(segment) !== null) {
+    throw rpcError(ErrorCode.InvalidParams, versesNotParsable);
+  }
   return segment;
 }
 

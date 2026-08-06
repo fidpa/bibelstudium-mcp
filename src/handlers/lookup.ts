@@ -32,7 +32,9 @@ import {
   requireTranslation,
   resolveBook,
   toInt,
+  unparsableVersePart,
   versesNotAString,
+  versesNotParsable,
   versesOutOfBounds,
   versesTooLong,
   versesTooManyParts,
@@ -84,6 +86,12 @@ export function handleLookup(rawArgs: unknown) {
   }
   if (verses.split(",").length > MAX_VERSE_PARTS) {
     return errorResult(versesTooManyParts);
+  }
+  // Form vor Wert: Ein Segment ohne Ziffern fällt der Wertprüfung unten nicht
+  // auf (sie greift auf `\d+`), und `parseVerses` ließe es stillschweigend
+  // fallen. Die leere Angabe bleibt zulässig, sie meint das ganze Kapitel.
+  if (verses !== "" && unparsableVersePart(verses) !== null) {
+    return errorResult(versesNotParsable);
   }
   // Vor beiden Nachschlagepfaden, denn sie waren einmal uneins: Der Schnellpfad
   // für eine schlichte Spanne prüfte MAX_VERSE gar nicht („1-500" wurde wie

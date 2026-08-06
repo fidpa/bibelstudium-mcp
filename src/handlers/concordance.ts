@@ -10,6 +10,7 @@
 
 import {
   availableEditions,
+  editionsWithStrong,
   db,
   stmtConcordLemma,
   stmtConcordStrong,
@@ -122,6 +123,21 @@ export function handleConcordance(args: {
   if (!availableEditions.has(edition)) {
     return errorResult(
       `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}.`
+    );
+  }
+
+  // Vor der Abfrage, nicht nach ihr: Eine Strong-Suche gegen eine Edition ohne
+  // Strong-Nummern kann nie etwas finden, und die gemeinsame Meldung unten riete
+  // dann dazu, eine Strong-Nummer zu verwenden.
+  if (strongDigits !== null && !editionsWithStrong.has(edition)) {
+    const mitStrong = [...availableEditions].filter((e) => editionsWithStrong.has(e));
+    return errorResult(
+      `Die Edition "${edition}" führt keine Strong-Nummern; eine Suche danach findet dort ` +
+        `grundsätzlich nichts. ` +
+        (mitStrong.length > 0
+          ? `Mit Strong-Nummern: ${mitStrong.join(", ")}. `
+          : "") +
+        `In "${edition}" ist stattdessen die Suche über 'lemma' möglich.`
     );
   }
 

@@ -41,6 +41,16 @@ import {
 } from "../werkzeug-helfer.ts";
 
 /**
+ * Obergrenze für `limit`. Ein größerer Wert wird darauf geklemmt, und der
+ * Hinweis unten darf dann nicht mehr zum Erhöhen auffordern: Am 06.08.2026 gab
+ * der Dienst auf `limit: 1000` fünfzig Treffer aus und schrieb dazu „limit
+ * erhöhen", eine Handlung, die der Aufrufer bereits vorgenommen hatte und die
+ * nichts ändert. Die Zahl steht deshalb einmal hier und wird nicht erneut
+ * hingeschrieben.
+ */
+const MAX_SEARCH_LIMIT = 50;
+
+/**
  * Formt freie Eingabe in einen unbedenklichen FTS5-MATCH-Ausdruck um.
  * Zitierte Abschnitte werden zu Phrasen, nackte Wörter mit UND verknüpft, und
  * ein angehängtes `*` macht aus einem Wort eine Präfixsuche. Liefert null, wenn
@@ -104,7 +114,7 @@ export function handleSearch(args: {
   if (match === null) {
     return errorResult("Error: 'query' enthält kein durchsuchbares Wort.");
   }
-  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), 50);
+  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), MAX_SEARCH_LIMIT);
   const budget = verseBudget(translation);
 
   let bookId: number | null = null;
@@ -220,8 +230,14 @@ export function handleSearch(args: {
     hinweise.push(grenzHinweis);
   }
   if (total > rows.length) {
+    // Der Ausweg muss einer sein, den der Aufrufer gehen kann. Steht `limit`
+    // schon auf der Obergrenze, ist Erhöhen keiner mehr.
+    const ausweg =
+      rows.length >= MAX_SEARCH_LIMIT
+        ? `mehr als ${MAX_SEARCH_LIMIT} listet dieses Werkzeug je Abruf nicht; auf ein Buch einschränken oder den Suchausdruck verengen`
+        : "limit erhöhen oder auf ein Buch einschränken";
     hinweise.push(
-      `Nur die ersten ${rows.length} von ${total} Treffern gelistet (limit erhöhen oder auf ein Buch einschränken).`
+      `Nur die ersten ${rows.length} von ${total} Treffern gelistet (${ausweg}).`
     );
   }
   // „Im Verstext" wird unwahr, sobald gelistete Treffer ohne Text dabei sind:

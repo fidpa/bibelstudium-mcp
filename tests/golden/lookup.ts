@@ -46,6 +46,15 @@ export const lookupBuendel = buendel({
     versesTooMany: ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_MANY }],
     versesSpanTooHigh: ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500" }],
     versesSpanWithComma: ["bible_lookup", { book: "Ps", chapter: 117, verses: "1-500,2" }],
+    // Dasselbe Muster eine Eingabeklasse weiter: Die Wertprüfung greift auf
+    // `\d+` und sieht ein Segment ohne Ziffern nicht. „16,abc" kam bis zum
+    // 06.08.2026 als Johannes 3,16 zurück, ohne Hinweis und ohne Fehler, und
+    // „abc" allein bekam „No verses found … Check chapter and verse numbers",
+    // eine Bedingung, die gar nicht geprüft worden war. Drei Fälle: gemischt,
+    // allein, und die Gegenprobe, dass gültige Form weiter durchkommt.
+    versesTeilUnlesbar: ["bible_lookup", { book: "Joh", chapter: 3, verses: "16,abc" }],
+    versesGanzUnlesbar: ["bible_lookup", { book: "Joh", chapter: 3, verses: "abc" }],
+    versesFormGueltig: ["bible_lookup", { book: "Joh", chapter: 3, verses: "16-17,20" }],
     versesTooLong: ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_TOO_LONG }],
     versesNotAString: ["bible_lookup", { book: "Ps", chapter: 119, verses: { kein: "string" } }],
     versesMaxValid: ["bible_lookup", { book: "Ps", chapter: 119, verses: VERSES_MAX_VALID }],
@@ -105,6 +114,7 @@ export const lookupBuendel = buendel({
       noteEine, noteKeine, noteDrei, noteMehrvers,
       lookupStrings, kapitelGrenze, kapitelUeberGrenze, lookupUnbekannteAusgabe,
       versGrenze, versUeberGrenze,
+      versesTeilUnlesbar, versesGanzUnlesbar, versesFormGueltig,
     } = res;
 
     // 200 ist gültig und scheitert am Bestand (Ps 119 hat 176 Verse), 201 wird
@@ -201,6 +211,16 @@ export const lookupBuendel = buendel({
       const outOfBounds = "Error: every verse number in 'verses' must be between 1 and 200";
       eq("Spanne 1-500", versesSpanTooHigh.text, outOfBounds);
       eq("Spanne 1-500,2 (gleiche Meldung)", versesSpanWithComma.text, outOfBounds);
+      // Dieselbe Symmetrie für ein Segment ohne Ziffern: beide Wege dieselbe
+      // Meldung, und sie nennt die Form, nicht die Existenz eines Verses.
+      const nichtLesbar =
+        "Error: each segment in 'verses' must be a verse number or a range, like \"4\", \"16-17\" or \"1-3,7\"";
+      eq("16,abc: abgewiesen statt verschluckt", versesTeilUnlesbar.text, nichtLesbar);
+      eq("16,abc: isError", versesTeilUnlesbar.isError, true);
+      eq("abc allein: gleiche Meldung, nicht 'No verses found'", versesGanzUnlesbar.text, nichtLesbar);
+      // Gegenprobe: Die gültige Form darf die neue Prüfung nicht treffen.
+      eq("16-17,20: gültige Form kommt durch", versesFormGueltig.isError, false);
+      eq("16-17,20: Stellenangabe", versesFormGueltig.json?.reference, "Johannes 3,16-17.20");
       eq(
         "241 Zeichen: Längenmeldung nennt die Länge",
         versesTooLong.text,

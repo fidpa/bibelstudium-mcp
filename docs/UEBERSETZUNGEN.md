@@ -5,8 +5,8 @@ geprüft, nicht aus dem Gedächtnis übernommen: Übersetzungslisten abgerufen,
 Lizenzfelder gelesen, Datendateien heruntergeladen und gegen die eigene
 Datenbank gestellt.
 
-**Entschieden ist nichts.** Der Server führt weiterhin die vier Übersetzungen aus
-`translations.ts`. Diese Datei hält fest, welche Optionen es gäbe und was sie
+**Entschieden ist nichts.** Der Server führt weiterhin die Ausgaben aus
+`translations.ts`, seit dem 06.08.2026 fünf. Diese Datei hält fest, welche Optionen es gäbe und was sie
 kosten würden, damit die Frage nicht bei jeder Gelegenheit neu recherchiert wird.
 
 ## Was heute geführt wird
@@ -17,7 +17,7 @@ kosten würden, damit die Frage nicht bei jeder Gelegenheit neu recherchiert wir
 | `ELB` | Elberfelder 1871 | Public Domain | unbegrenzt |
 | `MB` | Menge 1939 | Public Domain | unbegrenzt |
 | `SCH` | Schlachter 1951 | CC BY 4.0 (Genfer Bibelgesellschaft) | **20** |
-| `SLT` | Schlachter 2000 | Abkommen mit der Genfer Bibelgesellschaft | **20** |
+| `SLT` | Schlachter 2000 | Mit Genehmigung der Genfer Bibelgesellschaft | **20** |
 
 Maßgeblich ist `translations.ts`; dort steht neben jeder Ausgabe auch die
 Nennung, die ihre Lizenz beim Weitergeben verlangt (`null` bei Public Domain),
@@ -41,7 +41,8 @@ die einzige mit einem Anmerkungsapparat (Feld `fussnoten`).
 ## Die bisherige Quelle ist ausgeschöpft
 
 Die Download-Skripte holen die deutschen Texte von der bolls.life-API. Deren
-Sprachliste führt für Deutsch **sechs** Ausgaben: die vier oben plus zwei
+Sprachliste führt für Deutsch **sechs** Ausgaben: die vier frei lizenzierten
+oben plus zwei
 weitere, die **beide urheberrechtlich geschützt** sind (eine moderne
 Übertragung, eine neuere Revision einer der geführten Ausgaben).
 

@@ -6,6 +6,31 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.10] - 2026-08-06
+
+### Ergänzt
+
+- **`bible_crossrefs` nennt in `gesamt`, wie viele Querverweise es zu der Stelle
+  gibt**, unabhängig von `limit`. Bisher kürzte das Werkzeug still: 1. Mose 1,1
+  führt 62 Verweise, geliefert wurden 10 (Vorgabe) oder 30 (Maximum), und die
+  Antwort sagte es nirgends. Betroffen waren 13 548 der 29 364 Verse mit
+  Verweisen bei der Vorgabe, 1166 auch beim Maximum. Der `hinweis` nennt die
+  Kürzung jetzt ebenfalls, mit dem Ausweg, den der Aufrufer tatsächlich hat.
+
+### Behoben
+
+- **`bible_lookup` weist unlesbare Segmente in `verses` ab, statt sie zu
+  verschlucken.** `"16,abc"` kam als ein Vers zurück, ohne Hinweis und ohne
+  Fehler; `"abc"` allein nannte eine Bedingung, die gar nicht geprüft war. Beide
+  bekommen jetzt dieselbe Meldung zur Form. Gilt ebenso für die Vorlage
+  `bible://vers/…`.
+- **`bible_concordance` meldet, wenn eine Edition keine Strong-Nummern führt.**
+  Eine Strong-Suche in `sblgnt` kann nichts finden (0 von 137 554 Wörtern), riet
+  bisher aber dazu, eine Strong-Nummer zu verwenden. Die Suche über `lemma`
+  bleibt dort möglich und wird genannt.
+- **`bible_search` fordert nicht mehr zum Erhöhen von `limit` auf**, wenn `limit`
+  bereits auf der Obergrenze 50 liegt.
+
 ## [0.6.9] - 2026-08-06
 
 ### Geändert

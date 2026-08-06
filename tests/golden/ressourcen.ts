@@ -40,6 +40,10 @@ export const ressourcenBuendel = buendel({
     resBuchFehlt: "bible://kapitel/LUT/Hesekiel-Zusatz/1",
     resKapitelGrenze: "bible://kapitel/LUT/Psalter/999",
     resVerslisteZuLang: `bible://vers/LUT/Psalter/119/${VERSES_TOO_MANY}`,
+    // Die Vorlage ist die zweite Tür zu derselben Nutzlast und muss ein
+    // unlesbares Segment ebenso abweisen wie bible_lookup. Täte sie es nicht,
+    // hinge das Verhalten daran, durch welche Tür der Aufrufer kommt.
+    resVersUnlesbar: "bible://vers/LUT/Johannes/3/16,abc",
     resUebersetzungUnbekannt: "bible://kapitel/XYZ/Psalter/23",
     resEditionFalschesTestament: "bible://grundtext/wlc/Johannes/3/16",
     // Zwei Bedingungen zugleich verletzt: Die Meldung muss die nennen, die auch
@@ -51,7 +55,7 @@ export const ressourcenBuendel = buendel({
       resBuecher, resUebersetzungen, resEditionen, resQuellen, resKapitel,
       resVersBereich, resVersEinzeln, resKapitelPunkt, resKapitelUmlaut,
       resGrundtextAt, resGrundtextNt, resFremdesSchema, resUnbekannt,
-      resZuWenigSegmente, resBuchFehlt, resKapitelGrenze, resVerslisteZuLang,
+      resZuWenigSegmente, resBuchFehlt, resKapitelGrenze, resVerslisteZuLang, resVersUnlesbar,
       resUebersetzungUnbekannt, resEditionFalschesTestament, resZweiVerletzt,
     } = ressourcen;
 
@@ -194,6 +198,12 @@ export const ressourcenBuendel = buendel({
     resVerslisteZuLang!.error,
     VERSLISTE_ZU_LANG
   );
+  has(
+    "unlesbares Segment: dieselbe Abweisung wie im Werkzeug",
+    resVersUnlesbar!.error,
+    "each segment in 'verses' must be a verse number or a range"
+  );
+  eq("unlesbares Segment: als InvalidParams", resVersUnlesbar!.code, INVALID_PARAMS);
   has(
     "unbekannte Übersetzung nennt die erlaubten",
     resUebersetzungUnbekannt!.error,

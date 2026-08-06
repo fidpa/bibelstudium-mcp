@@ -341,6 +341,24 @@ export const versesNotAString = `Error: 'verses' must be a string like "4", "16-
 export const versesTooLong = `Error: 'verses' must be at most ${MAX_VERSES_LENGTH} characters`;
 export const versesTooManyParts = `Error: 'verses' must list at most ${MAX_VERSE_PARTS} comma-separated segments`;
 export const versesOutOfBounds = `Error: every verse number in 'verses' must be between 1 and ${MAX_VERSE}`;
+/** Ein Segment, das keine Versangabe ist. Eigene Meldung, weil die Bedingung
+ *  eine eigene ist: „16,abc" wurde bis zum 06.08.2026 als Johannes 3,16
+ *  beantwortet, ohne Hinweis und ohne Fehler, und „abc" allein bekam „No verses
+ *  found … Check chapter and verse numbers", also eine Bedingung, die gar nicht
+ *  geprüft worden war. Dasselbe Muster wie bei „1-500,2" am 26.07.2026, nur eine
+ *  Eingabeklasse weiter: Die Wertprüfung greift auf `\d+` und sieht ein Segment
+ *  ohne Ziffern nicht. */
+export const versesNotParsable = `Error: each segment in 'verses' must be a verse number or a range, like "4", "16-17" or "1-3,7"`;
+/** Ein Segment ist genau eine Zahl oder genau eine Spanne aus zwei Zahlen. */
+const VERSE_PART_RE = /^\d+(-\d+)?$/;
+/** Das erste Segment, das keine Versangabe ist; sonst null. */
+export function unparsableVersePart(versesStr: string): string | null {
+  for (const teil of versesStr.split(",")) {
+    const t = teil.trim();
+    if (!VERSE_PART_RE.test(t)) return t;
+  }
+  return null;
+}
 
 /**
  * Prüft ein `book`-Argument in drei Schritten und gibt den geprüften Namen

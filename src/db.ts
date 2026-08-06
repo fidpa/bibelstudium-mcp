@@ -251,6 +251,22 @@ export const availableEditions: Set<string> = new Set(
     : []
 );
 
+/** Welche Editionen Strong-Nummern führen. Nicht alle tun es: `sblgnt` trägt in
+ *  0 von 137 554 Wörtern eine, `byzantine` und `tr` in allen, `wlc` in 299 556
+ *  von 305 507 (gemessen 06.08.2026). Eine Strong-Suche dort ist deshalb keine
+ *  ergebnislose Suche, sondern eine unmögliche, und das gehört anders gemeldet:
+ *  Die gemeinsame Meldung riet, „im Zweifel Strong-Nummer verwenden", also zu
+ *  genau dem, was gerade gescheitert war. */
+export const editionsWithStrong: Set<string> = new Set(
+  hasOriginal
+    ? (db
+        .query(
+          "SELECT DISTINCT edition FROM original_words WHERE strong IS NOT NULL AND strong <> ''"
+        )
+        .all() as Array<{ edition: string }>).map((r) => r.edition)
+    : []
+);
+
 // Konkordanzabfragen laufen über die Zeilen einer Edition (ohne eigenen Index;
 // die Datenbank wird nur lesend geöffnet, und ein voller Editionsdurchlauf
 // kostet im lokalen SQLite wenige Millisekunden).
@@ -415,6 +431,18 @@ export const stmtXrefs = hasXrefs
       "SELECT to_book, to_chapter, to_verse, to_chapter_end, to_verse_end, votes " +
         "FROM cross_references WHERE from_book = ? AND from_chapter = ? AND from_verse = ? " +
         "ORDER BY votes DESC LIMIT ?"
+    )
+  : null;
+
+/** Wie viele Verweise es zu einem Vers überhaupt gibt, unabhängig von `limit`.
+ *  Ohne diese Zahl kürzte `bible_crossrefs` still: 1. Mose 1,1 führt 62
+ *  Verweise, geliefert wurden 30 (Maximum) bzw. 10 (Vorgabe), und die Antwort
+ *  sagte es nirgends (gemessen 06.08.2026 am gehosteten Dienst). Betroffen sind
+ *  bei der Vorgabe 13 548 der 29 364 Verse mit Verweisen, beim Maximum 1166. */
+export const stmtXrefsCount = hasXrefs
+  ? db.prepare<{ n: number }, [number, number, number]>(
+      "SELECT COUNT(*) AS n FROM cross_references " +
+        "WHERE from_book = ? AND from_chapter = ? AND from_verse = ?"
     )
   : null;
 
