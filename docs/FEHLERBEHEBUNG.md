@@ -48,6 +48,18 @@ Der Server startet absichtlich auch mit unvollständigen Daten: Alles, wofür
 Daten vorhanden sind, funktioniert; die übrigen Werkzeuge melden gezielt, welches
 Skript fehlt.
 
+## Abrufe ohne `translation` liefern die falsche Ausgabe
+
+Steht auf stderr eine Zeile wie `BIBLE_DEFAULT_TRANSLATION="…" ist in dieser
+Datenbank nicht geladen; Voreinstellung bleibt LUT.`, dann läuft der Server mit
+einer anderen Vorgabe, als eingestellt war. Er antwortet weiter, aber mit Luther.
+
+Zwei Ursachen: Das Kürzel ist unbekannt (Tippfehler), oder die gewünschte Ausgabe
+liegt in dieser Datenbank nicht vor, etwa weil sie nach einem Tausch der Datei
+fehlt. Welche Vorgabe tatsächlich gilt, sagt `bible_server_info` im Feld
+`voreinstellung`, und welche Ausgaben geladen sind, steht dort daneben. Die
+Meldung erscheint **einmal beim Start**; wer sie verpasst hat, fragt das Werkzeug.
+
 ### Der Client ruft die Werkzeuge nicht auf
 
 Der Server ist verbunden und die Werkzeuge erscheinen, das Modell antwortet aber

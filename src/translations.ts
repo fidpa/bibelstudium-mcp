@@ -100,6 +100,20 @@ interface TranslationMeta {
 
 export type TranslationCode = keyof typeof TRANSLATIONS;
 
+/**
+ * Die eingebaute Voreinstellung. Sie ist bewusst eine gemeinfreie Ausgabe:
+ * Jeder Klon führt sie, während `SLT` nur dort existiert, wo der Betreiber sie
+ * eingespielt hat. Eine hier eingetragene Ausgabe, die eine Installation nicht
+ * hat, ließe jeden Abruf ohne `translation` in eine Fehlermeldung laufen.
+ *
+ * Ein Endpunkt kann davon abweichen, ohne diese Zahl anzufassen: siehe
+ * `EFFECTIVE_DEFAULT_TRANSLATION` in `werkzeug-helfer.ts`. Diese Konstante bleibt der
+ * Rückfallwert und behält ihre **zweite** Bedeutung im Datenaufbau, wo
+ * `download.ts` an ihr festmacht, welcher Lauf die Tabellen `books` und
+ * `aliases` schreibt. Beides auseinanderzuhalten ist der Grund, warum die
+ * Abweichung nicht hier steht: Eine Umgebungsvariable des Servers darf nicht
+ * bestimmen, woher die Buchnamen stammen.
+ */
 export const DEFAULT_TRANSLATION: TranslationCode = "LUT";
 
 /** Kleingeschriebene Eingabe → kanonisches Kürzel (die Kürzel selbst gelten auch). */
@@ -116,11 +130,19 @@ const TRANSLATION_ALIASES: Record<string, TranslationCode> = {
 
 /**
  * Löst ein Werkzeugargument zu einem Übersetzungskürzel auf. Fehlende oder
- * leere Eingabe fällt auf die Voreinstellung zurück; unbekannte Eingabe liefert
- * null, die Meldung gibt der Aufrufer aus.
+ * leere Eingabe fällt auf `fallback` zurück; unbekannte Eingabe liefert null,
+ * die Meldung gibt der Aufrufer aus.
+ *
+ * `fallback` ist ein Parameter und keine feste Konstante, weil ein Endpunkt
+ * eine andere Voreinstellung führen darf als ein Klon. Wer ihn wegläßt, bekommt
+ * die eingebaute; das gilt für den Datenaufbau, der von der Umgebung des
+ * Servers nichts wissen soll.
  */
-export function resolveTranslation(input: unknown): TranslationCode | null {
-  if (input === undefined || input === null || input === "") return DEFAULT_TRANSLATION;
+export function resolveTranslation(
+  input: unknown,
+  fallback: TranslationCode = DEFAULT_TRANSLATION
+): TranslationCode | null {
+  if (input === undefined || input === null || input === "") return fallback;
   if (typeof input !== "string") return null;
   return TRANSLATION_ALIASES[input.trim().toLowerCase()] ?? null;
 }

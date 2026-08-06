@@ -69,9 +69,7 @@ import {
   translationQuelle,
 } from "./editions.ts";
 import {
-  DEFAULT_TRANSLATION,
   TRANSLATIONS,
-  resolveTranslation,
   type TranslationCode,
 } from "./translations.ts";
 import {
@@ -83,6 +81,7 @@ import {
   bookNotFoundMessage,
   bookTooLong,
   chapterOutOfRange,
+  EFFECTIVE_DEFAULT_TRANSLATION,
   errorResult,
   jsonResult,
   lookupPayload,
@@ -556,6 +555,11 @@ const SERVER_INFO_OUTPUT = {
         required: ["code", "name"],
       },
     },
+    // Steht in jedem Erfolgspfad und gehört deshalb nach `required`.
+    voreinstellung: {
+      type: "string",
+      description: "Translation code used when a call omits `translation`.",
+    },
     urtext_editionen: {
       type: "array",
       items: {
@@ -591,7 +595,8 @@ const SERVER_INFO_OUTPUT = {
     hinweis: { type: "string" },
   },
   required: [
-    "server", "version", "uebersetzungen", "urtext_editionen", "zusatzdaten", "ressourcen",
+    "server", "version", "uebersetzungen", "voreinstellung", "urtext_editionen", "zusatzdaten",
+    "ressourcen",
   ],
 };
 
@@ -602,6 +607,34 @@ const SERVER_INFO_OUTPUT = {
 // und idempotentHint bleiben bewusst draußen: Das Schema erklärt sie nur dann
 // für bedeutsam, wenn readOnlyHint false ist.
 const READ_ONLY_LOCAL = { readOnlyHint: true, openWorldHint: false } as const;
+
+/**
+ * Das `translation`-Argument, aus der wirksamen Voreinstellung erzeugt.
+ *
+ * `default` in einem `inputSchema` ist nicht bloß Beschreibung: Ein Client darf
+ * daraus einen weggelassenen Wert materialisieren und ihn ausdrücklich senden.
+ * Stünde hier ein festes "LUT", während `EFFECTIVE_DEFAULT_TRANSLATION` etwas
+ * anderes sagt, machte genau das die Einstellung des Endpunkts wirkungslos, und
+ * kein Testlauf würde rot (gemessen 06.08.2026: drei Werkzeuge deklarierten
+ * "LUT", während das Verhalten bereits Schlachter 2000 war). Deshalb wird beides
+ * hier abgeleitet und nirgends zweimal hingeschrieben.
+ */
+function translationArg(zweck: string) {
+  return {
+    type: "string" as const,
+    description:
+      `${zweck} ` +
+      (Object.keys(TRANSLATIONS) as TranslationCode[])
+        .map((c) => `"${c}" (${TRANSLATIONS[c].name})`)
+        .join(", ") +
+      `. Default: "${EFFECTIVE_DEFAULT_TRANSLATION}" ` +
+      `(${TRANSLATIONS[EFFECTIVE_DEFAULT_TRANSLATION].name}). ` +
+      `Aliases like "luther", "schlachter" accepted. ` +
+      `Only editions this instance actually loaded can be requested; ` +
+      `bible_server_info lists them.`,
+    default: EFFECTIVE_DEFAULT_TRANSLATION,
+  };
+}
 
 // bible_setup ist das eine Werkzeug, das schreibt: Es lädt die Bibeldaten und
 // ersetzt die Datenbankdatei. readOnlyHint und openWorldHint sind für es deshalb
@@ -666,7 +699,8 @@ const handleListTools = async () => ({
       // Kanon sind genau die, die der Server klären kann; das gehört gesagt.
       description:
         "Look up Bible verses by reference. Returns exact text from a licensed German " +
-        "translation (default: Luther 1912). Use this for ALL Bible quotes — never quote " +
+        "translation (see the `translation` argument for this instance's default). Use this " +
+        "for ALL Bible quotes — never quote " +
         "from memory. " +
         "When the edition carries footnotes for the requested verses, the field 'fussnoten' " +
         "holds them verbatim: these are the publisher's own notes, not this server's, and " +
@@ -695,14 +729,7 @@ const handleListTools = async () => ({
               "whole chapter. Some editions cap how many verses one call may quote; the response " +
               "then says so in `hinweis` and `gekuerzt`, and `reference` names what it contains.",
           },
-          translation: {
-            type: "string",
-            description:
-              'Translation: "LUT" (Luther 1912, default), "SCH" (Schlachter 1951), ' +
-              '"ELB" (Elberfelder 1871), "MB" (Menge 1939), "SLT" (Schlachter 2000). ' +
-              'Aliases like "luther", "schlachter" accepted.',
-            default: "LUT",
-          },
+          translation: translationArg("Translation:"),
         },
         required: ["book", "chapter"],
       },
@@ -747,7 +774,7 @@ const handleListTools = async () => ({
       annotations: READ_ONLY_LOCAL,
       description:
         "Find cross-references (related/parallel passages) for one Bible verse, ranked by " +
-        "relevance votes, with the German text of the targets (default: Luther 1912; in editions " +
+        "relevance votes, with the German text of the targets (in editions " +
         "that cap verbatim quoting, the later targets carry `stelle` and `votes` only). Use this " +
         "to find where a theme, quote or promise recurs elsewhere in Scripture. Data: Treasury of " +
         "Scripture Knowledge (expanded), OpenBible.info, CC-BY.",
@@ -765,12 +792,7 @@ const handleListTools = async () => ({
             description: "Maximum number of references to return (default 10, max 30)",
             default: 10,
           },
-          translation: {
-            type: "string",
-            description:
-              'Translation for the quoted target texts: "LUT" (default), "SCH", "ELB", "MB", "SLT".',
-            default: "LUT",
-          },
+          translation: translationArg("Translation for the quoted target texts:"),
         },
         required: ["book", "chapter", "verse"],
       },
@@ -819,7 +841,7 @@ const handleListTools = async () => ({
       name: "bible_search",
       annotations: READ_ONLY_LOCAL,
       description:
-        "Full-text search over the German Bible text (default: Luther 1912). Finds verses " +
+        "Full-text search over the German Bible text. Finds verses " +
         "containing ALL given words (exact word forms; umlauts/accents are folded, so 'fuhrt' " +
         'matches "führt"). Quote phrases ("Gnade um Gnade"); a trailing * makes a prefix ' +
         "search (lieb* finds liebe/lieben/liebet …). Use this to locate a passage when the " +
@@ -840,11 +862,7 @@ const handleListTools = async () => ({
             description: "Maximum verses to return (default 10, max 50); the total count is always exact",
             default: 10,
           },
-          translation: {
-            type: "string",
-            description: 'Translation to search: "LUT" (default), "SCH", "ELB", "MB", "SLT".',
-            default: "LUT",
-          },
+          translation: translationArg("Translation to search:"),
         },
         required: ["query"],
       },
@@ -1397,7 +1415,7 @@ function translationsPayload(): Record<string, unknown> {
       // und wie dort ist null eine Aussage: Diese Ausgabe hat keine Grenze.
       verse_max: TRANSLATIONS[code].verseMax,
     })),
-    voreinstellung: DEFAULT_TRANSLATION,
+    voreinstellung: EFFECTIVE_DEFAULT_TRANSLATION,
     hinweis:
       "Aufgeführt ist, was diese Instanz geladen hat. Steht bei 'nennung' null, " +
       "verlangt die Lizenz keine Namensnennung. Steht bei 'verse_max' eine Zahl, " +
@@ -1700,6 +1718,12 @@ function handleServerInfo() {
       code,
       name: TRANSLATIONS[code as TranslationCode]?.name ?? code,
     })),
+    // Welche Ausgabe ein Abruf ohne `translation` liefert. Die Angabe steht
+    // zusätzlich in `bible://uebersetzungen`, aber dieses Werkzeug ist der
+    // Kanal, den das Modell nachweislich sieht, und eine Ressource liest es
+    // womöglich nie. Ein Endpunkt kann die Vorgabe verschieben; ohne dieses
+    // Feld ließe sich von außen nicht feststellen, welche gerade gilt.
+    voreinstellung: EFFECTIVE_DEFAULT_TRANSLATION,
     // Dieselbe Gestalt wie `uebersetzungen`, und aus demselben Grund: Die nackten
     // Schlüssel („byzantine", „tr") bezeichnen keine Edition, und ein Aufrufer
     // kann sie in dieser Nutzlast nirgends nachschlagen. Welche Textform geladen

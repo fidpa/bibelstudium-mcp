@@ -34,6 +34,11 @@ import { promptsBuendel } from "./golden/prompts.ts";
 import { ressourcenBuendel } from "./golden/ressourcen.ts";
 import { wortlautGrenzeBuendel } from "./golden/wortlaut-grenze.ts";
 import { uebergreifendBuendel } from "./golden/uebergreifend.ts";
+import {
+  voreinstellungBuendel,
+  voreinstellungAliasBuendel,
+  voreinstellungUnbekanntBuendel,
+} from "./golden/voreinstellung.ts";
 import { ohneDatenbankBuendel } from "./golden/ohne-datenbank.ts";
 
 /**
@@ -53,6 +58,9 @@ await fahre([
   ressourcenBuendel,
   wortlautGrenzeBuendel,
   uebergreifendBuendel,
+  voreinstellungBuendel,
+  voreinstellungAliasBuendel,
+  voreinstellungUnbekanntBuendel,
   ohneDatenbankBuendel,
 ]);
 
@@ -64,4 +72,4 @@ await fahre([
  * Sie hängt am geladenen Bestand: Ohne die Ausgabe mit Apparat entfallen die
  * Fußnotenfälle.
  */
-abschluss(717);
+abschluss(746);

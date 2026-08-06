@@ -30,6 +30,7 @@ import { isRecord, schemaErrors } from "../schema-validator.ts";
  */
 export type Ctx = {
   tools: Json[];
+  toolList: Json[];
   resourceList: Json[];
   templateList: Json[];
   promptList: Json[];
@@ -194,6 +195,7 @@ export async function fahre(buendel: Buendel[]): Promise<Map<string, ToolResult>
     );
     const ctx: Ctx = {
       tools: lauf.tools,
+      toolList: lauf.tools,
       resourceList: lauf.resourceList,
       templateList: lauf.templateList,
       promptList: lauf.promptList,

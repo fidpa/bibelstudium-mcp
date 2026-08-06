@@ -34,6 +34,7 @@ Platzhalter.
 - [Der Anmerkungsapparat einer Ausgabe ist ein eigenes Feld](#der-anmerkungsapparat-einer-ausgabe-ist-ein-eigenes-feld)
 - [Eine Grenze, die eine Zusage einhält, gehört an die Ausgabe und nicht an den Server](#eine-grenze-die-eine-zusage-einhält-gehört-an-die-ausgabe-und-nicht-an-den-server)
 - [Eine Kürzung, die der Server selbst vornimmt, muss in der Antwort stehen](#eine-kürzung-die-der-server-selbst-vornimmt-muss-in-der-antwort-stehen)
+- [Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon](#die-voreinstellung-gehört-dem-endpunkt-die-konstante-gehört-jedem-klon)
 - [Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text](#dieselbe-stellenangabe-trifft-nicht-in-jeder-ausgabe-denselben-text)
 
 **[Fehlermeldungen und Argumentprüfung](#fehlermeldungen-und-argumentprüfung)**
@@ -944,6 +945,42 @@ keine, weil sie geprüft aussieht.
 **Verworfen:** die Auskunft in `bible_server_info` oder die Dokumentation. Der
 Fall tritt bei einem einzelnen Abruf auf, und was nicht im Ergebnis steht,
 erreicht das Modell nicht.
+
+## Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon
+
+*Gemessen 06.08.2026.*
+
+Der gehostete Dienst führt die Schlachter 2000 und soll sie voreinstellen. Die
+Konstante `DEFAULT_TRANSLATION` dafür umzuwidmen scheidet aus, aus zwei
+unabhängigen Gründen. Erstens gilt sie jedem Klon, und dort gibt es die Ausgabe
+nicht: Jeder Abruf ohne `translation` liefe in „Ihre Quelldateien werden nicht
+mitgeliefert, das lässt sich hier nicht nachholen." Zweitens trägt die Konstante
+eine zweite Bedeutung, die mit der Ausgabe nichts zu tun hat: `download.ts`
+macht an ihr fest, welcher Lauf die Tabellen `books` und `aliases` schreibt. Eine
+Umgebungsvariable des Servers darf nicht bestimmen, woher die Buchnamen stammen.
+
+Deshalb `BIBLE_DEFAULT_TRANSLATION`, aufgelöst in `werkzeug-helfer.ts` und nicht
+in `translations.ts`: Erst dort ist bekannt, was tatsächlich geladen ist, und
+`translations.ts` importiert nichts, damit die Aufbau-Skripte an ihr hängen
+können, ohne die Laufzeit mitzuziehen.
+
+**Der Rückfall warnt, statt den Start abzubrechen.** Ein unbekanntes Kürzel oder
+eine nicht geladene Ausgabe fällt auf die eingebaute zurück und meldet das auf
+stderr. Abbrechen wäre lauter, aber teurer: Eine falsche Zeile in einer
+Unit-Datei nähme einen öffentlichen Endpunkt vom Netz, während der Rückfall
+weiter gültigen, frei lizenzierten Text liefert. Die Richtung stimmt auch
+lizenzrechtlich, denn zurückgefallen wird nie auf eine Ausgabe, für die keine
+Lizenz vorliegt.
+
+**Der teuerste Fehler wäre gewesen, die Selbstauskunft zu vergessen.**
+`inputSchema.default` ist nicht bloß Beschreibung: Ein Client darf daraus einen
+weggelassenen Wert materialisieren und ihn ausdrücklich senden. Drei Werkzeuge
+deklarierten zunächst weiter `"LUT"`, während das Verhalten bereits eine andere
+Ausgabe lieferte; ein solcher Client hätte die Einstellung des Endpunkts still
+ausgehebelt, und kein Testlauf wäre rot geworden. Vorgabewert und
+Beschreibungstext werden deshalb aus derselben Konstante erzeugt, und
+`bible_server_info` nennt die wirksame Vorgabe zusätzlich zur Ressource: Es ist
+der Kanal, den das Modell nachweislich sieht.
 
 # Fehlermeldungen und Argumentprüfung
 

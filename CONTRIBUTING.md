@@ -28,6 +28,39 @@ Für dieses Projekt und alle Beteiligten gilt unser [Verhaltenskodex](CODE_OF_CO
 - **Den Footprint halten.** Eine Laufzeit-Abhängigkeit (das MCP-SDK), kein Build-Schritt, Bun-nativ. Ein Pull Request, der eine Abhängigkeit hinzufügt, braucht einen sehr guten Grund.
 - **Code-Stil**: siehe [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md).
 
+## Aufbau
+
+Wo was liegt. Die Importe gehen in eine Richtung: `server.ts` kennt die
+Module unter `src/`, keines davon kennt `server.ts`. Alles unter `scripts/`
+läuft ausschließlich beim Datenaufbau.
+
+| Datei | Aufgabe |
+|-------|---------|
+| `src/server.ts` | MCP-Server: Ausgabeschemata, Werkzeugliste, drei Prompts, vier Ressourcen und drei URI-Vorlagen, Verteilung der Anfragen, `bible_setup`, Start |
+| `src/handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
+| `src/werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
+| `src/db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
+| `src/editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
+| `src/translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
+| `src/morphology.ts` | Die drei Morphologie-Schemata: MorphGNT, Robinson, OSHB |
+| `src/verse-budget.ts` | Wie viele Verse eine Ausgabe je Antwort im Wortlaut trägt, und wie das Kürzen gemeldet wird |
+| `src/greek-diff.ts` | Wortvergleich zweier Grundtext-Editionen, Abgleich mit der Bezeugungsnotiz |
+| `src/db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
+| `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
+| `scripts/schema.ts` | Tabellen-Schemata + FTS-Neuaufbau |
+| `scripts/atomic-db.ts` | Atomare Datenbank-Schreibvorgänge (temporäre Kopie + Umbenennen), sicher bei parallelen Lesern |
+| `scripts/provenance.ts` | Quellen-/Prüfsummen-Protokoll für jeden Download |
+| `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → Buch-IDs |
+| `scripts/download*.ts` | Ein Skript je Datenquelle, additiv, atomarer Austausch |
+| `scripts/build-fts.ts` | Baut den Volltext-Index neu; nötig nur, wenn er fehlt oder beschädigt ist |
+| `scripts/import-schlachter2000.ts` | Einspielen der Schlachter 2000 aus einer USX-Lieferung. Die Lieferung ist **nicht** Teil dieses Repositories und `bible_setup` kennt das Skript nicht: Eine selbst aufgebaute Datenbank führt die Ausgabe darum nie |
+| `scripts/build-mcpb.ts` | Baut das MCPB-Bundle für Claude Desktop |
+| `tests/golden/*.ts` | Ein Prüfbündel je Werkzeug, dazu die Fälle, die zu keinem gehören; jedes einzeln lauffähig |
+| `tests/test-http.ts` | Transportverhalten über HTTP (Statuscodes, `Allow`, Origin); braucht keine Datenbank |
+| `tests/schema-coverage.ts` | Breitentest: jede Antwort gegen ihr deklariertes `outputSchema` |
+| `mcpb/manifest.json` | Manifest-Quelle des Bundles |
+| `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
+
 ## Änderungen prüfen
 
 Zuerst der Typecheck. Er braucht keine Datenbank und ist das, was die CI erzwingt:

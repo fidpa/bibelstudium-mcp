@@ -47,7 +47,12 @@ import {
   resolveEdition,
   translationQuelle,
 } from "./editions.ts";
-import { TRANSLATIONS, resolveTranslation, type TranslationCode } from "./translations.ts";
+import {
+  DEFAULT_TRANSLATION,
+  TRANSLATIONS,
+  resolveTranslation,
+  type TranslationCode,
+} from "./translations.ts";
 import { decodeHebrew, decodeParse, decodeRobinson, posLabel } from "./morphology.ts";
 import {
   gekuerztFeld,
@@ -188,6 +193,40 @@ export function toInt(value: unknown): number | null {
   }
   return null;
 }
+
+/**
+ * Die Voreinstellung dieser Instanz: `BIBLE_DEFAULT_TRANSLATION`, sonst die
+ * eingebaute aus `translations.ts`.
+ *
+ * Hier aufgelöst und nicht in `translations.ts`, weil erst hier bekannt ist, was
+ * tatsächlich geladen ist, und weil der Datenaufbau von der Umgebung des Servers
+ * nichts wissen soll. Ein unbekannter oder nicht geladener Wert fällt auf die
+ * eingebaute Ausgabe zurück und sagt es auf stderr; sichtbar bleibt der Rückfall
+ * über `voreinstellung` in `bible_server_info` und `bible://uebersetzungen`, die
+ * beide den wirksamen Wert nennen. Warum nicht die Konstante umgewidmet und
+ * warum kein Startabbruch: `docs/ENTSCHEIDUNGEN.md`.
+ */
+export const EFFECTIVE_DEFAULT_TRANSLATION: TranslationCode = ((): TranslationCode => {
+  const gewuenscht = process.env["BIBLE_DEFAULT_TRANSLATION"]?.trim();
+  if (gewuenscht === undefined || gewuenscht === "") return DEFAULT_TRANSLATION;
+  const code = resolveTranslation(gewuenscht);
+  if (code === null) {
+    console.error(
+      `BIBLE_DEFAULT_TRANSLATION="${gewuenscht}" ist kein bekanntes Kürzel; ` +
+        `Voreinstellung bleibt ${DEFAULT_TRANSLATION}.`
+    );
+    return DEFAULT_TRANSLATION;
+  }
+  if (!availableTranslations.has(code)) {
+    console.error(
+      `BIBLE_DEFAULT_TRANSLATION="${gewuenscht}" ist in dieser Datenbank nicht ` +
+        `geladen; Voreinstellung bleibt ${DEFAULT_TRANSLATION}.`
+    );
+    return DEFAULT_TRANSLATION;
+  }
+  return code;
+})();
+
 
 // --- Buchauflösung und „nicht gefunden"-Meldungen (alle Werkzeuge) ---------
 export function resolveBook(book: string): number | null {
@@ -558,7 +597,7 @@ export function requireTranslation(input: unknown): { code: TranslationCode } | 
   const geladen = (Object.keys(TRANSLATIONS) as TranslationCode[]).filter((c) =>
     availableTranslations.has(c)
   );
-  const code = resolveTranslation(input);
+  const code = resolveTranslation(input, EFFECTIVE_DEFAULT_TRANSLATION);
   if (code === null) {
     return {
       error:

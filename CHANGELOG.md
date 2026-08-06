@@ -6,6 +6,35 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.12] - 2026-08-06
+
+### Ergänzt
+
+- **`BIBLE_DEFAULT_TRANSLATION` setzt die Voreinstellung eines Endpunkts.** Ohne
+  die Variable bleibt es bei Luther 1912. Ist der Wert unbekannt oder die Ausgabe
+  in dieser Datenbank nicht geladen, fällt der Server auf Luther zurück und
+  vermerkt das auf stderr, statt jeden Abruf ohne `translation` scheitern zu
+  lassen. Die eingebaute Vorgabe bleibt `LUT`, weil sie jeder Installation zur
+  Verfügung stehen muss.
+- **`bible_server_info` nennt die wirksame Voreinstellung** im neuen Feld
+  `voreinstellung`, wie `bible://uebersetzungen`. Auch `translation.default` und
+  der Beschreibungstext in `tools/list` werden daraus abgeleitet: Ein Client, der
+  Schema-Vorgabewerte materialisiert, sendet damit den richtigen.
+
+### Geändert (Dokumentation)
+
+- **`README.md` gestrafft**, von 364 auf 313 Zeilen. Die Beispielausgaben stehen
+  jetzt in `docs/BEISPIELE.md`, die Dateitabelle in `CONTRIBUTING.md`, vier
+  Absätze mit Protokoll-Interna in `docs/ENTSCHEIDUNGEN.md` und im Code. Die
+  Übersetzungstabelle führt die Schlachter 2000 voran, mit einer Spalte, die
+  sagt, wo eine Ausgabe verfügbar ist. Neu: eine Tabelle der drei
+  Umgebungsvariablen.
+- **`docs/anweisungen/claude-desktop.txt` von 3526 auf 2228 Zeichen gekürzt**,
+  14 Regeln auf 9, ohne dass eine Verhaltensregel entfiel: Was die Antwort in
+  `hinweis` und `lesehinweis` ohnehin sagt, stand dort ein zweites Mal. Der Text
+  wird in jeder Sitzung geladen. Die Pflegeregeln dazu stehen neu in
+  `docs/anweisungen/README.md`.
+
 ## [0.6.11] - 2026-08-06
 
 ### Ergänzt
