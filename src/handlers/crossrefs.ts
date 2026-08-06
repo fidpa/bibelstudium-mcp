@@ -20,6 +20,8 @@ import {
   errorResult,
   getBookDisplayName,
   jsonResult,
+  markerAbschnitt,
+  markerBisVers,
   requireBookName,
   requireTranslation,
   resolveBook,
@@ -109,14 +111,22 @@ export function handleCrossrefs(args: {
     // (`nimmGanz`), und beide Textfelder werden aus derselben bewilligten Liste
     // gebaut, damit ein Vers einmal zählt, obwohl er zweimal hinausgeht. Eine
     // Grenze auf Versebene schnitte in gemessen 3335 von 29 364 möglichen
-    // Abrufen mitten in eine Spanne: `stelle` nennte weiter den ganzen
-    // Abschnitt, `verse_einzeln` trüge einen Teil davon, und die Ellipse unten
-    // greift nur bei `span > CAP`, sagte es also nicht. Wer ein drittes
+    // Abrufen mitten in eine Spanne, und `stelle` nennte weiter den ganzen
+    // Abschnitt. Seit dem 06.08.2026 bliebe das nicht mehr unbemerkt, denn
+    // `abschnitt_gekuerzt` unten meldet jede Kürzung innerhalb eines Verweises;
+    // gegen die Verweis-Grenze spricht seither allein, dass ein halb
+    // gelieferter Verweis dem Konsumenten nichts nützt. Wer ein drittes
     // verstragendes Feld ergänzt, leitet es ebenfalls aus dieser Liste ab.
     // Verbraucht wird in `votes`-Reihenfolge (das Statement sortiert so): Die
     // bestbewerteten Verweise behalten ihren Text.
     let text: string | null = null;
     let einzeln: Array<{ nr: number; text: string }> | null = null;
+    // Die Abschnittskürzung, sobald sie greift. Sie ist NICHT die
+    // Wortlaut-Grenze: Diese hier schneidet innerhalb eines Verweises, jene
+    // lässt ganze Verweise ohne Text. Deshalb ein eigener Feldname und eigene
+    // Zahlen; die beiden nebeneinander als „gekuerzt" zu führen hat schon
+    // einmal zu einer Verwechslung der Einheiten geführt (06.08.2026).
+    let abschnittGekuerzt: { verse_gezeigt: number; verse_gesamt?: number } | null = null;
     if (sameChapter) {
       const span = r.to_verse_end - r.to_verse + 1;
       const CAP = 4;
@@ -131,15 +141,27 @@ export function handleCrossrefs(args: {
         text = verses
           .map((v) => (span > 1 ? `${v.verse} ${stripHtml(v.text)}` : stripHtml(v.text)))
           .join(" ");
-        if (span > CAP) text += ` … [bis V. ${r.to_verse_end}]`;
+        if (span > CAP) text += markerBisVers(r.to_verse_end);
         if (span > 1) einzeln = verses.map((v) => ({ nr: v.verse, text: stripHtml(v.text) }));
+        // `verse_einzeln` trug den Rest nicht und sagte es nicht. Der
+        // `lesehinweis` fordert zugleich, daraus vollständig zu zitieren: Wer
+        // dem folgte, gab „Sprüche 8,22-30" aus und lieferte 22-25 (gemessen am
+        // 06.08.2026, und schon beim Vorgabelimit erreichbar).
+        if (span > CAP) {
+          abschnittGekuerzt = { verse_gezeigt: verses.length, verse_gesamt: span };
+        }
       }
     } else {
       // Erst holen, dann bewilligen: Umgekehrt verbrauchte ein Ziel ohne
       // gefundenen Vers Budget, das kein Wortlaut aufbraucht.
       const v = stmtVerse.get(translation, r.to_book, r.to_chapter, r.to_verse);
       if (v && budget.nimmGanz(1)) {
-        text = `${stripHtml(v.text)} … [Abschnitt bis ${r.to_chapter_end},${r.to_verse_end}]`;
+        text = `${stripHtml(v.text)}${markerAbschnitt(r.to_chapter_end, r.to_verse_end)}`;
+        // Kapitelübergreifend gibt es nur den ersten Vers und gar kein
+        // `verse_einzeln`, obwohl `stelle` mehrere Verse nennt. `verse_gesamt`
+        // bleibt weg, weil die Länge über die Kapitelgrenze hinweg hier nicht
+        // feststeht; wie weit das Ziel reicht, sagt `stelle`.
+        abschnittGekuerzt = { verse_gezeigt: 1 };
       }
     }
     return {
@@ -147,6 +169,7 @@ export function handleCrossrefs(args: {
       votes: r.votes,
       ...(text !== null ? { text } : {}),
       ...(einzeln !== null ? { verse_einzeln: einzeln } : {}),
+      ...(abschnittGekuerzt !== null ? { abschnitt_gekuerzt: abschnittGekuerzt } : {}),
     };
   });
 
@@ -183,7 +206,10 @@ export function handleCrossrefs(args: {
           lesehinweis:
             "Mehrversige Verweise tragen zusätzlich 'verse_einzeln' (ein Eintrag je Vers, " +
             "ohne eingebettete Versnummern). Beim Zitieren daraus die Verse vollständig " +
-            "übernehmen, nicht Anfang oder Ende des Abschnitts weglassen.",
+            "übernehmen, nicht Anfang oder Ende des Abschnitts weglassen. Wo " +
+            "'abschnitt_gekuerzt' steht, reicht der Abschnitt weiter als die gelieferten " +
+            "Verse: Dann gilt die Stellenangabe des Zitats nur den vorhandenen Versen, " +
+            "nicht der ganzen Spanne aus 'stelle'.",
         }
       : {}),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),

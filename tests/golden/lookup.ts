@@ -36,6 +36,19 @@ export const lookupBuendel = buendel({
     // Buchauflösung
     hesekiel: ["bible_lookup", { book: "Hesekiel-Zusatz", chapter: 1, verses: "1" }],
     sirach: ["bible_lookup", { book: "Sirach", chapter: 1, verses: "1" }],
+    // Der bloße Titel „Weisheit" ist gebräuchlich; die Apokryphen-Meldung führt
+    // ihn in ihrer eigenen Aufzählung, erkannte ihn aber lange nicht.
+    weisheit: ["bible_lookup", { book: "Weisheit", chapter: 1, verses: "1" }],
+    // Gegenprobe zur Wortgrenze: kein apokrypher Titel, darf die Meldung nicht bekommen.
+    weisheitsSprueche: ["bible_lookup", { book: "Weisheitssprüche", chapter: 1, verses: "1" }],
+    // Verszählung: 140 der 1190 Kapitel zählen zwischen den Ausgaben verschieden.
+    // 3. Mose 6 hat in LUT/SCH 30 Verse, in ELB/MB/SLT 23; dieselbe
+    // Stellenangabe trifft dort also verschiedene Texte, und bis zum 06.08.2026
+    // sagte die Antwort darüber nichts. Kapitel 7 hat überall 38 und ist die
+    // Gegenprobe: dort darf der Satz nicht stehen.
+    zaehlungLut: ["bible_lookup", { book: "3. Mose", chapter: 6, verses: "20", translation: "LUT" }],
+    zaehlungElb: ["bible_lookup", { book: "3. Mose", chapter: 6, verses: "20", translation: "ELB" }],
+    zaehlungGleich: ["bible_lookup", { book: "3. Mose", chapter: 7, verses: "1", translation: "ELB" }],
     // Klammern: Menge setzt Einschübe in Klammern, Luther nicht
     joh316: ["bible_lookup", { book: "Joh", chapter: 3, verses: "16" }],
     mengeVers: ["bible_lookup", { book: "1. Mose", chapter: 15, verses: "3", translation: "MB" }],
@@ -108,7 +121,9 @@ export const lookupBuendel = buendel({
   },
   pruefe({ res }, ctx) {
     const {
-      lookupChap999, hesekiel, sirach, joh316, mengeVers, mengeOhneKlammer,
+      lookupChap999, hesekiel, sirach, weisheit, weisheitsSprueche,
+      zaehlungLut, zaehlungElb, zaehlungGleich,
+      joh316, mengeVers, mengeOhneKlammer,
       versesTooMany, versesSpanTooHigh, versesSpanWithComma, versesTooLong,
       versesNotAString, versesMaxValid, keinVers, buchZahl, buchFehlt, buchZuLang,
       noteEine, noteKeine, noteDrei, noteMehrvers,
@@ -187,6 +202,28 @@ export const lookupBuendel = buendel({
     has("Hesekiel-Zusatz: Kanonumfang", hesekiel.text, "66 Bücher");
     has("Sirach: als apokryph benannt", sirach.text, "apokryphen/deuterokanonischen");
     lacks("Sirach: kein Sacharja-Fehlvorschlag", sirach.text, "Sacharja");
+
+    has("Weisheit: als apokryph benannt", weisheit.text, "apokryphen/deuterokanonischen");
+    lacks("Weisheit: kein Buchvorschlag", weisheit.text, "Am nächsten kommt");
+    lacks(
+      "Weisheitssprüche: nicht als apokryph benannt",
+      weisheitsSprueche.text,
+      "apokryphen/deuterokanonischen"
+    );
+
+    // Der Satz nennt die eigene Länge und die der abweichenden Ausgaben, damit
+    // ein Konsument die Differenz beziffern kann statt sie zu vermuten.
+    has("3Mo 6,20 (LUT): Zählungssatz", hint(zaehlungLut.json), "zählen dieses Kapitel verschieden");
+    has("3Mo 6,20 (LUT): nennt die eigene Länge", hint(zaehlungLut.json), "Luther 1912 hat hier 30 Verse");
+    has("3Mo 6,20 (LUT): nennt die abweichende", hint(zaehlungLut.json), "Elberfelder 1871 23");
+    has("3Mo 6,20 (ELB): Zählungssatz", hint(zaehlungElb.json), "Elberfelder 1871 hat hier 23 Verse");
+    lacks("3Mo 7,1 (ELB): kein Zählungssatz", hint(zaehlungGleich.json), "zählen dieses Kapitel verschieden");
+    // Der Anlass des Satzes, strukturell festgehalten: gleiche Stellenangabe,
+    // verschiedener Text. Ginge das je verloren, wäre der Satz gegenstandslos.
+    check(
+      "3Mo 6,20: LUT und ELB liefern verschiedenen Text",
+      zaehlungLut.json?.text !== zaehlungElb.json?.text
+    );
 
     has("1Mo 15,3 (MB): Wortklammer im Text", mengeVers.json?.text as string, "[darum wird einer");
     has("1Mo 15,3 (MB): Klammerhinweis", hint(mengeVers.json), "Wörter in eckigen Klammern");

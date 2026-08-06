@@ -167,8 +167,13 @@ Dateien unter `docs/`, externe URLs (Spezifikation, SDK-Quelle, Datenquellen),
 und Fundstellen im SDK mit Datei und Zeile (`protocol.js:397`). Letztere altern
 mit der SDK-Fassung: Wer sie schreibt, nennt die geprüfte Fassung mit.
 
-Gemessen am 02.08.2026 verweist keine `.ts`-Datei dieses Repos auf einen
-gitignorierten Pfad. Das ist der Zustand, der zu halten ist.
+Gemessen am 06.08.2026 verweisen zwei Zeilen in `scripts/import-schlachter2000.ts`
+auf `docs/intern/`, und zwar zu Recht: Das Skript liest die Lieferung von dort,
+der Pfad ist sein Vorgabewert und steht so auch im Code. Die Regel richtet sich
+gegen Kommentare, die zur **Erklärung** auf Ungeteiltes verweisen, nicht gegen
+einen Pfad, den das Programm braucht. Sonst verweist keine `.ts`-Datei auf einen
+gitignorierten Pfad; der Prüfbefehl unten ergibt daher zwei erwartete Treffer und
+keinen weiteren.
 
 ### K4. Länge und der richtige Ort
 
@@ -234,7 +239,8 @@ Wo sich das nicht vermeiden lässt, benennt jeder der beiden den anderen.
 ### Prüfbefehle
 
 ```bash
-# Verweise auf Ungeteiltes: muss 0 Treffer ergeben
+# Verweise auf Ungeteiltes: erwartet sind allein die zwei Zeilen in
+# scripts/import-schlachter2000.ts, die den Vorgabepfad der Lieferung setzen
 grep -rn "CLAUDE\.md\|\.claude/\|docs/intern\|TODO\.md" --include="*.ts" . | grep -v node_modules
 
 # Em-Dash in Kommentaren: muss 0 Treffer ergeben

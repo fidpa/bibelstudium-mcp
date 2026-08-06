@@ -38,6 +38,12 @@ export const crossrefsBuendel = buendel({
     // (neun Verse), 1. Mose 11,31 auf 1. Mose 11,32 bis 12,1.
     xrefLangeSpanne: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1, limit: 30 }],
     xrefUeberKapitel: ["bible_crossrefs", { book: "1. Mose", chapter: 11, verse: 31, limit: 30 }],
+    // Der Klammerhinweis darf sich nicht an der eigenen Einfügung entzünden.
+    // 1. Mose 25,21 verweist auf 1. Mose 15,2-3, und Menge setzt dort einen
+    // Einschub in eckige Klammern: derselbe Aufruf muss in MB warnen und in LUT
+    // schweigen, wo die Ausgabe nachweislich keinen einzigen Klammervers führt.
+    xrefKlammerEcht: ["bible_crossrefs", { book: "1. Mose", chapter: 25, verse: 21, translation: "MB" }],
+    xrefKlammerKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 25, verse: 21, translation: "LUT" }],
     // Kein Verweis ist ein Ergebnis, keine Panne.
     xrefKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 13 }],
     // `gesamt` und der Kürzungssatz. 1. Mose 1,1 führt 62 Verweise; bis zum
@@ -52,6 +58,7 @@ export const crossrefsBuendel = buendel({
   pruefe({ res }) {
     const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
     const { xrefLangeSpanne, xrefUeberKapitel, xrefKeine } = res;
+    const { xrefKlammerEcht, xrefKlammerKeine } = res;
     const { xrefGesamtVorgabe, xrefGesamtMax, xrefGesamtVoll } = res;
 
     // Die Zahl steht als Feld da, nicht nur im Fließtext: Was ein Konsument
@@ -111,6 +118,38 @@ export const crossrefsBuendel = buendel({
       String(ueber?.text ?? ""),
       "… [Abschnitt bis 12,1]"
     );
+
+    // Die Ellipse allein war kein Signal: `verse_einzeln` trug vier von neun
+    // Versen, ohne es zu sagen, während der `lesehinweis` daraus vollständiges
+    // Zitieren verlangte. Beides muss jetzt zusammenpassen.
+    eq("lange Spanne: verse_einzeln trägt vier Verse",
+      ((spanne?.verse_einzeln ?? []) as unknown[]).length, 4);
+    eq("lange Spanne: abschnitt_gekuerzt nennt die gezeigten Verse",
+      (spanne?.abschnitt_gekuerzt as Json | undefined)?.verse_gezeigt, 4);
+    eq("lange Spanne: abschnitt_gekuerzt nennt die ganze Spanne",
+      (spanne?.abschnitt_gekuerzt as Json | undefined)?.verse_gesamt, 9);
+    has("lange Spanne: lesehinweis nennt das Feld",
+      String(xrefLangeSpanne.json?.lesehinweis ?? ""), "abschnitt_gekuerzt");
+
+    // Über die Kapitelgrenze steht nur der erste Vers da, und es gibt gar kein
+    // `verse_einzeln`, obwohl `stelle` mehrere Verse nennt. `verse_gesamt`
+    // fehlt hier bewusst: Die Länge über die Grenze hinweg steht nicht fest.
+    eq("über Kapitelgrenze: abschnitt_gekuerzt nennt einen Vers",
+      (ueber?.abschnitt_gekuerzt as Json | undefined)?.verse_gezeigt, 1);
+    check("über Kapitelgrenze: kein verse_gesamt",
+      (ueber?.abschnitt_gekuerzt as Json | undefined)?.verse_gesamt === undefined);
+    check("über Kapitelgrenze: kein verse_einzeln", ueber?.verse_einzeln === undefined);
+
+    // Der Klammerhinweis in beide Richtungen. Er lief bis zum 06.08.2026 auf
+    // den servereigenen Marker an und behauptete damit das Gegenteil der Lage.
+    has("1Mo 25,21 (MB): Klammerhinweis bei echtem Einschub",
+      hint(xrefKlammerEcht.json), "Wörter in eckigen Klammern");
+    lacks("1Mo 25,21 (LUT): kein Klammerhinweis",
+      hint(xrefKlammerKeine.json), "Wörter in eckigen Klammern");
+    lacks("lange Spanne: Marker löst keinen Klammerhinweis aus",
+      hint(xrefLangeSpanne.json), "Wörter in eckigen Klammern");
+    lacks("über Kapitelgrenze: Marker löst keinen Klammerhinweis aus",
+      hint(xrefUeberKapitel.json), "Wörter in eckigen Klammern");
 
     eq("ohne Querverweise: isError", xrefKeine.isError, true);
     eq("ohne Querverweise: nennt die Stelle", xrefKeine.text, "Keine Querverweise für 1 Mose 1,13 gefunden.");

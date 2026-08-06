@@ -33,6 +33,8 @@ Platzhalter.
 - [Ressourcen liegen in Vorlagen, weil die Liste sonst der Katalog wäre](#ressourcen-liegen-in-vorlagen-weil-die-liste-sonst-der-katalog-wäre)
 - [Der Anmerkungsapparat einer Ausgabe ist ein eigenes Feld](#der-anmerkungsapparat-einer-ausgabe-ist-ein-eigenes-feld)
 - [Eine Grenze, die eine Zusage einhält, gehört an die Ausgabe und nicht an den Server](#eine-grenze-die-eine-zusage-einhält-gehört-an-die-ausgabe-und-nicht-an-den-server)
+- [Eine Kürzung, die der Server selbst vornimmt, muss in der Antwort stehen](#eine-kürzung-die-der-server-selbst-vornimmt-muss-in-der-antwort-stehen)
+- [Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text](#dieselbe-stellenangabe-trifft-nicht-in-jeder-ausgabe-denselben-text)
 
 **[Fehlermeldungen und Argumentprüfung](#fehlermeldungen-und-argumentprüfung)**
 - [Eine Meldung nennt die verletzte Bedingung, nicht irgendeine](#eine-meldung-nennt-die-verletzte-bedingung-nicht-irgendeine)
@@ -874,6 +876,74 @@ Feld in beiden Lagen. Der leere String war nie eine Aussage: Er sagte nicht, das
 der Vers fehlt, und auch sonst nichts.
 
 ---
+
+## Eine Kürzung, die der Server selbst vornimmt, muss in der Antwort stehen
+
+*Gemessen 06.08.2026 am ausgerollten Dienst.*
+
+`bible_crossrefs` schneidet ein mehrversiges Verweisziel bei vier Versen ab und
+hängt an `text` die Ellipse `… [bis V. n]`; über eine Kapitelgrenze hinweg steht
+nur der erste Vers da, mit `… [Abschnitt bis c,v]`. Beides ist gewollt: Ziele
+über viele Verse sind häufig (18 419 der 344 781 Verweiszeilen haben eine Spanne
+über vier Verse, 637 überschreiten eine Kapitelgrenze), und ungekürzt trüge eine
+Antwort mit 30 Verweisen ein Vielfaches an Text.
+
+Gemeldet wurde die Kürzung aber nur in `text`, und ausgerechnet dort liest sie
+niemand: `verse_einzeln` gibt es, weil Konsumenten die zusammengesetzte
+Zeichenkette an beiden Enden abschneiden, und der `lesehinweis` schickt sie
+deshalb ausdrücklich dorthin. Er verlangte, „die Verse vollständig zu
+übernehmen", während das Feld vier von neun trug und über eine Kapitelgrenze
+hinweg ganz fehlte. Wer der Anweisung folgte, gab „Sprüche 8,22-30" aus und
+lieferte 22-25. Der Fall ist nicht selten: Johannes 1,5 löst ihn beim
+Vorgabelimit zweimal aus.
+
+Deshalb `abschnitt_gekuerzt` je Verweis, mit `verse_gezeigt` und, wo die Länge
+feststeht, `verse_gesamt`. Der Name ist bewusst nicht `gekuerzt`: So heißt bereits
+das Feld der Antwort, das die Wortlaut-Grenze der Ausgabe meldet, und das rechnet
+in Versen über alle Verweise hinweg. Die beiden nebeneinander unter demselben
+Namen zu führen hat schon einmal zu einer Verwechslung der Einheiten geführt.
+
+**Verworfen:** `stelle` auf die gelieferten Verse zurücksetzen. Sie ist die
+Angabe des Verweisziels aus der Quelle; sie zu beschneiden verlöre die
+Information, wie weit das Ziel reicht, und machte eine korrekte Angabe falsch,
+um eine fehlende zu ersetzen.
+
+Derselbe Zug betrifft `bracketHints()`. Beide Marker tragen eckige Klammern und
+lösten den Hinweis aus, Wörter in eckigen Klammern gehörten „zum Wortlaut der
+Übersetzung und sind keine Einfügung dieses Servers": eine Aussage, deren
+Auslöser ausschließlich eine Einfügung dieses Servers war. In Luther, Schlachter
+1951 und Elberfelder gibt es keinen einzigen Vers mit eckigen Klammern, dort war
+der Satz also immer falsch. Die Marker sind seither von der Prüfung ausgenommen;
+sie liegen zusammen mit ihr in `werkzeug-helfer.ts`, weil ein geändertes
+Markerformat den Fehler sonst still zurückbrächte.
+
+## Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text
+
+*Gemessen 06.08.2026.*
+
+Die Ausgaben zählen nicht überall gleich. 140 der 1190 Kapitel weichen
+voneinander ab: 3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000 23
+Verse, in Luther und Schlachter 1951 dagegen 30, während Kapitel 7 in allen fünf
+38 hat. Die Differenz wandert also nicht weiter, sie sitzt an der Kapitelgrenze.
+
+Die Folge stand ohne jeden Vorbehalt in der Antwort: „3. Mose 6,20" lieferte in
+Luther das Opfer Aarons und in Elberfelder den Vers, der bei Luther 6,27 ist.
+Zwei solche Antworten nebeneinander lesen sich wie zwei Übersetzungen derselben
+Stelle, und genau so wurden sie wiedergegeben. Das ist keine Datenlücke; beide
+Ausgaben sind vollständig.
+
+`bible_lookup` und die Textressourcen tragen deshalb einen Satz, der die Länge
+je Ausgabe nennt und sagt, dass der Abgleich am Wortlaut zu erfolgen hat, nicht
+an der Versnummer.
+
+**Verworfen:** eine Abbildung von Vers auf Vers. Sie läge nahe und wäre die
+eigentlich nützliche Auskunft, aber eine solche Tabelle liegt hier nicht vor,
+und eine abgeleitete wäre geraten. Eine falsche Zuordnung ist schlimmer als
+keine, weil sie geprüft aussieht.
+
+**Verworfen:** die Auskunft in `bible_server_info` oder die Dokumentation. Der
+Fall tritt bei einem einzelnen Abruf auf, und was nicht im Ergebnis steht,
+erreicht das Modell nicht.
 
 # Fehlermeldungen und Argumentprüfung
 

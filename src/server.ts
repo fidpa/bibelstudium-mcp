@@ -305,6 +305,26 @@ const CROSSREFS_OUTPUT = {
               "One entry per verse, without embedded verse numbers. Quote the verses in full " +
               "from here; the joined `text` gets cut at both ends when consumers split it.",
           },
+          // Bedingt: nur wo der Abschnitt weiter reicht als die gelieferten
+          // Verse. Nicht zu verwechseln mit dem `gekuerzt` der Antwort, das die
+          // Wortlaut-Grenze der Ausgabe meldet und in Versen rechnet.
+          abschnitt_gekuerzt: {
+            type: "object",
+            properties: {
+              verse_gezeigt: { type: "integer" },
+              verse_gesamt: {
+                type: "integer",
+                description:
+                  "Length of the whole span. Absent when the target crosses a chapter " +
+                  "boundary, where only the first verse is carried and the full length is " +
+                  "not established here; `stelle` states how far the target reaches.",
+              },
+            },
+            required: ["verse_gezeigt"],
+            description:
+              "Present only when `text`/`verse_einzeln` cover fewer verses than `stelle` " +
+              "names. Quote against `verse_gezeigt`, not against `stelle`.",
+          },
         },
         required: ["stelle", "votes"],
       },

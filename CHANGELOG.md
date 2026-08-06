@@ -6,6 +6,40 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.11] - 2026-08-06
+
+### Ergänzt
+
+- **`bible_crossrefs` meldet die Kürzung je Verweis.** Reicht ein Ziel über mehr
+  als vier Verse oder über eine Kapitelgrenze, steht nur sein Anfang im Wortlaut.
+  Das neue Feld `abschnitt_gekuerzt` nennt `verse_gezeigt` und, wo die Länge
+  feststeht, `verse_gesamt`. Bisher trug `verse_einzeln` stillschweigend vier von
+  neun Versen, während der `lesehinweis` verlangte, daraus vollständig zu
+  zitieren; kapitelübergreifend fehlte das Feld ganz. Der Fall greift schon beim
+  Vorgabelimit.
+- **`bible_lookup` nennt abweichende Verszählungen.** In 140 der 1190 Kapitel
+  weicht die Verszahl zwischen den Ausgaben ab: 3. Mose 6 hat in Elberfelder,
+  Menge und Schlachter 2000 23 Verse, in Luther und Schlachter 1951 dagegen 30.
+  Dieselbe Stellenangabe trifft dort je Ausgabe eine andere Textstelle. Der
+  `hinweis` sagt es und nennt die Länge je Ausgabe; eine Zuordnung von Vers zu
+  Vers liegt nicht vor, der Abgleich geht über den Wortlaut.
+
+### Behoben
+
+- **Der Klammerhinweis lief auf die eigenen Kürzungsmarken an.** `… [bis V. n]`
+  und `… [Abschnitt bis c,v]` tragen eckige Klammern und lösten damit den Satz
+  aus, solche Klammern seien „keine Einfügung dieses Servers". In Luther,
+  Schlachter 1951 und Elberfelder gibt es keinen einzigen Vers mit eckigen
+  Klammern, dort war er stets falsch.
+- **Der Titel „Weisheit" wird als apokryph erkannt.** Bisher griff nur die lange
+  Form „Weisheit Salomos", obwohl die Meldung den kurzen Titel selbst aufzählt.
+
+### Geändert (Dokumentation)
+
+- `docs/anweisungen/claude-desktop.txt` um zwei Regeln ergänzt (Kürzungsmarke
+  nicht mitzitieren, abweichende Verszählung nicht als Übersetzungsvergleich
+  lesen), `README.md` und `docs/ENTSCHEIDUNGEN.md` nachgezogen.
+
 ## [0.6.10] - 2026-08-06
 
 ### Ergänzt

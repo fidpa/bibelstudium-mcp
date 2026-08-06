@@ -33,6 +33,7 @@ import {
   stmtAlias,
   stmtBookByName,
   stmtBookName,
+  stmtKapitelLaengen,
   stmtOriginal,
   stmtVerse,
   stmtVerseNotes,
@@ -140,9 +141,35 @@ const BRACKET_WORD_HINT =
   "Klammern steht der Einschub da wie der übrige Text, und die Ausgabe setzt " +
   "ihn gerade ab.";
 
-/** Hinweis, wenn einer der `texts` Wörter in Klammern trägt; sonst leer. */
+/**
+ * Die beiden Kürzungsmarker, die `bible_crossrefs` selbst an einen Zieltext
+ * hängt. Sie stehen hier, weil `bracketHints()` sie kennen muss: Beide tragen
+ * eckige Klammern und lösten damit den Hinweis aus, Klammern seien „keine
+ * Einfügung dieses Servers", wo sie gerade eine sind. In Luther, Schlachter
+ * 1951 und Elberfelder gibt es keinen Vers mit eckigen Klammern, dort war er
+ * also stets falsch (gemessen 06.08.2026, Johannes 1,5 schon beim
+ * Vorgabelimit). Wer ein Markerformat ändert, zieht `KUERZUNG_MARKER_RE` im
+ * selben Zug nach: Laufen die beiden auseinander, kehrt der Fehler still
+ * zurück.
+ */
+export function markerBisVers(letzterVers: number): string {
+  return ` … [bis V. ${letzterVers}]`;
+}
+export function markerAbschnitt(kapitel: number, vers: number): string {
+  return ` … [Abschnitt bis ${kapitel},${vers}]`;
+}
+const KUERZUNG_MARKER_RE = / … \[(?:bis V\. \d+|Abschnitt bis \d+,\d+)\]/g;
+
+/**
+ * Hinweis, wenn einer der `texts` Wörter in Klammern trägt; sonst leer. Die
+ * servereigenen Kürzungsmarker zählen nicht mit: Der Hinweis sagt aus, dass
+ * Klammern nicht vom Server stammen, und darf sich nicht an seiner eigenen
+ * Einfügung entzünden.
+ */
 export function bracketHints(texts: readonly string[]): string[] {
-  return texts.some((t) => BRACKET_WORD_RE.test(t)) ? [BRACKET_WORD_HINT] : [];
+  return texts.some((t) => BRACKET_WORD_RE.test(t.replace(KUERZUNG_MARKER_RE, "")))
+    ? [BRACKET_WORD_HINT]
+    : [];
 }
 
 function escapeLike(str: string): string {
@@ -191,8 +218,13 @@ let aliasCache: Array<{ alias: string; book_id: number }> | null = null;
 // „zusatz" allein ist zu weit gefasst: Es verschluckte „Hesekiel-Zusatz", das gar
 // kein apokryphes Buch ist (für Hesekiel gibt es keines) und dem der Vorschlag
 // des nächstliegenden Buches besser dient. Es zählen nur die tatsächlichen Titel.
+// „weisheit" steht mit Wortgrenze am Ende: Der bloße Titel ist gebräuchlich und
+// wurde bis zum 06.08.2026 nicht erkannt, obwohl die Meldung ihn selbst
+// aufzählt; „weisheit salomos" allein griff nur bei der langen Form. Die Grenze
+// hält „Weisheitssprüche" draußen, das aus demselben Grund wie „zusatz" nicht
+// hierher gehört.
 const APOKRYPHEN =
-  /\b(tobit|tobias|judit|sirach|ecclesiasticus|weisheit salomos|baruch|makkab|manasse|esra\s*[34]|susanna|bel und|asarja|zus(a|ä)tze?\s+zu\s+(daniel|est(h)?er))/i;
+  /\b(tobit|tobias|judit|sirach|ecclesiasticus|weisheit\b|baruch|makkab|manasse|esra\s*[34]|susanna|bel und|asarja|zus(a|ä)tze?\s+zu\s+(daniel|est(h)?er))/i;
 
 /** Levenshtein-Distanz, gedeckelt: Nur kleine Distanzen sind hier von Belang. */
 function editDistance(a: string, b: string): number {
@@ -576,6 +608,42 @@ function verseNotes(
 }
 
 /**
+ * Der Satz zur Verszählung, oder null, wenn alle geführten Ausgaben dieses
+ * Kapitel gleich zählen. Zählen sie verschieden, meint dieselbe Stellenangabe
+ * je Ausgabe eine andere Textstelle, und die Antwort sagte das nicht: „3. Mose
+ * 6,20" lieferte in Luther das Opfer Aarons, in Elberfelder den Vers, der in
+ * Luther 6,27 steht (gemessen 06.08.2026, 140 der 1190 Kapitel betroffen).
+ * Genannt wird die Länge je Ausgabe, nicht die Abbildung von Vers auf Vers:
+ * Eine Zuordnungstabelle liegt hier nicht vor, und eine geschätzte wäre
+ * schlimmer als keine. Messung und verworfene Alternativen stehen in
+ * `docs/ENTSCHEIDUNGEN.md`.
+ */
+function zaehlungHinweis(
+  code: TranslationCode,
+  bookId: number,
+  chapter: number
+): string | null {
+  const laengen = stmtKapitelLaengen.all(bookId, chapter);
+  if (laengen.length < 2) return null;
+  const eigene = laengen.find((l) => l.translation === code)?.n;
+  if (eigene === undefined) return null;
+  const abweichend = laengen.filter((l) => l.n !== eigene);
+  if (abweichend.length === 0) return null;
+
+  const namen = abweichend
+    .map((l) => `${TRANSLATIONS[l.translation as TranslationCode].name} ${l.n}`)
+    .sort()
+    .join(", ");
+  return (
+    `Die geführten Ausgaben zählen dieses Kapitel verschieden: ` +
+    `${TRANSLATIONS[code].name} hat hier ${eigene} Verse, ${namen}. ` +
+    `Dieselbe Stellenangabe trifft deshalb je Ausgabe eine andere Textstelle. ` +
+    `Wer über Ausgaben hinweg vergleicht, gleicht den Wortlaut ab, nicht die ` +
+    `Versnummer.`
+  );
+}
+
+/**
  * Die Versnutzlast, die sich `bible_lookup` und die beiden Textressourcen
  * teilen. Liefert null, wenn die Stellenangabe auf gar keinen Vers führt; den
  * Fehlgriff formuliert der Aufrufer, denn nur er weiß, wie die Angabe
@@ -634,6 +702,7 @@ export function lookupPayload(
   const hinweise = [
     verseMaxHinweis(budget, { art: "verse", gefunden: gefunden.length }),
     noteMaxHinweis(notenBudget),
+    zaehlungHinweis(code, bookId, chapter),
     ...bracketHints(verse_einzeln.map((r) => r.text)),
   ].filter((h): h is string => h !== null);
 

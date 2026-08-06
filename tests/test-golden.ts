@@ -64,4 +64,4 @@ await fahre([
  * Sie hängt am geladenen Bestand: Ohne die Ausgabe mit Apparat entfallen die
  * Fußnotenfälle.
  */
-abschluss(680);
+abschluss(717);

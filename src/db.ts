@@ -165,6 +165,21 @@ export const stmtVerseRange = db.prepare<
 );
 
 // Welche Übersetzungen tatsächlich gefüllt sind (für Prüfung und Meldungen).
+/**
+ * Die Kapitellänge je Ausgabe, für genau einen Zweck: Die Ausgaben zählen nicht
+ * überall gleich, und dieselbe Stellenangabe trifft dann je Ausgabe eine andere
+ * Textstelle. 3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000 23 Verse,
+ * in Luther und Schlachter 1951 dagegen 30, Kapitel 7 in allen fünf 38
+ * (gemessen 06.08.2026, 140 der 1190 Kapitel weichen ab). Das ist keine
+ * Datenlücke, sondern eine Zählungsdifferenz.
+ */
+export const stmtKapitelLaengen = db.prepare<
+  { translation: string; n: number },
+  [number, number]
+>(
+  "SELECT translation, MAX(verse) AS n FROM verses WHERE book_id = ? AND chapter = ? GROUP BY translation"
+);
+
 export const availableTranslations: Set<string> = new Set(
   (db.query("SELECT DISTINCT translation FROM verses").all() as Array<{
     translation: string;
