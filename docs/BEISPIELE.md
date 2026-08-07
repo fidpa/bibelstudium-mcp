@@ -1,6 +1,6 @@
 # Beispiele: was die Werkzeuge zurückgeben
 
-Im Normalfall ruft man die Werkzeuge nicht selbst auf: Man stellt dem
+Im Normalfall ruft man die Werkzeuge nicht selbst auf. Man stellt dem
 Assistenten eine Frage, und er holt sich die Daten. Diese Seite zeigt, was er
 dabei bekommt. Alle Ausgaben sind gekürzt.
 
@@ -65,7 +65,7 @@ und `quellenkonflikte` **oben** in der Antwort, nicht in einer Fußnote.
 > „Wie lautet 3. Mose 6,20 in der Elberfelder?"
 
 `bible_lookup` liefert den Text, nennt die Ausgabe und weist auf etwas hin, das
-sonst niemand bemerkt: In 140 der 1190 Kapitel zählen die Ausgaben verschieden,
+sonst niemand bemerkt. In 140 der 1190 Kapitel zählen die Ausgaben verschieden,
 und dieselbe Stellenangabe trifft dann verschiedene Texte.
 
 ```json

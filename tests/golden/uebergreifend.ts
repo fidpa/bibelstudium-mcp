@@ -14,8 +14,8 @@
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, abschluss, type Json } from "../lib/zusicherungen.ts";
 import { isRecord } from "../schema-validator.ts";
+import { INVALID_PARAMS } from "../lib/mcp-client.ts";
 
-const INVALID_PARAMS = -32602;
 
 export const uebergreifendBuendel = buendel({
   name: "uebergreifend",

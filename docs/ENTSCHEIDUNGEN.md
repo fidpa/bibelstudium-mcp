@@ -1098,3 +1098,90 @@ selbst nicht treffen kann; sie steht als fünf bekannt kaputte Antworten im Bün
 `tests/golden/search.ts`, wo die echte Antwort liegt, an der sie gemessen werden.
 **Ein Validator, der versehentlich alles durchwinkt, verhält sich exakt wie ein
 bestandener Test.**
+
+## Das Release baut gegen eine benannte Bun-Fassung, der Lint-Lauf gegen die neueste
+
+Ein MCPB-Bundle besteht aus zwei Dateien, dem Manifest und einem Binary aus
+`bun build --compile`. Das Binary trägt die Bun-Laufzeit in sich, seine Größe
+hängt also an der Fassung, mit der gebaut wurde, und nicht nur am Quellstand.
+Gemessen am 07.08.2026 an v0.6.14, demselben Commit, zweimal gebaut:
+
+| | Bundle | Binary darin | Bun |
+|---|---|---|---|
+| CI, wie veröffentlicht | 36.682.583 B | 95.275.136 B | 1.3.14 |
+| lokal, vor dem Angleichen | 40.125.110 B | 104.614.551 B | 1.3.10 |
+
+Das Manifest war in beiden byteidentisch (5.016 B), der Unterschied steckt
+vollständig im Binary: 9,34 MB unkomprimiert, 3,44 MB im gepackten Bundle. Beide
+antworteten im stdio-Rauchtest gleich, mit derselben `serverInfo` und demselben
+Verstext. Nach `bun upgrade` auf 1.3.14 traf der lokale Bau die Größe des
+Release-Assets auf das Byte.
+
+Zustande kam der Abstand durch `bun-version: latest` in `release.yml`. Die
+Werkstatt hing fünfeinhalb Monate zurück, die CI baute mit der neuesten Fassung.
+Zwei Dinge folgen daraus, und beide sind der Grund für den Pin. Kein Release ist
+nachbaubar, solange die Fassung wandert. Und die Laufzeit, die Nutzer bekommen,
+ändert sich, ohne dass jemand es entschieden hat, und das Bundle, das hier
+geprüft wird, ist dann nicht das, das ausgeliefert wird.
+
+`release.yml` steht deshalb auf einer benannten Fassung, die bewusst und mit
+Changelog-Eintrag hochgezogen wird. `lint.yml` bleibt auf `latest` und ist damit
+der Kanarienvogel. Eine neue Bun-Fassung trifft dort auf Typecheck und
+Startzustände, bevor sie in ein Artefakt gerät. Verworfen wurde beides einzeln.
+Überall `latest` war der bisherige Zustand und hat den Abstand oben erzeugt.
+Überall pinnen nähme die Vorwarnung weg und verlegte den ersten Kontakt mit einer
+neuen Fassung auf den Tag, an dem jemand den Pin hochzieht.
+
+Weil ein veröffentlichtes Bundle seine Laufzeit sonst nur in `strings` des
+Binaries trägt, hängt der Build-Schritt sie an die Release-Notes. Damit steht bei
+jedem Asset, womit es gebaut wurde, und ein abweichend großes Bundle aus fremder
+Werkstatt lässt sich einordnen, statt Verdacht auf den Quellstand zu lenken.
+
+Geprüft vor dem Angleichen, dass die neuere Fassung nichts bricht: Typecheck,
+Golden-, HTTP- und Schema-Tests liefen unter 1.3.14 grün, den Serverprozess
+eingeschlossen (07.08.2026).
+
+---
+
+## Eine übergangene Angabe gehört ins Ergebnis, auch in der Konkordanz
+
+*Gemessen 07.08.2026 beim Audit der Testsuite.*
+
+`bible_concordance` bestimmt die Edition aus der Suchangabe: Eine hebräische
+Strong-Nummer oder ein hebräisches Lemma führt in den WLC, denn fürs AT gibt es
+keine zweite Edition. Ein mitgegebener `texttyp` ist dort gegenstandslos. Bis
+zu diesem Tag wurde er stillschweigend übergangen: `{strong: "H7225", texttyp:
+"sblgnt"}` lieferte 51 Treffer aus dem WLC, ohne ein Wort darüber, dass die
+Angabe keine Rolle gespielt hatte. Die Antwort sah aus, als hätte sie den
+gewünschten Texttyp durchsucht.
+
+`bible_original` beantwortet denselben Fall seit je ausdrücklich („Der Texttyp
+… gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet."). Zwei
+Werkzeuge, dieselbe Lage, zwei Verhalten: Das war der eigentliche Befund, nicht
+die fehlende Zeile.
+
+Die Konkordanz trägt den Satz jetzt ebenfalls, mit derselben Bedingung wie
+dort: nur wenn `texttyp` gesetzt ist und nicht auf `wlc` auflöst. Wer `wlc`
+schickt, hat recht und bekommt keinen Hinweis; ein unbekannter Wert löst auf
+`null` auf und bekommt ihn. Der Satz steht **vor** der Kürzungsmeldung, weil er
+sagt, worin überhaupt gesucht wurde, und damit alles einschränkt, was danach
+kommt.
+
+Verworfen wurde, den Fall als Fehler abzuweisen. Das wäre strenger, änderte
+aber einen bisher erfolgreichen Aufruf in einen Fehler und bräche jeden Client,
+der `texttyp` pauschal mitsendet. Die Regel dieses Servers lautet nicht „streng
+abweisen", sondern: Wo etwas übergangen oder gekürzt wird, steht das im
+Ergebnis.
+
+### Was dabei bewusst nicht geändert wurde
+
+`gekuerzt.fussnoten_gezeigt` und `fussnoten_entfallen` sind über die geteilte
+Konstante `GEKUERZT_SCHEMA` auch in `bible_crossrefs` und `bible_search`
+deklariert, obwohl allein `bible_lookup` ein Notenbudget führt und die beiden
+Felder dort nie erscheinen. Die Felddescription sagt das bereits („Only in
+bible_lookup"), die Felder sind optional, und kein Konsument wird von einer
+Deklaration getroffen, die nie eingelöst wird. Ein Schema-Split ergäbe drei
+Deklarationen statt einer und entfernte ein deklariertes Feld, was gegenüber
+der Regel „Feldänderungen sind Breaking Changes" die teurere Seite ist.
+Belassen, und hier festgehalten, damit der Befund nicht ein zweites Mal erhoben
+wird.

@@ -10,10 +10,10 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
+import { INVALID_PARAMS } from "../lib/mcp-client.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 
 const OVERLONG_NAME = "J".repeat(60);
-const INVALID_PARAMS = -32602;
 
 export const promptsBuendel = buendel({
   name: "prompts",

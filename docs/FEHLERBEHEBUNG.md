@@ -33,8 +33,8 @@ Lexika, Querverweise) bleiben erhalten.
 
 **Ursache**: Eine Datenbank aus einer Fassung vor der Mehr-Übersetzungs-Umstellung.
 
-**Behebung**: `bun run download`: Die Migration greift automatisch und lädt
-die Verse neu.
+**Behebung**: `bun run download` ausführen. Die Migration greift automatisch und
+lädt die Verse neu.
 
 ### Server startet, aber ein Werkzeug meldet fehlende Daten
 
@@ -44,7 +44,7 @@ die Verse neu.
 | `Volltext-Index nicht gebaut…` | `bun run build:fts` |
 | `Mindestens zwei NT-Editionen nötig…` | mindestens zwei von `download:byz` / `download:sblgnt` / `download:tr` |
 
-Der Server startet absichtlich auch mit unvollständigen Daten: Alles, wofür
+Der Server startet absichtlich auch mit unvollständigen Daten. Alles, wofür
 Daten vorhanden sind, funktioniert; die übrigen Werkzeuge melden gezielt, welches
 Skript fehlt.
 
@@ -64,7 +64,7 @@ Meldung erscheint **einmal beim Start**; wer sie verpasst hat, fragt das Werkzeu
 
 Der Server ist verbunden und die Werkzeuge erscheinen, das Modell antwortet aber
 aus dem Gedächtnis statt nachzuschlagen. Gemessen am 25.07.2026 in Claude
-Desktop: Bei einer erfundenen Stelle („Schlag mir ‚Hesekiel-Zusatz 1,1' nach")
+Desktop. Bei einer erfundenen Stelle („Schlag mir ‚Hesekiel-Zusatz 1,1' nach")
 blieb der Aufruf aus, je sicherer eine Referenz als nicht existent gilt, desto
 weniger Anlass scheint zu bestehen, sie zu prüfen. Bei „Sirach 1,1", einem real
 existierenden, nur kanonfremden Buch, wurde von selbst aufgerufen. Auf
@@ -139,7 +139,7 @@ Resource not found: bible://kapitel/LUT/Gibtsnicht/1 — it may have been
 deleted or the URI is stale. Re-run ListMcpResourcesTool to refresh.
 ```
 
-Der Rat führt hier in die Irre: Die Liste neu zu laden ändert nichts, wenn das
+Der Rat führt hier in die Irre, denn die Liste neu zu laden ändert nichts, wenn das
 Buch nicht existiert oder die URI zu wenige Segmente hat. Der Server sagt genau
 das, seine Antwort erreicht den Nutzer in diesem Client aber nicht mehr.
 
@@ -224,13 +224,13 @@ stehen seit 0.5.15 unter eigenen Punkten weiter unten: **405**, wenn eine andere
 Methode als `GET` oder `HEAD` verwendet wird, und **403**, wenn der Aufrufer
 einen nicht freigegebenen `Origin`-Kopf schickt.
 
-`/health` fragt die Datenbank bei jedem Aufruf, nicht nur beim Start: Ein Schaden
-im laufenden Betrieb wird deshalb sichtbar. Nach einem Neuaufbau ist ein Neustart
+`/health` fragt die Datenbank bei jedem Aufruf, nicht nur beim Start, und ein
+Schaden im laufenden Betrieb wird deshalb sichtbar. Nach einem Neuaufbau ist ein Neustart
 nötig, weil der Prozess über seinen Dateideskriptor weiter die alte Datei hält.
 
 ### `bible_setup` fehlt in der Werkzeugliste
 
-Kein Fehler, sondern Absicht: Das Werkzeug lädt rund 145 MB von acht fremden
+Kein Fehler, sondern Absicht. Das Werkzeug lädt rund 145 MB von acht fremden
 Quellen und ersetzt die Datenbankdatei, und das gehört nicht in die Hand eines
 beliebigen Aufrufers. Im HTTP-Modus wird es weder angeboten noch ausgeführt.
 
@@ -261,7 +261,7 @@ auf einem lokalen Port dieser Server läuft, und seinen Zustand auslesen. Die
 Spezifikation verlangt die Prüfung ausdrücklich für **alle** eingehenden
 Verbindungen.
 
-Aufrufe ohne `Origin`-Kopf sind unverändert: Wer `/health` mit `curl`, aus einem
+Aufrufe ohne `Origin`-Kopf sind unverändert. Wer `/health` mit `curl`, aus einem
 Skript oder durch Eintippen im Browser abfragt, schickt keinen und bekommt
 weiterhin 200 oder 503. Betroffen ist allein `fetch()` aus einer fremden
 Webseite heraus.
@@ -294,7 +294,7 @@ nimmt dafür bewusst keine Abhängigkeit auf.
 
 **Behebung**: `sudo apt install unzip` (Debian/Ubuntu) bzw.
 `sudo dnf install unzip` (Fedora). Auf macOS ist `unzip` vorinstalliert. Die
-Prüfung läuft **vor** dem Download: Es geht keine Übertragung verloren.
+Prüfung läuft **vor** dem Download, es geht also keine Übertragung verloren.
 
 ### `Retry 1/3 after 1000ms: …` während `download.ts`
 
@@ -312,7 +312,7 @@ holt je Übersetzung einen statischen Export, die sieben übrigen Skripte je wen
 Dateien. Gemessen wurden 26 s auf einem Mac mini und 46 s auf einem
 NAS (x86-64, Ubuntu). Der Aufbau ist netzwerk-, nicht CPU-gebunden.
 
-Dauert er **rund 20 Minuten**, läuft ein Checkout vor 0.3.0: Bis dahin stellte
+Dauert er **rund 20 Minuten**, läuft ein Checkout vor 0.3.0. Bis dahin stellte
 `download.ts` je Übersetzung 1.190 Kapitel-Anfragen mit 200 ms Wartezeit
 dazwischen, also 4.760 insgesamt. Genau davon rät die API-Dokumentation von
 bolls.life ausdrücklich ab; der Umbau auf den vorgesehenen Export-Endpunkt

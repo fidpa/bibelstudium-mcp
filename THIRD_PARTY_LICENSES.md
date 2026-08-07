@@ -89,7 +89,7 @@ verbreitet die Texte also, obwohl keine Datenbank den Rechner verlässt. Die
 Namensnennung muss dann **bei der Antwort** ankommen, denn wer den Server über
 MCP benutzt, sieht dieses Repository nicht.
 
-Der Server tut das seit 0.4.0 von selbst: Jede Antwort trägt ein Feld `quellen`
+Der Server tut das seit 0.4.0 von selbst. Jede Antwort trägt ein Feld `quellen`
 mit Werk, Lizenz und der verlangten Nennung, und zwar für genau die Quellen, aus
 denen sie stammt. Wer den Server nur lokal für sich betreibt, verbreitet nichts
 und braucht sich darum nicht zu kümmern.
@@ -114,7 +114,7 @@ derselben Lizenz erlaubt. Betroffen wären die **Daten**, nicht der Code dieses
 Repositories, der unter MIT steht.
 
 Ob dasselbe schon für die *Ausgaben* eines gehosteten Servers gilt, ist eine
-offene Frage: Ausgegeben werden bearbeitete Morphologiedaten, aber versweise und
+offene Frage. Ausgegeben werden bearbeitete Morphologiedaten, aber versweise und
 nicht als Datensammlung. Der Server nennt die Share-Alike-Lizenz deshalb in
 `quellen`, damit ein Weiterverwender sie kennt, statt sie selbst herleiten zu
 müssen.
@@ -123,5 +123,5 @@ müssen.
 Datendateien nur aus dem eigenen Repository zu verbreiten („Refer others to
 github.com/STEPBible as the source of the data. Please do not redistribute it
 yourself."). Dieses Projekt kommt der Bitte nach, indem es **weder eine
-Datenbank noch Datendateien mitliefert**: Jede Nutzerin und jeder Nutzer baut
+Datenbank noch Datendateien mitliefert**. Jede Nutzerin und jeder Nutzer baut
 die Datenbank lokal aus den Originalquellen auf.

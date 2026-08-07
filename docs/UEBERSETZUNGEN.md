@@ -24,7 +24,7 @@ Nennung, die ihre Lizenz beim Weitergeben verlangt (`null` bei Public Domain),
 woher ihr Text kommt (`quelle`) und wie viele Verse eine Antwort aus ihr im
 Wortlaut tragen darf (`verseMax`, `null` heißt keine Grenze).
 
-Die letzte Spalte ist **keine** Lizenzbedingung der CC BY 4.0: Diese Lizenz
+Die letzte Spalte ist **keine** Lizenzbedingung der CC BY 4.0. Diese Lizenz
 erlaubt die vollständige Wiedergabe und verlangt allein die Nennung. Für die
 Schlachter 1951 ist die Grenze ein freiwilliges Entgegenkommen gegenüber der
 Genfer Bibelgesellschaft; im Code ist es dieselbe Regel wie bei der 2000er, die
@@ -32,7 +32,7 @@ Rechtsgründe sind verschieden. Wer eine weitere Ausgabe aufnimmt, entscheidet
 diese Spalte mit; `null` ist dort eine Aussage und kein vergessener Wert.
 
 Die Schlachter 2000 ist die einzige, die **nicht** frei lizenziert ist und
-deshalb nicht über ein Download-Skript zu holen: Ihre Quelldateien kommen vom
+deshalb nicht über ein Download-Skript zu holen, denn ihre Quelldateien kommen vom
 Verlag und liegen allein beim Betreiber des Dienstes. Ein Klon dieses
 Repositories und jede selbst aufgebaute Datenbank führen sie nicht; die
 Werkzeuge melden das und nennen sie in ihren Meldungen nicht. Sie ist zugleich
@@ -149,7 +149,7 @@ geforderte Nennung wird an jede betroffene Antwort gehängt (Feld `quellen`),
 nicht bloß in einer Repository-Datei vermerkt. Dass eine API einen Text
 ausliefert, ist kein Lizenznachweis.
 
-Der dritte Weg ist der engste: Ein Abkommen gilt der Partei, die es
+Der dritte Weg ist der engste. Ein Abkommen gilt der Partei, die es
 geschlossen hat. Es deckt deshalb den gehosteten Dienst und **nicht** ohne
 Weiteres eine selbst betriebene Kopie oder das MCPB-Bundle, und die betreffende
 Ausgabe wird nicht über ein Download-Skript verteilt.

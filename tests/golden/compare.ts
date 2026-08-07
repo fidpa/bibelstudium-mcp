@@ -53,10 +53,49 @@ export const compareBuendel = buendel({
     // Kapitel jenseits der Grenze: als einziges der vier Stellen-Werkzeuge
     // prüfte `bible_compare` bisher nur `verse`, nicht `chapter`.
     cmpKapitel999: ["bible_compare", { book: "1Joh", chapter: 999, verse: 1 }],
+    // Das Gegenstück zu Mt 1,18: ein Vers, dessen Notizen ausschließlich
+    // Schreibvarianten sind. Mt 1,5 führt sechs davon und keine einzige
+    // Bedeutungsvariante (gemessen 07.08.2026). Geprüft war bis dahin nur die
+    // andere Art; ein Einbau, der das Feld 'schreibvariante' ganz wegließ, blieb
+    // grün, und der Hinweis unterscheidet die beiden Lagen nach demselben
+    // Merkmal.
+    cmpSchreibvariante: ["bible_compare", { book: "Mt", chapter: 1, verse: 5 }],
   },
   pruefe({ res }) {
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;
+    const { cmpSchreibvariante } = res;
+
+    // Die zweite Variantenart, und zwar an einem Vers, der nur sie führt: Sonst
+    // deckte der Fall von Mt 1,18 sie mit ab, ohne sie zu prüfen.
+    {
+      const abw = ((cmpSchreibvariante.json?.bezeugung ?? {}) as Record<string, unknown>)["abweichend"];
+      const liste = (Array.isArray(abw) ? abw : []) as Array<Record<string, unknown>>;
+      check("Mt 1,5: Bezeugung besetzt", liste.length > 0, `${liste.length} Einträge`);
+      check(
+        "Mt 1,5: mindestens eine Schreibvariante steht da",
+        liste.some((e) => typeof e["schreibvariante"] === "string"),
+        JSON.stringify(liste.map((e) => Object.keys(e)))
+      );
+      // Die Abgrenzung gehört zur Aussage: Wäre hier auch eine Bedeutungsvariante
+      // dabei, prüfte der Fall dieselbe Lage wie Mt 1,18 ein zweites Mal.
+      check(
+        "Mt 1,5: keine Bedeutungsvariante, das ist der Unterschied zu Mt 1,18",
+        !liste.some((e) => "bedeutungsvariante" in e)
+      );
+      // Der Hinweis verzweigt danach, ob überhaupt eine Notiz vorliegt. Eine
+      // Schreibvariante allein muss dafür genügen.
+      has(
+        "Mt 1,5: Schreibvariante allein verweist auf 'bezeugung'",
+        String(cmpSchreibvariante.json?.hinweis ?? ""),
+        "steht in 'bezeugung'"
+      );
+      lacks(
+        "Mt 1,5: kein Satz über eine ungeklärte Art",
+        String(cmpSchreibvariante.json?.hinweis ?? ""),
+        "sagt diese Antwort nicht"
+      );
+    }
 
     eq("bible_compare AT: abgewiesen", cmpAltesTestament.isError, true);
     // Zeichengleich, nicht als Teilstring: Der Satz nennt den Grund (eine

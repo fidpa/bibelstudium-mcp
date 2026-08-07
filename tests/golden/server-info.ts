@@ -10,6 +10,7 @@
 import packageJson from "../../package.json";
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
+import { db } from "../../src/db.ts";
 
 export const serverInfoBuendel = buendel({
   name: "server-info",
@@ -97,6 +98,24 @@ export const serverInfoBuendel = buendel({
     const kanon = (j?.kanon ?? {}) as Record<string, unknown>;
     eq("kanon: 66 Bücher", kanon["buecher"], 66);
     has("kanon: Apokryphen ausdrücklich ausgenommen", String(kanon["umfang"]), "Apokryphen");
+
+    // Das Datum des Bestands, gegen die Herkunftstabelle nachgerechnet statt gegen
+    // ein Literal: Ein Literal veraltete beim nächsten Download, und eine reine
+    // Formprüfung ließe jedes andere gültige Datum durch. Genau das war die Lücke:
+    // Ein Einbau, der hier ein festes Datum einsetzte, blieb grün (07.08.2026).
+    // Die Tabelle ist optional, älteren Aufbauten fehlt sie; dann fehlt auch das
+    // Feld, und diese Übereinstimmung ist die Aussage.
+    {
+      const hat =
+        db
+          .query("SELECT name FROM sqlite_master WHERE type='table' AND name='provenance'")
+          .get() !== null;
+      const zeile = hat
+        ? (db.query("SELECT MAX(fetched_at) AS t FROM provenance").get() as { t: string | null })
+        : null;
+      const erwartet = zeile?.t ? zeile.t.slice(0, 10) : undefined;
+      eq("daten_stand ist der jüngste vermerkte Abruf", j?.daten_stand, erwartet);
+    }
 
     lacks("keine Verszahl", serverInfo.text, "verse_gesamt");
     // Bis zum 06.08.2026 stand hier ein einzelnes `lacks(…, "/opt/")` unter der

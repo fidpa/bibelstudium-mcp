@@ -17,9 +17,8 @@ import { resolve, dirname } from "node:path";
 import packageJson from "../../package.json";
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
-import { NO_ERROR } from "../lib/mcp-client.ts";
+import { INTERNAL_ERROR, NO_ERROR } from "../lib/mcp-client.ts";
 
-const INTERNAL_ERROR = -32603;
 
 export const ohneDatenbankBuendel = buendel({
   name: "ohne-datenbank",

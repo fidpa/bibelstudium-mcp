@@ -24,7 +24,7 @@
  * gehört in kein Repository.
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 
 const ROOT = resolve(dirname(import.meta.path), "..");
@@ -101,7 +101,6 @@ if (build.exitCode !== 0) {
 // die Quelldatei in mcpb/, und `mcpb validate` prüft das Ergebnis dagegen.
 interface Manifest {
   version: string;
-  icon?: string;
   server: {
     entry_point: string;
     mcp_config: { command: string };
@@ -121,12 +120,6 @@ manifest.server.mcp_config.command = `\${__dirname}/server/${binaryName}`;
 // Aus dem Compile-Ziel abgeleitet statt übernommen: Ein Bundle trägt genau ein
 // Binary und läuft auf genau einer Plattform.
 manifest.compatibility.platforms = [platform];
-
-const icon = resolve(ROOT, "mcpb/icon.png");
-if (existsSync(icon)) {
-  writeFileSync(resolve(STAGE_DIR, "icon.png"), await Bun.file(icon).bytes());
-  manifest.icon = "icon.png";
-}
 
 writeFileSync(resolve(STAGE_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 

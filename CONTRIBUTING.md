@@ -24,7 +24,7 @@ Für dieses Projekt und alle Beteiligten gilt unser [Verhaltenskodex](CODE_OF_CO
 
 - **Belege statt Behauptungen.** Jede Aussage über den Bibeltext muss gegen die tatsächliche Datenbank (SQL-Abfrage) oder einen frischen stdio-Lauf des Servers geprüft sein, niemals aus dem Gedächtnis. Das gilt für Codekommentare, Dokumentation und Pull-Request-Beschreibungen gleichermaßen.
 - **Tool-Namen und Ausgabefelder sind öffentliche Schnittstelle.** Ein Werkzeug umzubenennen oder ein Ausgabefeld zu ändern bzw. zu entfernen ist ein Breaking Change; Ergänzungen sind unproblematisch.
-- **Lizenzfragen sind nicht verhandelbar.** Neue Datenquellen brauchen eine geprüfte freie Lizenz, bevor sie eingebunden werden (und einen Eintrag in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)). Keine mitgelieferten Datendateien: Daten werden von Skripten geladen, mit Herkunftsnachweis.
+- **Lizenzfragen sind nicht verhandelbar.** Neue Datenquellen brauchen eine geprüfte freie Lizenz, bevor sie eingebunden werden (und einen Eintrag in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)). Mitgelieferte Datendateien gibt es nicht; Daten werden von Skripten geladen, mit Herkunftsnachweis.
 - **Den Footprint halten.** Eine Laufzeit-Abhängigkeit (das MCP-SDK), kein Build-Schritt, Bun-nativ. Ein Pull Request, der eine Abhängigkeit hinzufügt, braucht einen sehr guten Grund.
 - **Code-Stil**: siehe [docs/TYPESCRIPT.md](docs/TYPESCRIPT.md).
 
@@ -53,8 +53,8 @@ läuft ausschließlich beim Datenaufbau.
 | `scripts/aliases.ts` | Deutsche Buchnamen/Abkürzungen → Buch-IDs |
 | `scripts/download*.ts` | Ein Skript je Datenquelle, additiv, atomarer Austausch |
 | `scripts/build-fts.ts` | Baut den Volltext-Index neu; nötig nur, wenn er fehlt oder beschädigt ist |
-| `scripts/import-schlachter2000.ts` | Einspielen der Schlachter 2000 aus einer USX-Lieferung. Die Lieferung ist **nicht** Teil dieses Repositories und `bible_setup` kennt das Skript nicht: Eine selbst aufgebaute Datenbank führt die Ausgabe darum nie |
-| `scripts/build-mcpb.ts` | Baut das MCPB-Bundle für Claude Desktop |
+| `scripts/import-schlachter2000.ts` | Einspielen der Schlachter 2000 aus einer USX-Lieferung. Die Lieferung ist **nicht** Teil dieses Repositories und `bible_setup` kennt das Skript nicht; eine selbst aufgebaute Datenbank führt die Ausgabe darum nie |
+| `scripts/build-mcpb.ts` | Baut das MCPB-Bundle für Claude Desktop. Seine Größe hängt an der Bun-Fassung, mit der kompiliert wird; die veröffentlichten Bundles baut die CI gegen die in `release.yml` benannte Fassung (siehe [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md)) |
 | `tests/golden/*.ts` | Ein Prüfbündel je Werkzeug, dazu die Fälle, die zu keinem gehören; jedes einzeln lauffähig |
 | `tests/test-http.ts` | Transportverhalten über HTTP (Statuscodes, `Allow`, Origin); braucht keine Datenbank |
 | `tests/schema-coverage.ts` | Breitentest: jede Antwort gegen ihr deklariertes `outputSchema` |
@@ -69,7 +69,7 @@ Zuerst der Typecheck. Er braucht keine Datenbank und ist das, was die CI erzwing
 bun run typecheck
 ```
 
-Dann die Tests. Es gibt kein Test-Framework, und es gibt keine Fixture-Datenbank: Eine erfundene Datenbank kann Bibeldaten nicht überprüfen, deshalb wird gegen den echten Server und die echte Datenbank verifiziert.
+Dann die Tests. Es gibt kein Test-Framework, und es gibt keine Fixture-Datenbank. Eine erfundene Datenbank kann Bibeldaten nicht überprüfen, deshalb wird gegen den echten Server und die echte Datenbank verifiziert.
 
 ```bash
 bun run test:http     # Transportverhalten über HTTP, braucht KEINE Datenbank

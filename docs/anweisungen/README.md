@@ -81,7 +81,7 @@ schon ab? Und könnte der Server es stattdessen selbst sagen? Eine Ergänzung im
 
 **Ein Beispielwort wird als Etikett aufgegriffen.** Ein konkretes Beispiel in
 einem Hinweistext des Servers wurde einmal auf einen unpassenden Fall
-übertragen, weil es griffig war und dastand. Dasselbe gilt hier: Ein Beispiel
+übertragen, weil es griffig war und dastand. Dasselbe gilt hier. Ein Beispiel
 kostet Platz und wird gelegentlich falsch angewandt. Nur setzen, wo die Regel
 ohne es mehrdeutig bliebe.
 

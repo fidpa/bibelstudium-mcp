@@ -23,6 +23,14 @@ export const wortlautGrenzeBuendel = buendel({
     grenzeGenau: ["bible_lookup", { book: "Psalter", chapter: 66, translation: "SLT" }], // genau 20 Verse
     grenzeEinsDarueber: ["bible_lookup", { book: "Psalter", chapter: 9, translation: "SLT" }], // 21 Verse, einer zu viel
     grenzePs119Slt: ["bible_lookup", { book: "Psalter", chapter: 119, translation: "SLT" }],
+    // Das Kapitel, an dem der Notenfilter überhaupt etwas zu tun hat: Matthäus 5
+    // hat 48 Verse, drei Noten bis Vers 20 und acht darüber (gemessen
+    // 07.08.2026). Psalm 119 taugt dafür nicht, es führt eine einzige Note, und
+    // die steht bei Vers 1: Ein Einbau, der den Apparat statt dem gelieferten
+    // Versbestand dem gefundenen folgen ließ, blieb dort grün (gemessen
+    // 07.08.2026). 189 Kapitel dieser Ausgabe führen Noten jenseits der Grenze
+    // (gemessen 07.08.2026).
+    grenzeNotenUeber: ["bible_lookup", { book: "Matthäus", chapter: 5, translation: "SLT" }],
     grenzePs119Sch: ["bible_lookup", { book: "Psalter", chapter: 119, translation: "SCH" }], // gilt auch für die 1951er
     grenzePs119Lut: ["bible_lookup", { book: "Psalter", chapter: 119, translation: "LUT" }],
     grenzePs119Elb: ["bible_lookup", { book: "Psalter", chapter: 119, translation: "ELB" }],
@@ -31,6 +39,15 @@ export const wortlautGrenzeBuendel = buendel({
     grenzeSuche10: ["bible_search", { query: "Gott", translation: "SCH", limit: 10 }], // unter der Grenze
     grenzeSucheLut: ["bible_search", { query: "Gott", translation: "LUT", limit: 50 }],
     grenzeXrefSch: ["bible_crossrefs", { book: "Joh", chapter: 3, verse: 16, limit: 30, translation: "SCH" }],
+    // Der Vers, an dem die Sperre in `nimmGanz` überhaupt etwas tut. Bei Joh 3,16
+    // gehen die ersten 15 Verweise auf genau 20 Verse auf: Danach ist das Budget
+    // punktgenau leer, und jede weitere Anfrage scheitert schon an der Zählung,
+    // ob gesperrt oder nicht. Bei Epheser 2,8 bleibt nach der ersten Ablehnung
+    // Platz, in den zwei kürzere Verweise hineinpassen. Ein Einbau, der die
+    // Sperre entfernte, blieb am Fall Joh 3,16 grün und riss hier zwei Löcher
+    // (Markus 16,16 und Lukas 7,50; gemessen 07.08.2026 an 11 von 30 geprüften
+    // Versen).
+    grenzeXrefLuecke: ["bible_crossrefs", { book: "Eph", chapter: 2, verse: 8, limit: 30, translation: "SCH" }],
     grenzeXrefLut: ["bible_crossrefs", { book: "Joh", chapter: 3, verse: 16, limit: 30, translation: "LUT" }],
   },
   resources: {
@@ -48,7 +65,7 @@ export const wortlautGrenzeBuendel = buendel({
     const {
       grenzeGenau, grenzeEinsDarueber, grenzePs119Slt, grenzePs119Sch, grenzePs119Lut,
       grenzePs119Elb, grenzePs119Mb, grenzeSuche50, grenzeSuche10, grenzeSucheLut,
-      grenzeXrefSch, grenzeXrefLut,
+      grenzeXrefSch, grenzeXrefLut, grenzeNotenUeber, grenzeXrefLuecke,
     } = res;
     const { resGrenzeSch, resGrenzeLut, resUebersetzungen } = ressourcen;
 
@@ -94,6 +111,15 @@ export const wortlautGrenzeBuendel = buendel({
     for (const n of (grenzePs119Slt.json?.fussnoten ?? []) as Array<{ vers: number }>) {
       check("Ps 119: keine Note jenseits der Grenze", n.vers <= grenze, `vers=${n.vers}`);
     }
+    // Dieselbe Aussage dort, wo sie etwas ausschließt. Die erste Prüfung ist die
+    // Bedingung der zweiten: Ein leerer Apparat ließe sie bestehen, ohne dass sie
+    // irgendetwas geprüft hätte.
+    const notenUeber = (grenzeNotenUeber.json?.fussnoten ?? []) as Array<{ vers: number }>;
+    check("Mt 5: der Apparat ist überhaupt besetzt", notenUeber.length > 0,
+      `${notenUeber.length} Noten`);
+    check("Mt 5: keine Note jenseits der Grenze",
+      notenUeber.every((n) => n.vers <= grenze),
+      `Verse: ${notenUeber.map((n) => n.vers).join(", ")}`);
 
     // Die drei gemeinfreien Ausgaben: unverändert, und das ist der eigentliche
     // Punkt der Registry. Eine global gezogene Grenze beschnitte sie mit.
@@ -140,6 +166,25 @@ export const wortlautGrenzeBuendel = buendel({
     check("Querverweise: die Grenze greift überhaupt", ersteLuecke !== -1);
     check("Querverweise: ab der ersten Lücke trägt keiner mehr Text",
       verweise(grenzeXrefSch).slice(ersteLuecke).every((v) => typeof v.text !== "string"));
+    // Dieselbe Aussage an dem Vers, an dem sie etwas ausschließt. Nach der ersten
+    // Ablehnung bleibt hier Platz, den ein späterer, kürzerer Verweis füllen
+    // könnte; genau das darf nicht geschehen, denn die Antwort trüge dann Löcher.
+    const luecken = verweise(grenzeXrefLuecke);
+    const ersteLueckeEph = luecken.findIndex((v) => typeof v.text !== "string");
+    check("Eph 2,8: die Grenze greift überhaupt", ersteLueckeEph !== -1);
+    // Echt kleiner, nicht kleinergleich: `im_wortlaut <= verse_max` gilt jeder
+    // Antwort und wäre keine Aussage über diesen Fall. Erst der Rest unterscheidet
+    // ihn von Joh 3,16, wo die Zahl punktgenau aufgeht (18 gegen 20; gemessen
+    // 07.08.2026). Bliebe kein Rest, könnte auch kein späterer Verweis
+    // hineinrutschen, und der Fall prüfte die Sperre gar nicht mehr.
+    check("Eph 2,8: nach der Ablehnung bleibt Platz im Budget",
+      (gekuerzt(grenzeXrefLuecke)?.im_wortlaut ?? grenze) < grenze,
+      JSON.stringify(gekuerzt(grenzeXrefLuecke)));
+    check("Eph 2,8: ab der ersten Lücke trägt keiner mehr Text",
+      luecken.slice(ersteLueckeEph).every((v) => typeof v.text !== "string"),
+      luecken.slice(ersteLueckeEph).filter((v) => typeof v.text === "string")
+        .map((v) => String(v.stelle)).join(", "));
+
     const verseMitText = verweise(grenzeXrefSch)
       .filter((v) => typeof v.text === "string")
       .reduce((n, v) => n + (v.verse_einzeln?.length ?? 1), 0);

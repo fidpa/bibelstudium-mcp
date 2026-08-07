@@ -8,52 +8,52 @@
 [![Maintenance](https://img.shields.io/badge/Maintained-yes-brightgreen.svg)](https://github.com/fidpa/bibelstudium-mcp/commits/)
 ![Last Commit](https://img.shields.io/github/last-commit/fidpa/bibelstudium-mcp)
 
-MCP-Server für wortgetreue Bibelarbeit auf Deutsch: der Grundtext Wort für Wort über vier Editionen mit vollständiger Morphologie, dazu Konkordanz, Querverweise, Volltextsuche und textkritischer Editionsvergleich. Lokal betrieben mit vier frei lizenzierten Übersetzungen, komplett offline in einer einzigen SQLite-Datei; über den gehosteten Dienst zusätzlich mit der **Schlachter 2000**.
+MCP-Server für wortgetreue Bibelarbeit auf Deutsch. Er liefert den Grundtext Wort für Wort über vier Editionen mit vollständiger Morphologie, dazu Konkordanz, Querverweise, Volltextsuche und textkritischen Editionsvergleich. Lokal betrieben mit vier frei lizenzierten Übersetzungen, komplett offline in einer einzigen SQLite-Datei; über den gehosteten Dienst zusätzlich mit der **Schlachter 2000**.
 
 > **Sprachhinweis**: Diese Dokumentation ist durchgehend deutsch, weil sich der
 > Server an den deutschsprachigen Raum richtet. Tool-Namen und Feldbezeichner
-> bleiben englisch bzw. deutsch wie im Code: Sie sind API-Oberfläche, keine
-> Prosa (siehe [Designentscheidungen](#designentscheidungen)).
+> bleiben englisch bzw. deutsch wie im Code, denn sie sind API-Oberfläche und
+> keine Prosa (siehe [Designentscheidungen](#designentscheidungen)).
 
 ## Das Problem
 
-Sprachmodelle zitieren die Schrift aus dem Gedächtnis. Sie mischen Übersetzungen, paraphrasieren und erfinden gelegentlich ganze Verse: genau das, was nicht passieren darf, wenn es auf den Wortlaut ankommt. Und sobald eine Frage den Grundtext berührt („steht da Singular oder Plural?", „welche Handschriften enthalten diesen Vers?"), kann ein Modell ohne Daten nur raten.
+Sprachmodelle zitieren die Schrift aus dem Gedächtnis. Sie mischen Übersetzungen, paraphrasieren und erfinden gelegentlich ganze Verse. Genau das darf nicht passieren, wenn es auf den Wortlaut ankommt. Und sobald eine Frage den Grundtext berührt („steht da Singular oder Plural?", „welche Handschriften enthalten diesen Vers?"), kann ein Modell ohne Daten nur raten.
 
-Dieser Server gibt dem Modell stattdessen die Daten: exakten deutschen Verstext, den griechischen bzw. hebräischen Grundtext mit aufgelöster Morphologie und die Bezeugung jedes einzelnen Wortes über acht Editionen: jede Aussage gegen eine lokale Datenbank prüfbar.
+Dieser Server gibt dem Modell stattdessen die Daten, nämlich exakten deutschen Verstext, den griechischen bzw. hebräischen Grundtext mit aufgelöster Morphologie und die Bezeugung jedes einzelnen Wortes über acht Editionen. Jede Aussage bleibt damit gegen eine lokale Datenbank prüfbar.
 
 ## Funktionen
 
 - **Exakter deutscher Verstext** (`bible_lookup`) – über den gehosteten Dienst unter `mcp.bibelstudium-mcp.de` die **Schlachter 2000** (dort Voreinstellung), in jeder Installation Luther 1912, Schlachter 1951, Elberfelder 1871 und Menge 1939
 - **Grundtext Wort für Wort** (`bible_original`) – ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
-- **Konkordanz / Wortstudie** (`bible_concordance`): alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
-- **Querverweise** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt. Wo die Antwort kürzt, sagt sie es und nennt die Zahl, die sie ausgelassen hat
-- **Volltextsuche** (`bible_search`): FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
-- **Editionsvergleich** (`bible_compare`): Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
-- **Geführte Arbeitsabläufe**: drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
-- **Herkunftsnachweis eingebaut**: jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank
-- **Namensnennung in jeder Antwort**: das Feld `quellen` nennt Werk, Lizenz und die von der Lizenz verlangte Nennung, und zwar nur für die Quellen, die die jeweilige Antwort tatsächlich benutzt hat. Verlangt die Ausgabe eine Nennung, sagt der `hinweis` derselben Antwort zusätzlich, dass sie in jedes Dokument mitgeht, das den Wortlaut übernimmt
+- **Konkordanz / Wortstudie** (`bible_concordance`) – alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
+- **Querverweise** (`bible_crossrefs`) – Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt. Wo die Antwort kürzt, sagt sie es und nennt die Zahl, die sie ausgelassen hat
+- **Volltextsuche** (`bible_search`) – FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
+- **Editionsvergleich** (`bible_compare`) – Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
+- **Geführte Arbeitsabläufe** – drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
+- **Herkunftsnachweis eingebaut** – jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank
+- **Namensnennung in jeder Antwort** – das Feld `quellen` nennt Werk, Lizenz und die von der Lizenz verlangte Nennung, und zwar nur für die Quellen, die die jeweilige Antwort tatsächlich benutzt hat. Verlangt die Ausgabe eine Nennung, sagt der `hinweis` derselben Antwort zusätzlich, dass sie in jedes Dokument mitgeht, das den Wortlaut übernimmt
 
 ## Bekannte Grenzen
 
 > **WICHTIG**: Die Datenbank wird nicht mitgeliefert, sondern einmalig von den
 > Originalquellen geladen (rund 30 Sekunden, ~145 MB fertige Datenbank). Das ist
 > Absicht, die Gründe stehen unter [Designentscheidungen](#designentscheidungen).
-> Nötig ist dafür kein Terminal: Der Server kann den Aufbau selbst übernehmen.
+> Nötig ist dafür kein Terminal, denn der Server kann den Aufbau selbst übernehmen.
 >
-> - Die **Lexikondaten** (Strong, Abbott-Smith, Glossen) sind **englisch**: Ein frei lizenziertes deutsches Lexikon vergleichbarer Tiefe existiert nicht
+> - Die **Lexikondaten** (Strong, Abbott-Smith, Glossen) sind **englisch**, weil ein frei lizenziertes deutsches Lexikon vergleichbarer Tiefe nicht existiert
 > - Die NT-Voreinstellung ist der **Byzantinische Mehrheitstext**, eine dokumentierte redaktionelle Entscheidung, keine Aussage über den Forschungskonsens; SBLGNT (kritisch) und Textus Receptus sind einen Parameter entfernt
 > - Die vier frei lizenzierten deutschen Übersetzungen sind älteren Datums (1871–1951); zeitgenössische Übersetzungen sind nicht frei lizenziert. Die Ausnahme ist die Schlachter 2000 über den gehosteten Dienst
-> - Die beiden **Schlachter**-Ausgaben geben je Abruf höchstens 20 Verse im Wortlaut aus, gleich mit welchem Werkzeug: ein Entgegenkommen gegenüber der Genfer Bibelgesellschaft, die die Texte freigegeben hat. Greift die Grenze, sagt die Antwort es im Feld `gekuerzt` und im `hinweis`; welche Verse enthalten sind, nennt `reference`. Die drei gemeinfreien Übersetzungen sind davon nicht betroffen, und `bible://uebersetzungen` nennt zu jeder Ausgabe ihr `verse_max`
-> - Die Ausgaben **zählen nicht überall gleich**: In 140 der 1190 Kapitel weicht die Verszahl voneinander ab (3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000 23 Verse, in Luther und Schlachter 1951 dagegen 30). Dieselbe Stellenangabe trifft dort je Ausgabe eine andere Textstelle; `bible_lookup` sagt es im `hinweis` und nennt die Länge je Ausgabe. Eine Zuordnung von Vers zu Vers liegt nicht vor, der Abgleich geht über den Wortlaut
+> - Die beiden **Schlachter**-Ausgaben geben je Abruf höchstens 20 Verse im Wortlaut aus, gleich mit welchem Werkzeug. Das ist ein Entgegenkommen gegenüber der Genfer Bibelgesellschaft, die die Texte freigegeben hat. Greift die Grenze, sagt die Antwort es im Feld `gekuerzt` und im `hinweis`; welche Verse enthalten sind, nennt `reference`. Die drei gemeinfreien Übersetzungen sind davon nicht betroffen, und `bible://uebersetzungen` nennt zu jeder Ausgabe ihr `verse_max`
+> - Die Ausgaben **zählen nicht überall gleich**. In 140 der 1190 Kapitel weicht die Verszahl voneinander ab (3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000 23 Verse, in Luther und Schlachter 1951 dagegen 30). Dieselbe Stellenangabe trifft dort je Ausgabe eine andere Textstelle; `bible_lookup` sagt es im `hinweis` und nennt die Länge je Ausgabe. Eine Zuordnung von Vers zu Vers liegt nicht vor, der Abgleich geht über den Wortlaut
 > - Tool-Namen und Tool-Beschreibungen sind **englisch** (Entwickler-Oberfläche), die Ausgabefelder deutsch (`bedeutung`, `bezeugung`, `verweise`, …)
 
 ## Voraussetzungen
 
-Für **Claude Desktop** genügt das fertige Bundle (siehe [unten](#claude-desktop-bundle-statt-konfigurationsdatei)): Es bringt die Laufzeit mit, Bun muss nicht installiert sein.
+Für **Claude Desktop** genügt das fertige Bundle (siehe [unten](#claude-desktop-bundle-statt-konfigurationsdatei)). Es bringt die Laufzeit mit, Bun muss also nicht installiert sein.
 
 | Anforderung | Gilt für | Zweck |
 |-------------|----------|-------|
-| [Bun](https://bun.sh/) 1.2+ | Betrieb aus dem Repository | Führt TypeScript direkt aus, SQLite eingebaut: kein Build-Schritt, kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert |
+| [Bun](https://bun.sh/) 1.2+ | Betrieb aus dem Repository | Führt TypeScript direkt aus und bringt SQLite mit, also kein Build-Schritt und kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert |
 | `unzip` | beide Wege | Für den Querverweis-Download. Auf macOS vorinstalliert, in minimalen Linux-Images nicht (`sudo apt install unzip`). Fehlt es, scheitert nur dieser eine Schritt; der Rest der Datenbank entsteht trotzdem |
 | ~1 GB freier Speicher | beide Wege | ~145 MB fertige Datenbank plus temporäre Kopie beim Aufbau |
 | Internetzugang | beide Wege | Nur für den einmaligen Datenaufbau, danach läuft der Server vollständig offline |
@@ -94,7 +94,7 @@ Server im MCP-Client registrieren, z. B. `.mcp.json` für Claude Code:
 }
 ```
 
-Wo die Datenbank liegt, entscheidet `db-path.ts`: `BIBLE_DB_PATH` hat Vorrang, sonst `data/bible.db` neben dem Repository, und bei einem installierten Bundle der Benutzerordner (unter macOS `~/Library/Application Support/bibelstudium-mcp/`). Das Arbeitsverzeichnis des Clients spielt in keinem Fall eine Rolle.
+Wo die Datenbank liegt, entscheidet `db-path.ts`. `BIBLE_DB_PATH` hat Vorrang, sonst gilt `data/bible.db` neben dem Repository, und bei einem installierten Bundle der Benutzerordner (unter macOS `~/Library/Application Support/bibelstudium-mcp/`). Das Arbeitsverzeichnis des Clients spielt in keinem Fall eine Rolle.
 
 ### Claude Desktop: Bundle statt Konfigurationsdatei
 
@@ -106,11 +106,11 @@ bun run build:mcpb          # erzeugt tmp/bibelstudium-mcp-<version>-<plattform>
 
 Installation über *Einstellungen › Extensions › Advanced settings › Extension Developer › Install Extension…*.
 
-Der Installationsdialog fragt nach einer vorhandenen `bible.db`. **Dieses Feld darf leer bleiben**. Der Server lädt die Daten dann selbst: Bei der ersten Bibelfrage meldet er, dass sie fehlen, und fragt, ob er sie holen soll. Nach einer Bestätigung lädt er rund 145 MB von den Originalquellen (gemessen: 26 Sekunden) und legt sie im Benutzerordner ab. Danach ist einmal ein Neustart von Claude Desktop nötig, weil der laufende Serverprozess die neue Datei nicht mehr aufgreifen kann.
+Der Installationsdialog fragt nach einer vorhandenen `bible.db`. **Dieses Feld darf leer bleiben**. Der Server lädt die Daten dann selbst. Bei der ersten Bibelfrage meldet er, dass sie fehlen, und fragt, ob er sie holen soll. Nach einer Bestätigung lädt er rund 145 MB von den Originalquellen (gemessen: 26 Sekunden) und legt sie im Benutzerordner ab. Danach ist einmal ein Neustart von Claude Desktop nötig, weil der laufende Serverprozess die neue Datei nicht mehr aufgreifen kann.
 
 Damit braucht es für die Einrichtung **kein Terminal, kein Bun und keine Skripte**. Wer die Datenbank bereits gebaut hat, trägt sie stattdessen im Dialog ein und überspringt den Download.
 
-Fällt eine der acht Quellen aus, laufen die übrigen trotzdem durch: Der Bericht nennt dann, welcher Schritt scheiterte, welche Funktion dadurch fehlt und mit welchem Befehl er sich nachholen lässt. Nur die deutschen Übersetzungen sind zwingend, ohne sie entsteht keine Datenbank.
+Fällt eine der acht Quellen aus, laufen die übrigen trotzdem durch. Der Bericht nennt dann, welcher Schritt scheiterte, welche Funktion dadurch fehlt und mit welchem Befehl er sich nachholen lässt. Nur die deutschen Übersetzungen sind zwingend, ohne sie entsteht keine Datenbank.
 
 Zwei Vorteile gegenüber dem JSON-Weg: Das Bundle bringt ein eigenständiges Binary mit, der Rechner braucht kein installiertes Bun, und es ist unempfindlich dagegen, dass Claude Desktop die Konfigurationsdatei beim Beenden zurückschreibt und unbekannte Schlüssel dabei verwirft.
 
@@ -122,7 +122,7 @@ Wer einen Client bedienen muss, der keinen Kindprozess starten kann, schaltet de
 MCP_HTTP_PORT=8931 bun run src/server.ts # /mcp und /health, gebunden an 127.0.0.1
 ```
 
-Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor: Der Server bringt beides nicht mit.
+Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor, denn der Server bringt beides nicht mit.
 
 Drei Umgebungsvariablen steuern den Betrieb:
 
@@ -143,13 +143,13 @@ Die Datenbank baut auf einem Server `bun run setup` auf, oder, wenn dort kein Bu
 **Empfohlen:** In Claude Desktop zusätzlich den Text aus
 [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) unter
 *Einstellungen › Anweisungen für Claude* einsetzen. Ob ein Werkzeug aufgerufen und
-wie sein Ergebnis wiedergegeben wird, entscheidet der Client: Der Server kann es
-nur anbieten. Die Anweisungen schärfen Zitiertreue, Zahlenangaben und den Umgang
+wie sein Ergebnis wiedergegeben wird, entscheidet der Client, denn der Server
+kann es nur anbieten. Die Anweisungen schärfen Zitiertreue, Zahlenangaben und den Umgang
 mit den Vorbehalten des Servers.
 
 ## Verwendung
 
-Du rufst die Werkzeuge nicht selbst auf: Du stellst dem Assistenten eine Frage, und er holt sich die Daten.
+Du rufst die Werkzeuge nicht selbst auf. Du stellst dem Assistenten eine Frage, und er holt sich die Daten.
 
 > „Was steht in Johannes 1,1 wörtlich im Griechischen?"
 > „Ist das Comma Johanneum in 1. Johannes 5,7 echt?"
@@ -157,7 +157,7 @@ Du rufst die Werkzeuge nicht selbst auf: Du stellst dem Assistenten eine Frage, 
 > „Zeig mir Johannes 3,16 in allen Übersetzungen."
 > „Welche Querverweise gibt es zu Römer 8,1?"
 
-Auf die erste Frage bekommt er jedes Wort einzeln, mit Grundform, aufgelöster Morphologie und Strong-Nummer. Auf die zweite die drei griechischen Editionen nebeneinander, dazu für jedes Wort, welche von acht Editionen es bezeugen: Der Zusatz steht allein im Textus Receptus, und das sagt die Antwort mit Zeugenbestand statt mit einer Einschätzung.
+Auf die erste Frage bekommt er jedes Wort einzeln, mit Grundform, aufgelöster Morphologie und Strong-Nummer. Auf die zweite die drei griechischen Editionen nebeneinander, dazu für jedes Wort, welche von acht Editionen es bezeugen. Der Zusatz steht allein im Textus Receptus, und das sagt die Antwort mit Zeugenbestand statt mit einer Einschätzung.
 
 Wie die Antworten aussehen, zeigt [docs/BEISPIELE.md](docs/BEISPIELE.md), samt einem Weg, den Server ohne MCP-Client auszuprobieren.
 
@@ -220,7 +220,7 @@ In Claude Code werden Ressourcen mit `@` angehängt (`@bibelstudium:bible://quel
 Die **Schlachter 2000** ist die einzige zeitgenössische Übersetzung hier und
 steht über den gehosteten Dienst unter `mcp.bibelstudium-mcp.de` zur Verfügung,
 mit freundlicher Genehmigung der Genfer Bibelgesellschaft. Sie kommt aus keinem
-Download: Eine selbst aufgebaute Datenbank führt sie nicht, und `SLT` läuft dort
+Download. Eine selbst aufgebaute Datenbank führt sie nicht, und `SLT` läuft dort
 in die Meldung „nicht geladen".
 
 Die vier übrigen lädt `bible_setup` von ihren Originalquellen, sie stehen also
@@ -256,7 +256,7 @@ und nie im Serverbetrieb. Welche Datei was tut, steht in
 
 **Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von acht fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
 
-**Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung, und sie ist in **jeder** Installation vorhanden. Das ist der eigentliche Grund: Eine Voreinstellung, die eine Instanz nicht geladen hat, ließe jeden Abruf ohne `translation` in eine Fehlermeldung laufen. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge 1939 sind einen Parameter entfernt, und `translation-compare` stellt sie nebeneinander.
+**Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung, und sie ist in **jeder** Installation vorhanden. Das ist der eigentliche Grund, denn eine Voreinstellung, die eine Instanz nicht geladen hat, ließe jeden Abruf ohne `translation` in eine Fehlermeldung laufen. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge 1939 sind einen Parameter entfernt, und `translation-compare` stellt sie nebeneinander.
 
 Ein Endpunkt darf davon abweichen, ohne den Code zu ändern: `BIBLE_DEFAULT_TRANSLATION` setzt die Vorgabe auf ein anderes Kürzel, sofern die Ausgabe geladen ist. Ist sie es nicht oder ist das Kürzel unbekannt, bleibt es bei Luther, und der Server vermerkt das auf stderr. Welche Vorgabe tatsächlich gilt, nennt `bible://uebersetzungen` im Feld `voreinstellung`; der gehostete Dienst führt darüber die Schlachter 2000.
 
@@ -270,8 +270,8 @@ Ein Endpunkt darf davon abweichen, ohne den Code zu ändern: `BIBLE_DEFAULT_TRAN
 
 | Dokument | Inhalt |
 |----------|--------|
-| [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop: schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
-| [docs/anweisungen/README.md](docs/anweisungen/README.md) | Wozu die Client-Anweisungen dienen, wohin sie gehören, und warum sie knapp bleiben müssen: Sie werden in jeder Sitzung geladen, auch ohne biblische Frage |
+| [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop; er schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
+| [docs/anweisungen/README.md](docs/anweisungen/README.md) | Wozu die Client-Anweisungen dienen, wohin sie gehören, und warum sie knapp bleiben müssen, denn sie werden in jeder Sitzung geladen, auch ohne biblische Frage |
 | [docs/BEISPIELE.md](docs/BEISPIELE.md) | Wie die Antworten aussehen: Grundtext, Textkritik, Verstext, und ein Weg, den Server ohne MCP-Client auszuprobieren |
 | [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md) | Warum der Code so aussieht: gemessene Befunde, verworfene Alternativen, Erfahrungen mit Clients und fremden Quellen |
 | [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md) | Fehlerbilder beim Datenaufbau und Serverstart, jeweils mit Ursache und Behebung |
@@ -302,6 +302,4 @@ MIT-Lizenz, siehe [LICENSE](LICENSE). Die Lizenz deckt den Code; die Bibeldaten 
 
 ## Siehe auch
 
-- [lydia-bible-bot](https://github.com/fidpa/lydia-bible-bot): Sicherheitsgehärteter KI-Bibelassistent für Telegram-Gruppen (nutzt eine frühere, eingebettete Fassung dieses Servers)
-- [cc-telegram-bot](https://github.com/fidpa/cc-telegram-bot): Telegram-Bot-Grundgerüst für Claude Code
-- [bash-production-toolkit](https://github.com/fidpa/bash-production-toolkit): Produktionsreife Bash-Patterns
+- [lydia-bible-bot](https://github.com/fidpa/lydia-bible-bot) – sicherheitsgehärteter KI-Bibelassistent für Telegram-Gruppen, der seinen Bibeltext über den gehosteten Dienst dieses Servers bezieht

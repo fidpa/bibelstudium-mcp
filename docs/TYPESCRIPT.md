@@ -13,9 +13,9 @@ bun run typecheck    # tsc --noEmit gegen tsconfig.json
 
 `strict` plus `noUncheckedIndexedAccess` und `noFallthroughCasesInSwitch`; der
 Code besteht das ohne einen einzigen Fehler, und die CI erzwingt es. TypeScript
-und `@types/bun` sind **Dev**-Abhängigkeiten: Der Laufzeit-Footprint bleibt bei
-einem Paket, und kompiliert wird nichts: Bun führt die `.ts`-Dateien weiterhin
-direkt aus.
+und `@types/bun` sind **Dev**-Abhängigkeiten, der Laufzeit-Footprint bleibt also
+bei einem Paket. Kompiliert wird nichts, denn Bun führt die `.ts`-Dateien
+weiterhin direkt aus.
 
 Die tsconfig ist keine optionale Zierde. Ohne sie kann ein Editor weder
 `bun:sqlite` noch `import.meta.path` noch die `.ts`-Importendungen dieses
@@ -36,7 +36,7 @@ falsche Typen: `"3"` statt `3`, eine Zahl statt einer Zeichenkette) und
   `verses`-Normalisierung in `handlers/lookup.ts`.
 - Heruntergeladene Strukturen prüfen, bevor sie in die DB gelangen
   (`Array.isArray`, Feldprüfungen wie in `download.ts`), und werfen statt still
-  weiterlaufen: Der `abort()`-Pfad lässt die Live-DB unangetastet.
+  weiterlaufen. Der `abort()`-Pfad lässt die Live-DB unangetastet.
 - Ungültige Nutzereingabe an ein **Werkzeug** → klare Fehlermeldung als
   Tool-Ergebnis (`isError: true`), niemals eine Exception. Nur so liest das
   Modell die Meldung und kann sie beantworten.
@@ -119,7 +119,7 @@ Repositories. Englisch bleiben, weil sie fremde Software oder fremde Leser
 adressieren: Bezeichner, Tool-Namen, die Tool-`description`s, das
 `instructions`-Feld des Handshakes, Commit-Nachrichten.
 
-Der Grund ist nicht Geschmack: Die längeren Blöcke hier sind Begründungsprosa,
+Der Grund ist nicht Geschmack. Die längeren Blöcke hier sind Begründungsprosa,
 oft mit Messwerten und Abwägungen, und dieselbe Sache steht deutsch in
 `docs/ENTSCHEIDUNGEN.md`. Zwei Sprachen für denselben Gedanken kosten bei jeder
 Änderung eine Übersetzung.
@@ -165,10 +165,10 @@ vortäuscht.
 Erlaubt und erwünscht: `docs/ENTSCHEIDUNGEN.md` und die übrigen versionierten
 Dateien unter `docs/`, externe URLs (Spezifikation, SDK-Quelle, Datenquellen),
 und Fundstellen im SDK mit Datei und Zeile (`protocol.js:397`). Letztere altern
-mit der SDK-Fassung: Wer sie schreibt, nennt die geprüfte Fassung mit.
+mit der SDK-Fassung, und wer sie schreibt, nennt die geprüfte Fassung mit.
 
 Gemessen am 06.08.2026 verweisen zwei Zeilen in `scripts/import-schlachter2000.ts`
-auf `docs/intern/`, und zwar zu Recht: Das Skript liest die Lieferung von dort,
+auf `docs/intern/`, und zwar zu Recht. Das Skript liest die Lieferung von dort,
 der Pfad ist sein Vorgabewert und steht so auch im Code. Die Regel richtet sich
 gegen Kommentare, die zur **Erklärung** auf Ungeteiltes verweisen, nicht gegen
 einen Pfad, den das Programm braucht. Sonst verweist keine `.ts`-Datei auf einen
@@ -192,7 +192,7 @@ während an der Codestelle das Ergebnis genügt („X, weil Y; Messung und
 verworfene Alternativen siehe `docs/ENTSCHEIDUNGEN.md`").
 
 `server.ts` hat 20 Blöcke über zwölf Zeilen (03.08.2026, davor 15). Der Zuwachs
-kommt aus der Umstellung selbst: Deutsch braucht für denselben Inhalt mehr
+kommt aus der Umstellung selbst, denn Deutsch braucht für denselben Inhalt mehr
 Zeilen. Geprüft wurde jeder von ihnen, und keiner ist eine Herleitung, die
 verlagert gehörte; sie erklären ihre Codestelle, und dafür gilt der Richtwert
 nicht als Obergrenze. Bei einem **neuen** langen Block bleibt er es.
@@ -226,7 +226,7 @@ Tabelle, weil eine Abfrage über ihre Tabelle gesucht wird, und
 `werkzeug-helfer.ts` vier, weil dort vier Arbeitsschritte nebeneinanderliegen,
 die nichts miteinander zu tun haben außer ihren Aufrufern.
 
-Eine Handler-Datei braucht keinen Banner: Sie enthält ein Werkzeug, und ihr
+Eine Handler-Datei braucht keinen Banner. Sie enthält ein Werkzeug, und ihr
 Name sagt bereits, welches.
 
 ### K7. Ein Kommentar, der nicht mehr stimmt, ist ein Fehler

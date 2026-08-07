@@ -6,6 +6,33 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.15] - 2026-08-07
+
+### Geändert
+
+- **`bible_concordance` sagt jetzt, wenn ein `texttyp` übergangen wurde.** Zu
+  einer hebräischen Grundform oder H-Strong-Nummer gilt allein der WLC. Wird
+  dazu eine NT-Edition mitgegeben, sagt der `hinweis` nun als Erstes, dass der
+  Texttyp nur fürs NT gilt und fürs AT der hebräische WLC durchsucht wurde.
+  Bisher sah die Antwort aus, als hätte sie die gewünschte Edition durchsucht.
+  Wer `wlc` schickt oder `texttyp` weglässt, bekommt den Satz nicht.
+
+### Geändert (Infrastruktur)
+
+- **Der Release-Workflow baut gegen eine benannte Bun-Fassung statt gegen
+  `latest`**, derzeit 1.3.14, und die Release-Notes nennen sie. Dieselbe Quelle
+  mit anderer Bun-Fassung ergab bisher verschieden große Bundles: v0.6.14 wog
+  aus der CI 36 682 583, lokal gebaut 40 125 110 Byte. `lint.yml` bleibt auf
+  `latest`.
+- `scripts/build-mcpb.ts` packt kein `mcpb/icon.png` mehr ein; die Datei gab es
+  nie, der Zweig lief nie.
+
+### Geändert (Dokumentation)
+
+- Doppelpunktkonstruktionen in `README.md` und den Doku-Dateien in ganze Sätze
+  aufgelöst, ohne eine Aussage zu ändern. Neuer Abschnitt in
+  `docs/ENTSCHEIDUNGEN.md` zur gepinnten Bun-Fassung.
+
 ## [0.6.14] - 2026-08-06
 
 ### Ergänzt

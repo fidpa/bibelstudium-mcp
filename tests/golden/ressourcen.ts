@@ -12,10 +12,10 @@
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
 import { KAPITEL_AUSSERHALB, VERSLISTE_ZU_LANG } from "../lib/meldungen.ts";
+import { INVALID_PARAMS } from "../lib/mcp-client.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 import { lookupBuendel } from "./lookup.ts";
 
-const INVALID_PARAMS = -32602;
 const VERSES_TOO_MANY = Array.from({ length: 35 }, (_, i) => String(i + 1)).join(",");
 
 export const ressourcenBuendel = buendel({

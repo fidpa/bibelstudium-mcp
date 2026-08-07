@@ -61,6 +61,14 @@ export type Aufruf = readonly [string, Json];
  * `-32603` allein für den Zustand des Servers (eine Instanz ohne Datenbank).
  */
 export const NO_ERROR = 0;
+/**
+ * Die beiden Codes, die der Kommentar oben unterscheidet. Sie standen bis zum
+ * 07.08.2026 in vier Bündeln je für sich, also viermal dieselbe Zahl neben
+ * derselben Aussage, während ihre Begründung hier stand. Ein Bündel, das die
+ * Zahl von Hand hinschreibt, kann sie auch von Hand falsch hinschreiben.
+ */
+export const INVALID_PARAMS = -32602;
+export const INTERNAL_ERROR = -32603;
 
 export type Lauf = {
   tools: Json[];

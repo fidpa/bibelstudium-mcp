@@ -108,8 +108,19 @@ export function handleConcordance(args: {
 
   // Edition auflösen: Hebräisch → wlc; Griechisch → NT-Edition gemäß texttyp.
   let edition: string;
+  // Bei einer hebräischen Angabe entscheidet die Angabe selbst, nicht `texttyp`:
+  // Fürs AT gibt es allein den WLC. Eine mitgegebene NT-Edition wird deshalb
+  // übergangen, und das gehört ins Ergebnis. `bible_original` sagt es im
+  // gleichgelagerten Fall seit je; hier fehlte der Satz bis zum 07.08.2026, und
+  // die Antwort sah aus, als hätte sie den gewünschten Texttyp durchsucht.
+  let texttypUebergangen: string | null = null;
   if (isHebrew) {
     edition = "wlc";
+    // Dieselbe Bedingung wie dort: Wer "wlc" schickt, hat recht und bekommt
+    // keinen Hinweis; ein unbekannter Wert löst auf null auf und bekommt ihn.
+    if (args.texttyp && resolveEdition(args.texttyp) !== "wlc") {
+      texttypUebergangen = String(args.texttyp);
+    }
   } else {
     const wanted = resolveEdition(args.texttyp);
     if (wanted === null || !NT_EDITIONS.has(wanted)) {
@@ -223,6 +234,14 @@ export function handleConcordance(args: {
   // englische Lexikon. Bis 0.6.12 trug das Feld nur den ersten, und der zweite
   // hatte keinen Platz.
   const hinweise: string[] = [];
+  // Der Vorbehalt zuerst: Er sagt, worin überhaupt gesucht wurde, und schränkt
+  // damit alles ein, was danach kommt.
+  if (texttypUebergangen !== null) {
+    hinweise.push(
+      `Der Texttyp "${texttypUebergangen}" gilt nur fürs NT; fürs AT wird der ` +
+        "hebräische WLC durchsucht."
+    );
+  }
   if (rows.length > limit) {
     hinweise.push(
       `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +

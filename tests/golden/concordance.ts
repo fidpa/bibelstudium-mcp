@@ -40,12 +40,72 @@ export const concordanceBuendel = buendel({
     concordStrongOhneDaten: ["bible_concordance", { strong: "G26", texttyp: "sblgnt" }],
     concordLemmaSblgnt: ["bible_concordance", { lemma: "ἀγάπη", texttyp: "sblgnt", limit: 2 }],
     concordStrongMitDaten: ["bible_concordance", { strong: "G26", texttyp: "tr", limit: 2 }],
+    // Die hebräische Hälfte des Werkzeugs. Sie fährt einen eigenen Zweig: Edition
+    // 'wlc' statt einer NT-Edition, Strong-Präfix 'H', und den vollständigen
+    // Abbott-Smith-Artikel gibt es nur fürs Griechische. Bis zum 07.08.2026 fuhr
+    // kein Golden-Fall eine hebräische Nummer, geprüft war allein die griechische
+    // Seite; ein Einbau, der die Edition dieses Zweigs auf 'byzantine' umstellte,
+    // blieb grün (gemessen 07.08.2026).
+    concordHebraeisch: ["bible_concordance", { strong: "H7225", limit: 3 }],
+    // Eine NT-Edition zu einer hebräischen Nummer ist kein Fehler, sondern
+    // gegenstandslos: Gesucht wird im WLC, und seit dem 07.08.2026 sagt die
+    // Antwort das. Bis dahin wurde die Angabe stillschweigend übergangen,
+    // während `bible_original` im gleichgelagerten Fall seit je darauf hinweist.
+    concordHebTexttyp: ["bible_concordance", { strong: "H7225", texttyp: "sblgnt", limit: 2 }],
+    // Die Gegenprobe: Wer den zutreffenden Texttyp schickt, hat nichts
+    // übergangen bekommen und darf den Satz nicht lesen.
+    concordHebTexttypWlc: ["bible_concordance", { strong: "H7225", texttyp: "wlc", limit: 2 }],
   },
   pruefe({ res }) {
     const { concordanceLongLemma, concordVollstaendig, concordGekuerzt } = res;
     const { concordFormat, concordOhneAngabe, concordLemmaLatein } = res;
     const { concordTexttyp, concordOhneTreffer } = res;
     const { concordStrongOhneDaten, concordLemmaSblgnt, concordStrongMitDaten } = res;
+    const { concordHebraeisch, concordHebTexttyp, concordHebTexttypWlc } = res;
+
+    // Der übergangene Texttyp, beide Richtungen. Die zweite ist die eigentliche:
+    // Ein Satz, der immer erschiene, sagte über den einzelnen Abruf nichts.
+    eq("H7225 mit NT-Texttyp: kein Fehler", concordHebTexttyp.isError, false);
+    eq("H7225 mit NT-Texttyp: durchsucht wird dennoch der WLC",
+      concordHebTexttyp.json?.texttyp, "wlc");
+    has("H7225 mit NT-Texttyp: der Hinweis benennt die übergangene Angabe",
+      String(concordHebTexttyp.json?.hinweis ?? ""),
+      'Der Texttyp "sblgnt" gilt nur fürs NT; fürs AT wird der hebräische WLC durchsucht.');
+    lacks("H7225 mit texttyp=wlc: kein Satz über eine übergangene Angabe",
+      String(concordHebTexttypWlc.json?.hinweis ?? ""), "gilt nur fürs NT");
+    lacks("H7225 ohne texttyp: kein Satz über eine übergangene Angabe",
+      String(concordHebraeisch.json?.hinweis ?? ""), "gilt nur fürs NT");
+    // Die Suche selbst bleibt von der übergangenen Angabe unberührt.
+    eq("H7225 mit NT-Texttyp: dieselbe Gesamtzahl wie ohne",
+      concordHebTexttyp.json?.gesamt, concordHebraeisch.json?.gesamt);
+
+    // Der hebräische Zweig, an den Stellen, an denen er sich vom griechischen
+    // unterscheidet. Die Umschrift wird auf beiden Seiten geprüft: Sie ist ein
+    // bedingtes Feld, das nur aus dem Lexikoneintrag entsteht, und ihr Wegfall
+    // blieb bis zum 07.08.2026 auf beiden Seiten grün (gemessen).
+    eq("H7225: kein Fehler", concordHebraeisch.isError, false);
+    eq("H7225: Edition ist der WLC, nicht eine NT-Edition", concordHebraeisch.json?.texttyp, "wlc");
+    eq("H7225: Strong-Nummer mit hebräischem Präfix", concordHebraeisch.json?.strong, "H7225");
+    eq("H7225: Umschrift", concordHebraeisch.json?.umschrift, "rêʼshîyth");
+    eq("G26: Umschrift", concordVollstaendig.json?.umschrift, "agápē");
+    // Der Abbott-Smith-Artikel ist griechisch und hat kein hebräisches
+    // Gegenstück: Stünde er hier, käme er aus dem falschen Lexikon.
+    check("H7225: kein griechischer Lexikonartikel", !("lexikon" in (concordHebraeisch.json ?? {})));
+    check("G26: griechischer Lexikonartikel vorhanden", "lexikon" in (concordVollstaendig.json ?? {}));
+    // Die Vorkommen liegen im Alten Testament. Ohne diese Prüfung bliebe offen,
+    // ob die Edition bloß richtig heißt oder auch durchsucht wurde.
+    const hebBuecher = (concordHebraeisch.json?.buecher ?? []) as Array<{ buch: string; anzahl: number }>;
+    check("H7225: Verteilung besetzt", hebBuecher.length > 0);
+    eq("H7225: erstes Buch der Verteilung", hebBuecher[0]?.buch, "1 Mose");
+    eq("H7225: Gesamtzahl der Vorkommen", concordHebraeisch.json?.gesamt, 51);
+    const hebVor = (concordHebraeisch.json?.vorkommen ?? []) as Array<{ stelle: string }>;
+    eq("H7225: gelistet bis zur Grenze", hebVor.length, 3);
+    eq("H7225: erste Stelle", hebVor[0]?.stelle, "1 Mose 1,1");
+    // Die Quellennennung folgt der benutzten Edition, nicht der griechischen.
+    const hebWerke = ((concordHebraeisch.json?.quellen ?? []) as Array<{ werk: string }>).map((q) => q.werk);
+    check("H7225: der WLC ist als Quelle genannt",
+      hebWerke.some((w) => w.includes("Westminster Leningrad Codex")),
+      hebWerke.join(" | "));
 
     // Die verletzte Bedingung wird benannt, und der Ausweg ist einer, den der
     // Aufrufer gehen kann.
