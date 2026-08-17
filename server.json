@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "de.bibelstudium-mcp/bibelstudium",
+  "title": "Bibelstudium MCP",
+  "description": "Wortgetreue deutsche Bibelarbeit: Grundtext, Morphologie, Konkordanz, Querverweise",
+  "version": "0.0.0",
+  "websiteUrl": "https://bibelstudium-mcp.de/",
+  "repository": {
+    "url": "https://github.com/fidpa/bibelstudium-mcp",
+    "source": "github",
+    "id": "1309895368"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.bibelstudium-mcp.de/mcp"
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+name: registry-publish
+
+# Publishes this server's metadata to registry.modelcontextprotocol.io.
+# Manual trigger only.
+#
+# NOT hung on a tag, on purpose. The registry entry carries no 'packages', only
+# 'remotes', and for a remote server the version describes what the ENDPOINT
+# serves, not what the repository contains. The hosted endpoint is updated by a
+# separate deploy that release.yml does not touch, so a tag-triggered publish
+# would announce a version to the registry that the endpoint does not answer
+# with yet. This workflow therefore runs after a deploy, and it measures the
+# endpoint instead of trusting the repository.
+#
+# The version is NOT stored in server.json. That file carries the placeholder
+# 0.0.0 and the version is injected from package.json below, the same way
+# scripts/build-mcpb.ts fills the MCPB manifest. The version lives in
+# package.json alone, and this workflow does not change that.
+#
+# A published version string is immutable: it cannot be re-published, and its
+# metadata cannot be edited afterwards (that needs an 'edit' permission which
+# the DNS key does not carry). A version can only be retired via
+# `mcp-publisher status`. Hence every gate runs before login, and dry_run
+# defaults to true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run the gates and validation, but do not publish"
+        type: boolean
+        default: true
+
+# Two dispatches in a row would try to publish the same version twice. The
+# second one fails on immutability and leaves a red cross that is not a defect.
+concurrency: registry-publish
+
+permissions:
+  contents: read
+  # No id-token here: authentication is DNS-based, an Ed25519 signature proven
+  # by a TXT record on the apex domain, not GitHub OIDC. OIDC would only work
+  # for an io.github.* namespace, and a published name cannot be changed.
+
+jobs:
+  publish:
+    name: Gates, then publish
+    runs-on: ubuntu-latest
+    env:
+      ENDPOINT: https://mcp.bibelstudium-mcp.de/mcp
+      SERVER_NAME: de.bibelstudium-mcp/bibelstudium
+      PUBLISHER_VERSION: v1.8.1
+      # sha256 of mcp-publisher_linux_amd64.tar.gz from that release, measured
+      # 17.08.2026. Pinned for the same reason bun-version is pinned in
+      # release.yml: an unpinned 'latest' would change the tool that writes to a
+      # public registry without anyone deciding it.
+      PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher (pinned, checksum verified)
+        run: |
+          BASE="https://github.com/modelcontextprotocol/registry/releases/download/$PUBLISHER_VERSION"
+          curl -sSL -o mcp-publisher.tar.gz "$BASE/mcp-publisher_linux_amd64.tar.gz"
+          echo "$PUBLISHER_SHA256  mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Endpoint serves what we are about to publish
+        run: |
+          PKG=$(jq -r .version package.json)
+
+          # Both headers are required; without Accept the transport refuses. The
+          # answer arrives as Server-Sent Events, an 'event:' line plus a
+          # 'data:' line. The Accept header also permits plain JSON, so fall
+          # back to the whole body when there is no data: line -- otherwise a
+          # future transport change would make this gate red while everything
+          # is correct.
+          RESPONSE=$(curl -sS --max-time 20 -X POST "$ENDPOINT" \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"registry-publish-gate","version":"0"}}}')
+          PAYLOAD=$(printf '%s\n' "$RESPONSE" | sed -n 's/^data: //p' | head -1)
+          [ -n "$PAYLOAD" ] || PAYLOAD="$RESPONSE"
+          LIVE=$(printf '%s' "$PAYLOAD" | jq -r '.result.serverInfo.version // empty' 2>/dev/null)
+
+          echo "package.json=$PKG  endpoint=${LIVE:-<none>}"
+
+          # Cloudflare in front of the endpoint blocks at roughly 17 requests
+          # per 10 seconds and answers 429, which reads like an outage. One call
+          # is enough here; do not add a retry loop.
+          if [ -z "$LIVE" ]; then
+            echo "::error::endpoint did not report a version (see log for the raw response)"
+            printf '%s\n' "$RESPONSE"
+            exit 1
+          fi
+          if [ "$PKG" != "$LIVE" ]; then
+            echo "::error::endpoint serves $LIVE but package.json says $PKG - deploy first, then publish"
+            exit 1
+          fi
+          echo "VERSION=$PKG" >> "$GITHUB_ENV"
+
+      - name: Build the payload (version injected from package.json)
+        run: |
+          # server.json holds the placeholder; the real number never lives in
+          # two files. Published from a scratch directory so the repository copy
+          # stays untouched and mcp-publisher finds ./server.json by default.
+          mkdir -p payload
+          jq --arg v "$VERSION" '.version = $v' server.json > payload/server.json
+          BUILT=$(jq -r .version payload/server.json)
+          echo "placeholder in repo: $(jq -r .version server.json)"
+          echo "version to publish:  $BUILT"
+          [ "$BUILT" = "$VERSION" ] \
+            || { echo "::error::injection failed, payload says $BUILT"; exit 1; }
+          case "$BUILT" in
+            0.0.0|"") echo "::error::refusing to publish the placeholder"; exit 1 ;;
+          esac
+
+      - name: Validate the payload against the live registry
+        working-directory: payload
+        run: ../mcp-publisher validate
+
+      - name: Log in via DNS
+        if: ${{ !inputs.dry_run }}
+        env:
+          # Kept out of the expanded shell source and out of the process list.
+          # The private key is 64 hex chars (the raw 32-byte seed), while the
+          # TXT record holds base64 of the raw 32-byte PUBLIC key. That
+          # asymmetry is the documented failure source; a wrongly encoded record
+          # fails the login and looks like a DNS problem.
+          MCP_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: |
+          ./mcp-publisher login dns \
+            --domain bibelstudium-mcp.de \
+            --private-key "$MCP_KEY"
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        working-directory: payload
+        run: ../mcp-publisher publish
+
+      - name: Confirm the registry holds it, active and latest
+        if: ${{ !inputs.dry_run }}
+        run: |
+          # An exit code is not proof of effect. Ask the registry what it holds,
+          # and read _meta: status and isLatest live there, not under .server.
+          # Selecting '.servers[].server' would drop _meta and the check could
+          # never go red. The version filter keeps this single-page as the
+          # number of published versions grows.
+          curl -sS "https://registry.modelcontextprotocol.io/v0/servers?search=bibelstudium&version=$VERSION" \
+            | jq -e --arg n "$SERVER_NAME" --arg v "$VERSION" '
+                [ .servers[] | select(.server.name == $n and .server.version == $v)
+                  | ._meta["io.modelcontextprotocol.registry/official"] ]
+                | length == 1 and .[0].status == "active" and .[0].isLatest == true' \
+            || { echo "::error::registry does not report $SERVER_NAME $VERSION as active and latest"; exit 1; }
+          echo "Published: $SERVER_NAME $VERSION"
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "Dry run: gates and validation passed, nothing was published."
+          echo "Re-run with dry_run unchecked to publish."

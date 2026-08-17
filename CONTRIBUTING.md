@@ -59,6 +59,7 @@ läuft ausschließlich beim Datenaufbau.
 | `tests/test-http.ts` | Transportverhalten über HTTP (Statuscodes, `Allow`, Origin); braucht keine Datenbank |
 | `tests/schema-coverage.ts` | Breitentest: jede Antwort gegen ihr deklariertes `outputSchema` |
 | `mcpb/manifest.json` | Manifest-Quelle des Bundles |
+| `server.json` | Metadaten für die offizielle MCP-Registry. Das Feld `version` trägt hier den Platzhalter `0.0.0`, wie im Bundle-Manifest: Die Version lebt in `package.json` und wird beim Veröffentlichen eingesetzt |
 | `data/bible.db` | SQLite (gitignored, lokal aufgebaut) |
 
 ## Änderungen prüfen

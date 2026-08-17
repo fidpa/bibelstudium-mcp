@@ -53,7 +53,7 @@ Für **Claude Desktop** genügt das fertige Bundle (siehe [unten](#claude-deskto
 
 | Anforderung | Gilt für | Zweck |
 |-------------|----------|-------|
-| [Bun](https://bun.sh/) 1.2+ | Betrieb aus dem Repository | Führt TypeScript direkt aus und bringt SQLite mit, also kein Build-Schritt und kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert |
+| [Bun](https://bun.sh/) 1.2+ | Betrieb aus dem Repository | Führt TypeScript direkt aus und bringt SQLite mit, also kein Build-Schritt und kein Compiler. 1.2 ist die Untergrenze, weil das Repository das Text-`bun.lock` mitliefert, und sie ist gemessen. Auf 1.2.0 lief am 08.08.2026 der gesamte Testbestand durch |
 | `unzip` | beide Wege | Für den Querverweis-Download. Auf macOS vorinstalliert, in minimalen Linux-Images nicht (`sudo apt install unzip`). Fehlt es, scheitert nur dieser eine Schritt; der Rest der Datenbank entsteht trotzdem |
 | ~1 GB freier Speicher | beide Wege | ~145 MB fertige Datenbank plus temporäre Kopie beim Aufbau |
 | Internetzugang | beide Wege | Nur für den einmaligen Datenaufbau, danach läuft der Server vollständig offline |
@@ -284,7 +284,7 @@ Ein Endpunkt darf davon abweichen, ohne den Code zu ändern: `BIBLE_DEFAULT_TRAN
 
 ## Datenquellen & Lizenzen
 
-Alle Datenquellen sind Public Domain oder CC-BY(-SA); die vollständige Tabelle steht in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), einschließlich der vorgeschriebenen Namensnennung für Schlachter 1951 (CC BY 4.0, © Genfer Bibelgesellschaft) und des STEPBible-Hinweises zur Weiterverbreitung.
+Alle Datenquellen, die dieses Repository lädt, sind Public Domain oder CC-BY(-SA); die vollständige Tabelle steht in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), einschließlich der vorgeschriebenen Namensnennung für Schlachter 1951 (CC BY 4.0, © Genfer Bibelgesellschaft) und des STEPBible-Hinweises zur Weiterverbreitung. Die Schlachter 2000 steht auf eigener Grundlage: Sie kommt aus keinem Download, ist nicht Teil dieses Repositories und wird allein über den gehosteten Dienst angeboten, mit Genehmigung der Genfer Bibelgesellschaft.
 
 ## Mitwirken
 

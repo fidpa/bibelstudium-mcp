@@ -6,6 +6,32 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.16] - 2026-08-17
+
+### Ergänzt
+
+- **Der Server ist in der offiziellen MCP-Registry gelistet**, als
+  `de.bibelstudium-mcp/bibelstudium`. Der Eintrag verweist auf den gehosteten
+  Endpunkt; Bundle und Selbstbau sind davon unberührt. Die Metadaten liegen in
+  `server.json`, deren Feld `version` den Platzhalter `0.0.0` trägt: Die Zahl
+  setzt der neue Workflow `registry-publish.yml` aus `package.json` ein, damit
+  die Version weiterhin nur an einer Stelle lebt. Der Workflow läuft von Hand,
+  nach dem Ausrollen, und bricht ab, wenn der Endpunkt eine andere Version
+  meldet.
+
+### Geändert (Dokumentation)
+
+- **Die Lizenzangabe zur Schlachter 2000 benennt die Genehmigung.**
+  `THIRD_PARTY_LICENSES.md` sagt jetzt, dass der gehostete Dienst die Ausgabe mit
+  Genehmigung der Genfer Bibelgesellschaft anbietet. Die Aussage in `README.md`,
+  alle Datenquellen seien Public Domain oder CC-BY, ist auf die Quellen
+  eingegrenzt, die dieses Repository lädt.
+- **`SECURITY.md` nennt die gehostete Instanz.** Das Sicherheitsmodell beschrieb
+  bisher allein den stdio-Betrieb. Der neue Absatz benennt Tunnel,
+  Ratenbegrenzung und die absichtlich fehlende Authentifizierung.
+- Die Bun-Untergrenze 1.2.0 aus `README.md` ist jetzt gemessen statt abgeleitet:
+  864 Golden-Zusicherungen, 57 über HTTP, 593 Schema-Prüfungen, alle grün.
+
 ## [0.6.15] - 2026-08-07
 
 ### Geändert

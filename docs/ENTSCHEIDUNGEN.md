@@ -1141,6 +1141,22 @@ Geprüft vor dem Angleichen, dass die neuere Fassung nichts bricht: Typecheck,
 Golden-, HTTP- und Schema-Tests liefen unter 1.3.14 grün, den Serverprozess
 eingeschlossen (07.08.2026).
 
+### Die Untergrenze ist seit dem 08.08.2026 gemessen
+
+Das andere Ende der Spanne ist die Fassung, die die README zusagt. Sie stand dort
+mit einer Begründung, aber ohne Messung, abgeleitet aus dem mitgelieferten
+Text-`bun.lock`. Nachgeholt gegen **Bun 1.2.0**, alles auf dieser Fassung und den
+Serverprozess eingeschlossen. Der Server startet und meldet die Datenbank, 864
+Golden-Zusicherungen, 57 über HTTP, 593 Antworten gegen ihr Schema, und
+`bun install --frozen-lockfile` liest die Sperrdatei ohne Beanstandung. Die
+Zusage hält.
+
+Damit sind beide Enden belegt, 1.2.0 bis 1.3.14. Der Lauf gegen die Untergrenze
+gehört wiederholt, sobald eine Bun-API in den Code kommt, die 1.2.0 nicht kennt.
+Sein Ergebnis ist dann entweder „hält" oder „die Untergrenze in der README muss
+hoch", und das Zweite ist eine Korrektur der Zusage und keine brechende
+Änderung, weil der Code dort ohnehin nicht mehr liefe.
+
 ---
 
 ## Eine übergangene Angabe gehört ins Ergebnis, auch in der Konkordanz
@@ -1185,3 +1201,60 @@ Deklarationen statt einer und entfernte ein deklariertes Feld, was gegenüber
 der Regel „Feldänderungen sind Breaking Changes" die teurere Seite ist.
 Belassen, und hier festgehalten, damit der Befund nicht ein zweites Mal erhoben
 wird.
+
+---
+
+## `server.json` trägt einen Platzhalter, damit die Version an einer Stelle bleibt
+
+Für die Aufnahme in `registry.modelcontextprotocol.io` liegt seit dem 17.08.2026
+eine `server.json` im Wurzelverzeichnis. Ihr Feld `version` ist im Schema
+**Pflicht**, und keine Laufzeitstelle liest die Datei: Es gibt also keinen Weg,
+die Zahl dort zur Laufzeit aus `package.json` zu holen.
+
+Der erste Entwurf schloss daraus, die Zahl müsse dort gepflegt werden, und wollte
+sie über ein Gate in `release.yml` an `package.json` binden. Das hätte die Regel
+„die Version lebt einzig in `package.json`" aufgeweicht, die an fünf Stellen
+steht, zwei davon öffentlich (`src/server.ts:108`, `release.yml:48`). Der Anlass
+dieser Regel ist der v0.3.0-Vorfall, dokumentiert am Kommentar zu
+`createServer()`.
+
+**Gewählt ist stattdessen das Muster, das das Bundle-Manifest schon geht.**
+`mcpb/manifest.json` trägt `0.0.0`, und `scripts/build-mcpb.ts` setzt die echte
+Zahl in die Build-Ausgabe. `server.json` macht es ebenso: Der Publish kopiert die
+Datei, schreibt die Version aus `package.json` hinein und veröffentlicht die
+Kopie. Damit bleibt die Regel wörtlich wahr, und keine der fünf Stellen war
+anzufassen.
+
+Gemessen am 17.08.2026 mit `mcp-publisher` 1.8.1: `validate` nimmt einen
+expliziten Pfad, nimmt die Standarddatei in einem fremden Arbeitsverzeichnis, und
+`"version": "0.0.0"` ist gültig, jeweils exit 0. Der Workflow weist die
+Veröffentlichung ausdrücklich ab, wenn nach der Injektion noch `0.0.0` oder ein
+leerer Wert in der Kopie steht; beide Fälle wurden mit Fehlereinbau geprüft.
+
+### Verworfen: die Prerelease-Form für Metadaten-Korrekturen
+
+Die Registry-Doku empfiehlt Prerelease-Versionen für Veröffentlichungen, die nur
+Metadaten ändern. Für eine **Korrektur nach dem Publish** trägt das nicht, denn
+dieselbe Doku sagt: „if you publish a prerelease version *after* its
+corresponding regular version, the prerelease version will **not** be marked as
+'latest'." Eine nachgeschobene `0.6.15-1` wäre veröffentlicht und unsichtbar.
+Deshalb steht im Workflow keine Suffix-Behandlung, und der Weg für eine
+Metadaten-Korrektur heißt: beim nächsten Release mitnehmen.
+
+### Der Publish hängt am Deploy, nicht am Tag
+
+Ein Eintrag ohne `packages` beschreibt mit `version` den Stand des **Endpunkts**,
+und den setzt das Ausrollen, nicht der Tag. Ein Publish an `release.yml` gehängt
+würde eine Version ankündigen, die öffentlich noch nicht anliegt. Der Workflow
+`registry-publish.yml` läuft darum nur von Hand, misst die Version am Endpunkt
+und bricht ab, wenn sie von `package.json` abweicht.
+
+### Was unumkehrbar ist und was nicht
+
+Eine veröffentlichte Versionszeichenkette ist unveränderlich, ihre Metadaten
+ebenso; das Ändern bräuchte ein `edit`-Recht, das der DNS-Schlüssel nicht trägt.
+Was er trägt, ist `publish`, und damit lässt sich eine Version über
+`mcp-publisher status` auf `deprecated` oder `deleted` setzen. Ein Rückweg
+existiert also, nur kein korrigierender. Das Anmeldetoken lebt **fünf Minuten**
+(gemessen 17.08.2026), jeder Vorgang beginnt deshalb mit einer frischen
+Anmeldung.

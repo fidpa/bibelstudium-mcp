@@ -35,8 +35,10 @@ gespeichert; die Quelle enthält kein Markup (geprüft am 28.07.2026 über alle
 
 **Namensnennung Schlachter 2000:** © 2000 Genfer Bibelgesellschaft.
 
-Die Ausgabe ist nicht Teil dieses Repositories und wird von `bible_setup` nicht
-geladen; eine selbst aufgebaute Datenbank führt sie nicht.
+Der gehostete Dienst unter `mcp.bibelstudium-mcp.de` bietet die Ausgabe mit
+Genehmigung der Genfer Bibelgesellschaft an. Sie ist nicht Teil dieses
+Repositories und wird von `bible_setup` nicht geladen; eine selbst aufgebaute
+Datenbank führt sie nicht.
 
 ## Grundtexte & Morphologie
 

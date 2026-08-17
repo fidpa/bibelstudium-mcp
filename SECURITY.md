@@ -42,3 +42,12 @@ Nutzer zu laufen:
 - Setze den stdio-Server **keinen** nicht vertrauenswürdigen Eingaben aus und
   stelle ihn nicht ohne eigene Authentifizierung und Ratenbegrenzung als
   öffentlichen Netzwerkdienst bereit, denn dafür ist er nicht ausgelegt
+
+Davon abweichend gibt es **eine** öffentlich erreichbare Instanz, betrieben unter
+`mcp.bibelstudium-mcp.de`: hinter einem Tunnel, mit Ratenbegrenzung davor, an
+`127.0.0.1` gebunden und im HTTP-Modus, der schreibende Werkzeuge gar nicht
+anbietet. Sie ist **absichtlich** ohne Authentifizierung, weil Clients sie nur so
+als Connector einbinden können, und sie liefert ausschließlich Bibeltext. Der Satz
+oben bleibt der Maßstab für jede selbst betriebene Instanz: Bundle und Selbstbau
+sprechen stdio, und wer daraus einen Netzwerkdienst macht, baut die beiden
+Schutzschichten selbst.
