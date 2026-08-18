@@ -33,6 +33,9 @@ import { resolve, dirname } from "node:path";
 // Geteilt mit den Golden-Tests. Der Kern hängt an nichts weiter: Diese Datei
 // bleibt datenunabhängig und damit die einzige, die auch in der CI laufen kann.
 import { abschluss, check, eq, has, lacks } from "./lib/zusicherungen.ts";
+// Die Namensliste, unter der die Zähler geführt werden. Aus `metriken.ts` und
+// nicht aus `server.ts`: Letzteres startet beim Import einen Server.
+import { WERKZEUG_NAMEN } from "../src/metriken.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "src/server.ts");
 
@@ -135,8 +138,8 @@ type Probe = {
  * ein ungelesener Rumpf hielte die Verbindung offen, und der Testprozess endete
  * erst mit dem `idleTimeout` von 120 Sekunden.
  */
-async function probe(path: string, init: RequestInit = {}): Promise<Probe> {
-  const res = await fetch(`${BASE}${path}`, init);
+async function probe(path: string, init: RequestInit = {}, basis = BASE): Promise<Probe> {
+  const res = await fetch(`${basis}${path}`, init);
   const body = await res.text();
   return {
     status: res.status,
@@ -369,6 +372,180 @@ try {
   }
 } finally {
   server2.stop();
+}
+
+// --- Lauf 3: der Metrik-Endpunkt ---------------------------------------------
+
+/**
+ * Warum ein eigener Lauf und ein eigener Port.
+ *
+ * Der Zähler-Endpunkt entsteht nur mit gesetztem `MCP_METRICS_PORT`, und die
+ * eigentliche Zusage ist nicht, dass es ihn gibt, sondern **wo es ihn nicht
+ * gibt**: Wo ein Tunnel einen ganzen Hostnamen auf den MCP-Port leitet, wäre
+ * ein `/metrics` an jenem Port öffentlich. Die 404 dort steht schon in
+ * „Unbekannte Pfade" oben, aber ohne laufenden Zähler-Listener beweist sie
+ * nichts über den Fall, um den es geht.
+ *
+ * Eigener Port aus demselben Grund wie 8939 oben: Der Server schaltet
+ * `reusePort` ab, ein anderweitig belegter Port ergäbe hier also gar keinen
+ * Listener, und die Prüfungen fielen mit einer Meldung aus, die auf den
+ * falschen Punkt zeigt.
+ */
+const METRIK_PORT = 9469;
+const METRIK_BASIS = `http://127.0.0.1:${METRIK_PORT}`;
+const server3 = await start({ MCP_METRICS_PORT: String(METRIK_PORT) });
+
+try {
+  console.log("Metrik-Endpunkt");
+  {
+    const fremd = await probe("/metrics");
+    eq("/metrics am MCP-Port: 404, auch mit laufendem Zähler", fremd.status, 404);
+
+    const m = await probe("/metrics", {}, METRIK_BASIS);
+    eq("GET /metrics: 200", m.status, 200);
+    has("GET /metrics: Textformat", m.contentType ?? "", "text/plain");
+    has("GET /metrics: Werkzeugzähler", m.body, "bibelstudium_mcp_werkzeug_aufrufe_total");
+    has("GET /metrics: Promptzähler", m.body, "bibelstudium_mcp_prompt_aufrufe_total");
+    has("GET /metrics: Ressourcenzähler", m.body, "bibelstudium_mcp_ressource_aufrufe_total");
+
+    // Weder Bibelstelle noch Suchbegriff noch URI: Was hier auftauchte, wäre
+    // Abfrageinhalt, und den hält dieser Server nirgends fest.
+    lacks("GET /metrics: keine Ressourcen-URI", m.body, "bible://");
+    lacks("GET /metrics: keine lokalen Pfade", m.body, "/home/");
+
+    // Die Gegenrichtung: Jeder registrierte Name muss dastehen. Ohne diese
+    // Prüfung bliebe ein neues Werkzeug ohne Zähler unbemerkt.
+    for (const name of WERKZEUG_NAMEN) {
+      has(`GET /metrics: Zähler für ${name}`, m.body, `werkzeug="${name}"`);
+    }
+    has("GET /metrics: Auffangzähler", m.body, 'werkzeug="unbekannt"');
+
+    // Dass die Zähler dastehen, sagt nichts darüber, dass sie zählen. Deshalb
+    // wird hier wirklich aufgerufen und die Summe davor mit der danach
+    // verglichen.
+    //
+    // Gemessen wird über die Summe je Werkzeug, nicht über ein einzelnes
+    // Ergebnis-Label: Ob ein Aufruf als `ok` oder als `fehler` endet, hängt
+    // daran, ob eine Datenbank daliegt, und diese Datei bleibt datenunabhängig.
+    // Ein unbekannter Werkzeugname endet aus demselben Grund einmal als
+    // `abgewiesen` und einmal als `fehler`, landet aber immer unter `unbekannt`.
+    const summe = (text: string, label: string): number =>
+      text
+        .split("\n")
+        .filter((z) => z.startsWith("bibelstudium_mcp_") && z.includes(label))
+        .reduce((acc, z) => acc + Number(z.slice(z.lastIndexOf(" ") + 1)), 0);
+
+    const vorher = m.body;
+    await probe("/mcp", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "bible_lookup", arguments: { book: "Johannes", chapter: 3, verses: "16" } },
+      }),
+    });
+    await probe("/mcp", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "bible_gibtsnicht", arguments: {} },
+      }),
+    });
+    await probe("/mcp", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "prompts/get",
+        params: { name: "word-study", arguments: { word: "agape" } },
+      }),
+    });
+    const nachher = (await probe("/metrics", {}, METRIK_BASIS)).body;
+
+    eq(
+      "Werkzeugaufruf wird gezählt",
+      summe(nachher, 'werkzeug="bible_lookup"') - summe(vorher, 'werkzeug="bible_lookup"'),
+      1
+    );
+    eq(
+      "unbekanntes Werkzeug landet im Auffangzähler",
+      summe(nachher, 'werkzeug="unbekannt"') - summe(vorher, 'werkzeug="unbekannt"'),
+      1
+    );
+    eq(
+      "Prompt-Abruf wird gezählt",
+      summe(nachher, 'prompt="word-study"') - summe(vorher, 'prompt="word-study"'),
+      1
+    );
+    eq(
+      "ein fremder Werkzeugname legt keine eigene Zeitreihe an",
+      nachher.includes("bible_gibtsnicht"),
+      false
+    );
+
+    // Die beiden Ausgänge, die sich ohne Wissen über den Datenbestand festnageln
+    // lassen, und damit die einzige Stelle, an der die Einordnung selbst geprüft
+    // wird und nicht nur die Summe: `bible_server_info` steht vor der Sperre und
+    // antwortet immer, ein `bible_lookup` ohne Argumente endet immer mit
+    // `isError` (mit Datenbank an der fehlenden Buchangabe, ohne sie an der
+    // Sperre davor).
+    const zaehle = (text: string, zeile: string): number => {
+      const treffer = text.split("\n").find((z) => z.startsWith(zeile + " "));
+      return treffer === undefined ? -1 : Number(treffer.slice(treffer.lastIndexOf(" ") + 1));
+    };
+    await probe("/mcp", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "bible_server_info", arguments: {} },
+      }),
+    });
+    await probe("/mcp", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "bible_compare", arguments: {} },
+      }),
+    });
+    const zuletzt = (await probe("/metrics", {}, METRIK_BASIS)).body;
+    eq(
+      "geglückter Aufruf zählt als ok",
+      zaehle(
+        zuletzt,
+        'bibelstudium_mcp_werkzeug_aufrufe_total{werkzeug="bible_server_info",ergebnis="ok"}'
+      ),
+      1
+    );
+    eq(
+      "Werkzeugfehler zählt als fehler",
+      zaehle(
+        zuletzt,
+        'bibelstudium_mcp_werkzeug_aufrufe_total{werkzeug="bible_compare",ergebnis="fehler"}'
+      ),
+      1
+    );
+
+    const gepostet = await probe("/metrics", { method: "POST" }, METRIK_BASIS);
+    eq("POST /metrics: 405", gepostet.status, 405);
+    eq("POST /metrics: Allow", gepostet.allow, "GET, HEAD");
+
+    const anderer = await probe("/health", {}, METRIK_BASIS);
+    eq("Metrikport kennt nur /metrics", anderer.status, 404);
+  }
+} finally {
+  server3.stop();
 }
 
 abschluss();

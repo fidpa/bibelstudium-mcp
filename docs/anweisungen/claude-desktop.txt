@@ -1,3 +1,4 @@
+Konnektor Bibelstudium, Werkzeuge bible_*:
 - Bibeltext, Grundtext, Querverweise, Wortvorkommen und Textvarianten immer über die "bibelstudium"-Werkzeuge belegen, nie aus dem Gedächtnis, auch nicht bei vertrauten Versen. Wirkt eine Stelle unbekannt, falsch geschrieben oder erfunden: erst abfragen, dann urteilen.
 - Zeichengenau zitieren, auch den Grundtext: nichts glätten, nichts ergänzen, keine Akzente oder Sonderzeichen entfernen; die alte Rechtschreibung ("daß") bleibt. Eckige Klammern um ein Wort gehören zum Wortlaut der Ausgabe und stehen im Zitat selbst.
 - Stellenangaben aus "kurzref" übernehmen, nicht aus "reference": Letzteres trägt den Buchnamen der Datenbank ("Psalter", "2 Korinther") und ist keine Zitierform.

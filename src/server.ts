@@ -39,11 +39,22 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type {
   CallToolRequest,
+  CallToolResult,
   GetPromptRequest,
   ReadResourceRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import packageJson from "../package.json";
 import { DB_PATH } from "./db-path.ts";
+import {
+  WERKZEUG_NAMEN,
+  metrikenText,
+  registrierePrompts,
+  registriereRessourcen,
+  registriereWerkzeuge,
+  zaehlePrompt,
+  zaehleRessource,
+  zaehleWerkzeug,
+} from "./metriken.ts";
 import {
   HTTP_MODE,
   SETUP_CLI,
@@ -1101,6 +1112,13 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
   const name = request.params.name;
   const args = (request.params.arguments ?? {}) as Record<string, string>;
 
+  // Vor der Auswertung, also gezählt werden Versuche und nicht geglückte
+  // Abrufe: Ein fehlendes Pflichtargument wirft weiter unten, und gerade das
+  // ist eine Beobachtung, die interessiert. Ein unbekannter Name fällt in
+  // `zaehlePrompt` auf ein festes Label, sonst legte ein anonymer Aufrufer mit
+  // erfundenen Namen beliebig viele Zeitreihen an.
+  zaehlePrompt(name);
+
   let text: string;
   if (name === "word-study") {
     const word = promptArg(args, "word", true);
@@ -1610,6 +1628,10 @@ const handleReadResource = async (request: ReadResourceRequest) => {
   }
 
   const kind = segments[0] ?? "";
+  // Die Art, nie die URI: Die trägt Buch, Kapitel und Vers, also genau den
+  // Abfrageinhalt, der nirgends festgehalten wird, und wäre in der Anzahl
+  // ihrer Werte nach oben offen.
+  zaehleRessource(kind);
   const rest = segments.slice(1);
   let payload: Record<string, unknown>;
 
@@ -1881,7 +1903,15 @@ function handleServerInfo() {
 }
 
 // --- MCP-Server: Verteilung der Anfragen an die Werkzeug-Handler -----------
-const handleCallTool = async (request: CallToolRequest) => {
+/**
+ * Die Rückgabe ist annotiert, nicht inferiert, und das ist notwendig.
+ *
+ * Ohne Annotation bildet TypeScript eine Vereinigung aus den Rückgaben aller
+ * Handler, und zwei davon tragen kein `isError`: `jsonResult()` und der
+ * Planzweig von `handleSetup`. Der Zugriff darauf in der Hülle unten wäre
+ * dann TS2339, und `strict` lässt das nicht durchgehen.
+ */
+const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResult> => {
   const toolName = request.params.name;
   // `arguments` ist im MCP-Schema optional, und Clients lassen es tatsächlich
   // weg, wenn das Modell ein Werkzeug ohne Parameter aufruft. Ohne diesen
@@ -1990,7 +2020,55 @@ const handleCallTool = async (request: CallToolRequest) => {
   return handleLookup(rawArgs);
 };
 
+/**
+ * Zählt jeden Werkzeugaufruf und lässt die Kette darunter unberührt.
+ *
+ * Als Hülle statt als Zeile im Dispatch, weil dessen Reihenfolge trägt: Die
+ * `dataMissing`-Sperre steht vor den Lesewerkzeugen, und der Wurf für einen
+ * unbekannten Namen steht als Negation dahinter, damit eine Instanz ohne Daten
+ * auch auf einen falschen Namen den Setup-Hinweis liefert und nicht `-32602`.
+ * Wer dort etwas einfügt, fällt leicht in eine Umsortierung, die kein Test
+ * bemerkt.
+ *
+ * Die drei Ausgänge sind die drei Antwortarten dieses Servers: ein Ergebnis,
+ * ein Werkzeugfehler mit `isError`, ein geworfener JSON-RPC-Fehler. Der vierte
+ * Fall ist keiner davon: `handleSetup` fährt die Download-Skripte, dort kommen
+ * Netz- und Dateisystemfehler als nacktes `Error` an. Sie als `abgewiesen` zu
+ * buchen verwischte genau den Unterschied, dessentwegen gezählt wird.
+ */
+const handleCallTool = async (request: CallToolRequest): Promise<CallToolResult> => {
+  const name = request.params.name;
+  try {
+    const ergebnis = await dispatchCallTool(request);
+    zaehleWerkzeug(name, ergebnis.isError === true ? "fehler" : "ok");
+    return ergebnis;
+  } catch (fehler) {
+    // `rpcError()` setzt ein numerisches `code`; ein nacktes `Error` hat keines.
+    const abgewiesen =
+      typeof fehler === "object" &&
+      fehler !== null &&
+      typeof (fehler as { code?: unknown }).code === "number";
+    zaehleWerkzeug(name, abgewiesen ? "abgewiesen" : "ausnahme");
+    throw fehler;
+  }
+};
+
 // --- MCP-Server: Aufbau und Werkzeug-Registrierung -------------------------
+// Registriert wird auf Modulebene, also vor der ersten Anfrage. Erst dadurch
+// steht jeder Zähler von Anfang an auf null, statt beim ersten Aufruf aus dem
+// Nichts aufzutauchen. Die Werkzeugnamen stehen in `metriken.ts`, die
+// Prompt- und Ressourcennamen leiten sich aus den Tabellen ab, die es hier
+// ohnehin gibt, und können deshalb nicht auseinanderlaufen.
+registriereWerkzeuge(WERKZEUG_NAMEN);
+registrierePrompts(PROMPTS.map((p) => p.name));
+// Das erste Segment hinter dem Schema ist die Art, und genau darauf prüft
+// `handleReadResource`. Zwei Zugriffe, weil die feste Liste ihre Adresse unter
+// `uri` führt und die Vorlagen unter `uriTemplate`.
+registriereRessourcen([
+  ...RESOURCES.map((r) => r.uri.slice(URI_SCHEME.length).split("/")[0] ?? ""),
+  ...RESOURCE_TEMPLATES.map((t) => t.uriTemplate.slice(URI_SCHEME.length).split("/")[0] ?? ""),
+]);
+
 // Eine Fabrik, kein Singleton: Ein `Server` bindet genau einen Transport, der
 // HTTP-Modus unten braucht deshalb je Anfrage eine frische Instanz. Alles
 // Teure (Datenbank, vorbereitete Statements, die Werkzeugliste) liegt auf
@@ -2094,6 +2172,9 @@ const CORS_HEADERS: Readonly<Record<string, string>> = {
  */
 const METHODS_MCP = "POST, OPTIONS";
 const METHODS_HEALTH = "GET, HEAD, OPTIONS";
+// Ohne OPTIONS: Der Metrik-Endpunkt spricht mit keinem Browser, es gibt dort
+// keine Vorabanfrage zu beantworten.
+const METHODS_METRIKEN = "GET, HEAD";
 
 /**
  * Warum /health die Datenbank abfragt, statt `dataMissing` zu melden.
@@ -2477,6 +2558,89 @@ async function serveHttp(port: number): Promise<void> {
   }
 }
 
+/**
+ * Der Metrik-Endpunkt, zuzuschalten über MCP_METRICS_PORT.
+ *
+ * **Ein eigener Listener, kein Pfad am MCP-Port, und das ist der Kern.** Wo
+ * dieser Server hinter einem Tunnel oder Reverse Proxy liegt, wird in aller
+ * Regel ein ganzer Hostname auf seinen Port geleitet, ohne Regel je Pfad. Ein
+ * `/metrics` am selben Port wäre damit öffentlich, und keine Herkunftsprüfung
+ * hilft: Der Proxy verbindet von 127.0.0.1 und ist am Socket nicht von einem
+ * lokalen Aufrufer zu unterscheiden. Ein zweiter Port lässt sich dagegen
+ * einfach nicht veröffentlichen.
+ *
+ * **Ein Bindefehler darf den Server nicht beenden.** `Bun.serve` wirft synchron,
+ * und zwar sowohl bei belegtem Port als auch bei einer Adresse, die es auf
+ * dieser Maschine nicht gibt, beide Male mit derselben Meldung „Failed to start
+ * server. Is port … in use?" (gemessen 18.08.2026). Ungefangen liefe der Wurf
+ * bis in den `catch`-Zweig von `main()` und damit in `process.exit(1)`: Ein
+ * Merkmal zur Beobachtung des Dienstes legte den Dienst still, und das in genau
+ * den Lagen, in denen ohnehin etwas klemmt, etwa wenn die Netzwerkadresse beim
+ * Systemstart noch nicht steht. Deshalb wird gefangen, gemeldet und
+ * weitergemacht.
+ *
+ * Die Startmeldung sagt bewusst nicht „running on": Auf diese Zeichenfolge
+ * wartet der Testtreiber, um den MCP-Listener als bereit zu erkennen.
+ */
+function serveMetrics(): void {
+  const portRaw = process.env["MCP_METRICS_PORT"];
+  if (portRaw === undefined || portRaw === "") return;
+
+  const port = Number(portRaw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    // Nicht geworfen, aus demselben Grund wie unten: Ein Tippfehler in einer
+    // Nebensache soll den Bibelserver nicht am Starten hindern.
+    console.error(
+      `MCP_METRICS_PORT ist keine gültige Portnummer: ${portRaw}. Metriken bleiben aus.`
+    );
+    return;
+  }
+
+  // Vorgabe wie beim MCP-Port: nur lokal. Wer die Zahlen aus einem anderen
+  // Rechner abholen will, setzt die Adresse ausdrücklich.
+  const host = process.env["MCP_METRICS_HOST"] ?? "127.0.0.1";
+
+  try {
+    Bun.serve({
+      port,
+      hostname: host,
+      development: false,
+      // Ohne diese Zeile teilen sich zwei Prozesse den Port stillschweigend.
+      // Bun setzt SO_REUSEPORT von sich aus: Ein zweiter Serverprozess band
+      // denselben Port anstandslos, beide erschienen als LISTEN, und der Kern
+      // verteilte die Abrufe zwischen ihnen (gemessen 18.08.2026). Für eine
+      // Überwachung ist das der schlechteste aller Ausgänge, denn jeder Abruf
+      // trifft zufällig einen der beiden Zählerstände, und nichts daran sieht
+      // nach einem Fehler aus. Mit `false` wirft der zweite Prozess stattdessen,
+      // und der `catch` unten macht daraus eine Zeile im Protokoll.
+      reusePort: false,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname !== "/metrics") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return new Response(null, { status: 405, headers: { allow: METHODS_METRIKEN } });
+        }
+        // Keine CORS-Kopfzeilen: Diese Antwort geht an eine Überwachung, nicht
+        // an einen Browser.
+        return new Response(metrikenText(), {
+          headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8" },
+        });
+      },
+    });
+  } catch (fehler) {
+    console.error(
+      `Metriken nicht verfügbar: ${host}:${port} ließ sich nicht binden ` +
+        `(${fehler instanceof Error ? fehler.message : String(fehler)}). ` +
+        "Der Bibelserver läuft weiter."
+    );
+    return;
+  }
+
+  console.error(`Metriken bereit auf http://${host}:${port}/metrics`);
+}
+
 async function main(): Promise<void> {
   /**
    * Baut die Datenbank auf und endet: das Gegenstück zu bible_setup für die
@@ -2520,6 +2684,7 @@ async function main(): Promise<void> {
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new Error(`MCP_HTTP_PORT ist keine gültige Portnummer: ${portRaw}`);
     }
+    serveMetrics();
     await serveHttp(port);
     return;
   }

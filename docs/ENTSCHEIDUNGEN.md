@@ -27,6 +27,7 @@ Platzhalter.
 - [Ein Aufruferfehler ist kein interner Fehler, und `McpError` ist der falsche Weg dorthin](#ein-aufruferfehler-ist-kein-interner-fehler-und-mcperror-ist-der-falsche-weg-dorthin)
 - [Protokollversionen werden protokolliert, statt auf ein Datum zu warten](#protokollversionen-werden-protokolliert-statt-auf-ein-datum-zu-warten)
 - [Für Clients beider Ären bleiben wir als alter Server erkennbar](#für-clients-beider-ären-bleiben-wir-als-alter-server-erkennbar)
+- [Die Zähler liegen auf einem eigenen Port, und sie zählen Namen statt Anfragen](#die-zähler-liegen-auf-einem-eigenen-port-und-sie-zählen-namen-statt-anfragen)
 
 **[Was die Werkzeuge ausliefern](#was-die-werkzeuge-ausliefern)**
 - [Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist](#ausgabeschemata-von-hand-und-warum-required-die-teuerste-zeile-ist)
@@ -445,6 +446,58 @@ zum modernen Server, und der Client hörte auf zurückzufallen.
 ---
 
 # Was die Werkzeuge ausliefern
+
+---
+
+## Die Zähler liegen auf einem eigenen Port, und sie zählen Namen statt Anfragen
+
+*Gemessen 18.08.2026.*
+
+Welches Werkzeug tatsächlich benutzt wird, war an einem laufenden Endpunkt nicht
+zu beantworten. Ein vorgelagerter Tunnel oder Proxy sieht ausschließlich
+`POST /mcp`, denn der Werkzeugname steht im Rumpf; das Journal enthält Start,
+Datenbank und Protokollrevision und sonst nichts.
+
+**Warum ein Zähler und kein Protokoll.** Abfragen an einen Bibeldienst erlauben
+Rückschlüsse auf religiöse Überzeugungen. Eine Zeile je Anfrage wäre genau die
+Verknüpfung, die dieser Server nicht anlegt, und sie wäre auch dann heikel, wenn
+sie keine Adresse enthielte, weil Zeitpunkt und Reihenfolge eine Sitzung
+nachzeichnen. Ein Aggregat trägt diese Information nicht: Es steht dort eine
+Summe je Werkzeug, und sonst nichts. Gezählt werden deshalb Namen, und zwar
+nur die: kein Argument, keine Stelle, kein Suchbegriff, keine Ressourcen-URI.
+Bei den Ressourcen ist das Label die **Art** (`vers`, `kapitel`, `grundtext`),
+nie die URI, denn die trägt Buch, Kapitel und Vers.
+
+**Warum ein eigener Port.** Ein `/metrics` neben `/mcp` wäre öffentlich, sobald
+ein Tunnel einen ganzen Hostnamen auf den Port leitet, und das ist der
+Regelfall. Eine Herkunftsprüfung rettet das nicht: Der Proxy verbindet von
+`127.0.0.1` und ist am Socket von einem lokalen Aufrufer nicht zu unterscheiden.
+Ein zweiter Port lässt sich dagegen einfach nicht veröffentlichen. Ohne
+`MCP_METRICS_PORT` entsteht er gar nicht.
+
+**Zwei Messungen, die den Entwurf geändert haben.**
+
+`Bun.serve` wirft synchron, wenn es nicht binden kann, und zwar sowohl bei
+belegtem Port als auch bei einer Adresse, die es auf der Maschine nicht gibt,
+beide Male mit der Meldung „Failed to start server. Is port … in use?". Der Wurf
+wäre bis in den Abbruchpfad des Bootstraps gelaufen und hätte den Prozess
+beendet: Ein Merkmal zur Beobachtung des Dienstes hätte den Dienst stillgelegt,
+und ausgerechnet in Lagen, in denen ohnehin etwas klemmt. Er wird deshalb
+gefangen, gemeldet, und der Server läuft ohne Zähler weiter.
+
+Schwerer wog der zweite Befund. **Bun setzt `SO_REUSEPORT` von sich aus:** Ein
+zweiter Serverprozess band denselben Port anstandslos, beide erschienen als
+`LISTEN`, und der Kern verteilte die Abrufe zwischen ihnen. Für eine Überwachung
+ist das der schlechteste aller Ausgänge, denn jeder Abruf trifft zufällig einen
+der beiden Zählerstände, die Zahlen springen, und nichts daran sieht nach einem
+Fehler aus. Mit `reusePort: false` wirft der zweite Prozess stattdessen, und aus
+dem stillen Falschwert wird eine Zeile im Protokoll.
+
+**Was die Zähler nicht erfassen.** Ressourcenabrufe werden nach der Zerlegung
+der URI gezählt; wer an der Datenprüfung davor scheitert, taucht nicht auf.
+Prompt-Abrufe zählen Versuche, auch gescheiterte, weil der Zählpunkt vor der
+Argumentprüfung liegt. Beides ist Absicht, aber es heißt, dass die drei Metriken
+nicht gegeneinander aufrechenbar sind.
 
 ## Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist
 

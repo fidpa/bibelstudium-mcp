@@ -18,6 +18,7 @@ import packageJson from "../../package.json";
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 import { INTERNAL_ERROR, NO_ERROR } from "../lib/mcp-client.ts";
+import { WERKZEUG_NAMEN } from "../../src/metriken.ts";
 
 
 export const ohneDatenbankBuendel = buendel({
@@ -102,6 +103,20 @@ export const ohneDatenbankBuendel = buendel({
     const namen = ctx.tools.map((t) => String(t.name));
     eq("tools/list ohne Datenbank: acht Werkzeuge", namen.length, 8);
     check("tools/list ohne Datenbank: bietet bible_setup an", namen.includes("bible_setup"));
+
+    // Der Wächter gegen ein Werkzeug ohne Zähler.
+    //
+    // Die Namen, unter denen gezählt wird, stehen in `src/metriken.ts` als
+    // eigene Liste, weil `handleListTools` seine Liste inline aufbaut. Zwei
+    // Listen laufen auseinander, sobald jemand nur eine anfasst, und der Zähler
+    // schwiege dann still: Ein neues Werkzeug fiele unter `unbekannt` und
+    // verfälschte dort die Zahl, ohne dass etwas rot würde. Hier ist der eine
+    // Ort, an dem sich beide Seiten vollständig vergleichen lassen, denn nur
+    // ohne Datenbank bietet der Server auch `bible_setup` an.
+    eq("Zählerliste so lang wie die Werkzeugliste", WERKZEUG_NAMEN.length, namen.length);
+    for (const name of WERKZEUG_NAMEN) {
+      check(`Zählerliste deckt ${name}`, namen.includes(name));
+    }
   },
 });
 

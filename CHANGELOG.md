@@ -6,6 +6,32 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.17] - 2026-08-18
+
+### Ergänzt
+
+- **Aufrufzähler für Prometheus, zuzuschalten über `MCP_METRICS_PORT`.** Ein
+  zweiter Port liefert unter `/metrics`, wie oft jedes Werkzeug, jeder Prompt und
+  jede Ressourcenart aufgerufen wurde, bei den Werkzeugen nach Ausgang getrennt
+  (`ok`, `fehler`, `abgewiesen`, `ausnahme`). Ohne die Variable entsteht der Port
+  nicht; `MCP_METRICS_HOST` überschreibt die Bindung an `127.0.0.1`.
+
+  Gezählt werden ausschließlich Namen: keine Argumente, keine Bibelstelle, kein
+  Suchbegriff, keine Ressourcen-URI, keine Quelladresse. Bei Ressourcen ist das
+  Label die Art (`vers`, `kapitel`, `grundtext`); unbekannte Namen fallen auf
+  `unbekannt`, damit ein fremder Aufrufer keine eigenen Zeitreihen anlegen kann.
+
+  **Ein eigener Port statt eines Pfades neben `/mcp`**, weil ein Tunnel in aller
+  Regel jeden Pfad eines Hostnamens auf den MCP-Port leitet: Dort antwortet
+  `/metrics` weiterhin mit 404, und das ist in den Transporttests festgehalten.
+  Ist der Metrikport nicht bindbar, meldet der Server das auf stderr und läuft
+  ohne Zähler weiter.
+
+### Geändert (Dokumentation)
+
+- Die Client-Anweisungen unter `docs/anweisungen/` tragen eine Kopfzeile, die den
+  Konnektor und das Namensmuster der Werkzeuge benennt.
+
 ## [0.6.16] - 2026-08-17
 
 ### Ergänzt

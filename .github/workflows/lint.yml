@@ -133,6 +133,19 @@ jobs:
             echo "::error::bible_setup was not refused in HTTP mode"; exit 1
           fi
 
+      - name: Transport regressions (test:http)
+        run: |
+          # Data-independent by construction: it asserts status codes, Allow
+          # values, origin handling and the metrics endpoint, never verse text.
+          # It runs here, in the job that has no database, because that is the
+          # state it is written for. The assertion that matters most for a
+          # public endpoint is that /metrics answers 404 on the MCP port even
+          # while a metrics listener is up: a tunnel routes every path of a
+          # hostname to that port, so a counter exposed there would be world
+          # readable.
+          rm -f data/bible.db
+          bun run test:http
+
   yaml:
     name: YAML (yamllint)
     runs-on: ubuntu-latest

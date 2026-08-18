@@ -204,6 +204,11 @@ Der Modus startet nur mit gesetztem `MCP_HTTP_PORT` und bindet ohne
 `OPTIONS`) und `/health` (nur `GET` und `HEAD`, dazu `OPTIONS`). Jede andere
 Methode antwortet mit 405 und nennt die erlaubten in der Kopfzeile `Allow`.
 
+`/metrics` gehört **nicht** dazu und antwortet auf diesem Port mit 404. Die
+Zähler liegen auf einem eigenen Port, den `MCP_METRICS_PORT` zuschaltet; ohne
+die Variable gibt es sie gar nicht. Wer sie erwartet und eine 404 bekommt, hat
+den falschen Port gefragt.
+
 ### `/health` antwortet mit 503
 
 Der Prozess läuft, die Datenbank nicht. Der Grund steht im Rumpf:

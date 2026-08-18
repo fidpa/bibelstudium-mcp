@@ -96,6 +96,32 @@ Server im MCP-Client registrieren, z. B. `.mcp.json` für Claude Code:
 
 Wo die Datenbank liegt, entscheidet `db-path.ts`. `BIBLE_DB_PATH` hat Vorrang, sonst gilt `data/bible.db` neben dem Repository, und bei einem installierten Bundle der Benutzerordner (unter macOS `~/Library/Application Support/bibelstudium-mcp/`). Das Arbeitsverzeichnis des Clients spielt in keinem Fall eine Rolle.
 
+### Gehosteter Dienst: ohne Installation
+
+Es gibt eine öffentlich betriebene Instanz. Sie braucht kein Bun, keinen Download
+und keine Datenbank:
+
+```
+https://mcp.bibelstudium-mcp.de/mcp
+```
+
+Der Transport ist Streamable HTTP. Wo ein Client einen eigenen MCP-Server per URL
+aufnimmt (bei claude.ai unter *Connectors*), genügt diese Adresse. In der
+offiziellen [MCP-Registry](https://registry.modelcontextprotocol.io) steht der
+Dienst als `de.bibelstudium-mcp/bibelstudium`.
+
+Drei Unterschiede zur eigenen Installation:
+
+- **Voreinstellung ist die Schlachter 2000**, die es in einer selbst aufgebauten
+  Datenbank nicht gibt. Die vier frei lizenzierten Ausgaben sind dort ebenfalls
+  vorhanden, über den Parameter `translation`.
+- **Ohne Authentifizierung, und zwar absichtlich:** Nur so nehmen Clients einen
+  Server als Connector auf. Davor liegen ein Tunnel und eine Ratenbegrenzung,
+  gebunden ist der Dienst an `127.0.0.1`; Einzelheiten in
+  [SECURITY.md](SECURITY.md). Ausgeliefert wird ausschließlich Bibeltext.
+- **Keine Zusage auf Verfügbarkeit.** Wer sich darauf verlassen muss, betreibt
+  den Server selbst; dafür ist er gebaut.
+
 ### Claude Desktop: Bundle statt Konfigurationsdatei
 
 Für Claude Desktop lässt sich der Server als MCPB-Bundle installieren, statt `claude_desktop_config.json` von Hand zu bearbeiten:
@@ -124,13 +150,16 @@ MCP_HTTP_PORT=8931 bun run src/server.ts # /mcp und /health, gebunden an 127.0.0
 
 Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor, denn der Server bringt beides nicht mit.
 
-Drei Umgebungsvariablen steuern den Betrieb:
+Vier Umgebungsvariablen steuern den Betrieb:
 
 | Variable | Wirkung |
 |----------|---------|
 | `BIBLE_DB_PATH` | Wo die Datenbank liegt. Ohne sie: `data/` neben dem Repository, bei einem installierten Bundle der Benutzerordner |
 | `MCP_HTTP_PORT` | Gesetzt schaltet den HTTP-Transport frei; ohne sie bleibt es bei stdio. `MCP_HTTP_HOST` überschreibt die Bindung an `127.0.0.1` |
 | `BIBLE_DEFAULT_TRANSLATION` | Welche Ausgabe ein Abruf ohne `translation` liefert. Ohne sie Luther 1912. Ist der Wert unbekannt oder die Ausgabe nicht geladen, bleibt es bei Luther, und der Server vermerkt das auf stderr |
+| `MCP_METRICS_PORT` | Gesetzt öffnet einen zweiten Port mit `/metrics` für Prometheus. Ohne sie gibt es ihn nicht. `MCP_METRICS_HOST` überschreibt die Bindung an `127.0.0.1` |
+
+**Der Metrik-Port ist bewusst ein eigener Port und kein Pfad neben `/mcp`.** Wo ein Tunnel oder Reverse Proxy einen ganzen Hostnamen auf den MCP-Port leitet, wäre ein `/metrics` dort öffentlich abrufbar, und eine Herkunftsprüfung hilft nicht, weil der Proxy von `127.0.0.1` verbindet. Gezählt werden ausschließlich Aufrufe je Werkzeug, Prompt und Ressourcenart, jeweils zusammengefasst: keine Argumente, keine Bibelstelle, kein Suchbegriff, keine Ressourcen-URI und keine Quelladresse. Lässt sich der Port nicht binden, sagt der Server das auf stderr und läuft weiter.
 
 **`bible_setup` gibt es im HTTP-Modus nicht:** Es lädt 145 MB von fremden Quellen und ersetzt die Datenbank, und das gehört der Betreiberseite, nicht einem beliebigen Aufrufer. `/health` fragt bei jedem Aufruf die Datenbank und antwortet mit 503 samt Grund, wenn sie nicht mehr da ist. Wie der Endpunkt sich sonst verhält (erlaubte Methoden, Origin-Prüfung, Protokollversionen), steht in [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md).
 
