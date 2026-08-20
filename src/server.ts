@@ -49,6 +49,7 @@ import {
   WERKZEUG_NAMEN,
   metrikenText,
   registrierePrompts,
+  registriereProzess,
   registriereRessourcen,
   registriereWerkzeuge,
   zaehlePrompt,
@@ -2068,6 +2069,10 @@ registriereRessourcen([
   ...RESOURCES.map((r) => r.uri.slice(URI_SCHEME.length).split("/")[0] ?? ""),
   ...RESOURCE_TEMPLATES.map((t) => t.uriTemplate.slice(URI_SCHEME.length).split("/")[0] ?? ""),
 ]);
+// Die Version wird angemeldet wie die Namen darüber, damit `metriken.ts` nichts
+// aus dieser Datei zurückimportieren muss. Sie steht neben dem Startzeitpunkt
+// in der Ausgabe und beantwortet dort, welcher Stand die Zähler gefüllt hat.
+registriereProzess(PACKAGE_VERSION);
 
 // Eine Fabrik, kein Singleton: Ein `Server` bindet genau einen Transport, der
 // HTTP-Modus unten braucht deshalb je Anfrage eine frische Instanz. Alles

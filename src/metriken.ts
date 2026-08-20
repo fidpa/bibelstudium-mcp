@@ -22,12 +22,33 @@
  * Überwachung. Die Werkzeugnamen selbst stehen unten in dieser Datei, mit der
  * Begründung dort.
  *
+ * **Neben den drei Zählern stehen zwei Angaben über den Prozess selbst**,
+ * Startzeitpunkt und Version. Sie sind keine Zähler und zählen auch nichts: Sie
+ * beantworten die Frage, auf die sich jede Zahl darüber bezieht, nämlich seit
+ * wann gezählt wird. Ein Neustart setzt die Zähler auf null, und ohne diesen
+ * Zeitpunkt liest sich eine kleine Summe wie geringe Nutzung statt wie ein
+ * junger Prozess.
+ *
  * Kein `console.log` in dieser Datei. Sie wird in den stdio-Prozess importiert,
  * und dort liegt auf stdout der JSON-RPC-Strom.
  */
 
 /** Für ein Label, dessen Wert nicht registriert wurde. */
 export const UNBEKANNT = "unbekannt";
+
+/**
+ * Unixzeit des Prozessstarts.
+ *
+ * `process.uptime()` läuft monoton, `Date.now()` ist die Wanduhr; ihre Differenz
+ * ergibt den Startzeitpunkt, gleichgültig wann diese Datei importiert wurde.
+ * Einmal festgehalten statt bei jeder Ausgabe neu gerechnet: Ein Wert, der ohne
+ * Ereignis bei jedem Abruf um Millisekunden wandert, ist Rauschen, und eine
+ * Uhrzeit-Korrektur verschöbe ihn zusätzlich.
+ */
+const PROZESS_START_SEKUNDEN = Date.now() / 1000 - process.uptime();
+
+/** Die eigene Release-Version, angemeldet wie die Namen weiter unten. */
+let prozessVersion: string = UNBEKANNT;
 
 /**
  * Die Werkzeugnamen, unter denen gezählt wird.
@@ -113,6 +134,18 @@ export function registrierePrompts(namen: readonly string[]): void {
   grundstellung(promptAufrufe, [...promptNamen]);
 }
 
+/**
+ * Meldet die Version des laufenden Prozesses an.
+ *
+ * Geprüft statt roh übernommen, damit die Zusage im Dateikopf bestehen bleibt:
+ * Jeder Label-Wert stammt aus einer geschlossenen Menge oder ist `unbekannt`.
+ * Eine Zeichenkette mit Anführungszeichen oder Zeilenumbruch bräche das
+ * Ausstellungsformat, und diese Datei maskiert bewusst nichts.
+ */
+export function registriereProzess(version: string): void {
+  prozessVersion = /^[0-9A-Za-z.+-]+$/.test(version) ? version : UNBEKANNT;
+}
+
 export function registriereRessourcen(arten: readonly string[]): void {
   for (const art of [...arten, UNBEKANNT]) ressourceArten.add(art);
   grundstellung(ressourceAufrufe, [...ressourceArten]);
@@ -143,10 +176,11 @@ export function zaehleRessource(art: string): void {
  * Von Hand erzeugt, ohne Client-Bibliothek.
  *
  * Dieses Repository hat eine einzige Laufzeit-Abhängigkeit, das MCP-SDK, und
- * drei Zähler rechtfertigen keine zweite. Was eine Bibliothek zusätzlich
- * brächte, ist vor allem das Maskieren von Label-Werten; hier stammt jeder Wert
- * aus einer registrierten Liste oder ist `unbekannt`, enthält also weder
- * Anführungszeichen noch Zeilenumbruch noch Rückstrich.
+ * drei Zähler und zwei Prozessangaben rechtfertigen keine zweite. Was eine
+ * Bibliothek zusätzlich brächte, ist vor allem das Maskieren von Label-Werten;
+ * hier stammt jeder Wert aus einer registrierten Liste, ist die geprüfte
+ * Versionszeichenkette oder `unbekannt`, enthält also weder Anführungszeichen
+ * noch Zeilenumbruch noch Rückstrich.
  *
  * Format: https://prometheus.io/docs/instrumenting/exposition_formats/
  */
@@ -179,6 +213,17 @@ export function metrikenText(): string {
   for (const [art, wert] of [...ressourceAufrufe].sort()) {
     zeilen.push(`bibelstudium_mcp_ressource_aufrufe_total{art="${art}"} ${wert}`);
   }
+
+  // Gauge, nicht Counter: Beide Werte beschreiben einen Zustand und wachsen
+  // nicht. Wer sie mit `increase()` auswertete, bekäme eine Zahl ohne Bedeutung.
+  zeilen.push(
+    "# HELP bibelstudium_mcp_prozess_start_zeit_sekunden Unixzeit des Prozessstarts; seither laufen die Zähler darüber.",
+    "# TYPE bibelstudium_mcp_prozess_start_zeit_sekunden gauge",
+    `bibelstudium_mcp_prozess_start_zeit_sekunden ${PROZESS_START_SEKUNDEN}`,
+    "# HELP bibelstudium_mcp_prozess_info Version des laufenden Prozesses, Wert stets 1.",
+    "# TYPE bibelstudium_mcp_prozess_info gauge",
+    `bibelstudium_mcp_prozess_info{version="${prozessVersion}"} 1`
+  );
 
   // Abschließender Zeilenumbruch, das Ausstellungsformat verlangt ihn.
   return zeilen.join("\n") + "\n";

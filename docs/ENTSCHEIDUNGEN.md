@@ -496,8 +496,43 @@ dem stillen Falschwert wird eine Zeile im Protokoll.
 **Was die Zähler nicht erfassen.** Ressourcenabrufe werden nach der Zerlegung
 der URI gezählt; wer an der Datenprüfung davor scheitert, taucht nicht auf.
 Prompt-Abrufe zählen Versuche, auch gescheiterte, weil der Zählpunkt vor der
-Argumentprüfung liegt. Beides ist Absicht, aber es heißt, dass die drei Metriken
+Argumentprüfung liegt. Beides ist Absicht, aber es heißt, dass die drei Zähler
 nicht gegeneinander aufrechenbar sind.
+
+### Zwei Angaben über den Prozess, seit 0.6.18
+
+*Gemessen 20.08.2026 an einem laufenden Endpunkt und der Überwachung dahinter.*
+
+Neben den Zählern stehen `bibelstudium_mcp_prozess_start_zeit_sekunden` und
+`bibelstudium_mcp_prozess_info{version="…"}`. Beide sind Gauges und zählen
+nichts; sie beantworten die Frage, auf die sich jede Zahl darüber bezieht.
+
+**Der Anlass war ein Zweifel an den Zahlen, und er war berechtigt, nur anders als
+vermutet.** Eine Auswertung über einen gewählten Zeitraum zeigte 42 Aufrufe eines
+Werkzeugs, und nichts sagte, dass die Zählung erst seit zwei Tagen läuft. Ein
+Neustart setzt die Zähler auf null; ohne den Startzeitpunkt liest sich eine kleine
+Summe wie geringe Nutzung statt wie ein junger Prozess.
+
+**Was die Messung ergab, gegen die Erwartung.** Die naheliegende Vermutung war,
+`increase()` verliere den ersten Aufruf jeder Zeitreihe. Das trifft nicht zu:
+Weil jeder Zähler bei der Registrierung auf 0 gesetzt wird, hat die Auswertung
+einen Bezugspunkt, und alle Zeitreihen standen beim ersten Scrape auf 0. Die
+einmalige Differenz (43 statt 44 über sieben Tage) entstand allein daraus, dass
+zwischen Prozessstart und der Aufnahme des Ziels in die Überwachung drei Minuten
+lagen. Verloren gehen ausschließlich Aufrufe zwischen dem letzten Abruf der
+Zähler und einem Neustart.
+
+**Verworfen:** eine extrapolationsfreie Auswertung über `last_over_time` minus
+`first_over_time`. Sie wäre exakt, aber `first_over_time` ist in der eingesetzten
+Prometheus-Fassung nicht freigeschaltet und bricht die Abfrage. `increase()`
+liefert Kommazahlen und verkraftet dafür einen Zählerstand, der nach einem
+Neustart wieder bei null beginnt.
+
+**Der Startzeitpunkt wird einmal berechnet**, aus Wanduhr minus Laufzeit, nicht
+bei jeder Ausgabe neu: Ein Wert, der ohne Ereignis um Millisekunden wandert, ist
+Rauschen. Die Namen tragen bewusst das eigene Präfix statt der üblichen
+`process_start_time_seconds`; in derselben Überwachung liegt diese Metrik bereits
+für einen anderen Dienst.
 
 ## Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist
 

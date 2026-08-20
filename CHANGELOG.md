@@ -6,6 +6,26 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.18] - 2026-08-20
+
+### Hinzugefügt
+
+- **Zwei Angaben über den Prozess unter `/metrics`.**
+  `bibelstudium_mcp_prozess_start_zeit_sekunden` nennt den Startzeitpunkt,
+  `bibelstudium_mcp_prozess_info{version="…"}` die laufende Fassung. Beide sind
+  Gauges und zählen nichts: Sie sagen, seit wann die Zähler daneben laufen, denn
+  ein Neustart setzt die auf null. Ohne diesen Bezug liest sich eine kleine
+  Summe wie geringe Nutzung statt wie ein junger Prozess. Die Version wird beim
+  Start angemeldet und auf ihre Form geprüft; eine unerwartete Zeichenkette
+  erscheint als `unbekannt`.
+
+### Geändert (Dokumentation)
+
+- `README.md` und `docs/ENTSCHEIDUNGEN.md` benennen die beiden Angaben. Dort
+  steht auch, was die Auswertung über `increase()` an einem Neustart verliert:
+  die Aufrufe zwischen dem letzten Abruf der Zähler und dem Neustart, also
+  höchstens ein Abholintervall.
+
 ## [0.6.17] - 2026-08-18
 
 ### Ergänzt

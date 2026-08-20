@@ -393,6 +393,11 @@ try {
  */
 const METRIK_PORT = 9469;
 const METRIK_BASIS = `http://127.0.0.1:${METRIK_PORT}`;
+// Vor dem Start genommen, damit die Prüfung der gemeldeten Startzeit unten eine
+// echte untere Schranke hat: Dieser Prozess wird danach geboren, seine Startzeit
+// muss also größer sein. Eine Zahl aus der Bauzeit oder aus dem Import dieser
+// Datei fiele damit durch.
+const VOR_SERVER3 = Date.now() / 1000;
 const server3 = await start({ MCP_METRICS_PORT: String(METRIK_PORT) });
 
 try {
@@ -419,6 +424,20 @@ try {
       has(`GET /metrics: Zähler für ${name}`, m.body, `werkzeug="${name}"`);
     }
     has("GET /metrics: Auffangzähler", m.body, 'werkzeug="unbekannt"');
+
+    // Die beiden Prozessangaben. Geprüft wird der Wert, nicht bloß die Zeile:
+    // Millisekunden statt Sekunden, die Bauzeit oder der Importzeitpunkt ergäben
+    // ebenfalls eine Zahl, und die Kachel im Dashboard zeigte dann eine Dauer,
+    // nur die falsche.
+    const startZeile = m.body.match(/^bibelstudium_mcp_prozess_start_zeit_sekunden (\S+)$/m);
+    check("GET /metrics: Startzeit vorhanden", startZeile !== null);
+    const start = Number(startZeile?.[1]);
+    check("Startzeit liegt nach dem Beginn dieses Laufs", start >= VOR_SERVER3);
+    check("Startzeit liegt nicht in der Zukunft", start <= Date.now() / 1000);
+    check(
+      "GET /metrics: Version in Semver-Form",
+      /^bibelstudium_mcp_prozess_info\{version="\d+\.\d+\.\d+"\} 1$/m.test(m.body)
+    );
 
     // Dass die Zähler dastehen, sagt nichts darüber, dass sie zählen. Deshalb
     // wird hier wirklich aufgerufen und die Summe davor mit der danach
