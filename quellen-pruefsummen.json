@@ -1,0 +1,114 @@
+{
+  "erfasst_am": "2026-08-22",
+  "hinweis": "Sollwerte für die provenance-Zeilen in data/bible.db. Jede Zeile ist eine fortlaufende SHA-256 über alle Nutzlasten einer Quelle, in der Reihenfolge des Abrufs. Prüfen mit 'bun run pruefe:quellen'. Weicht etwas ab, hat sich eine Gegenstelle geändert: erst nachsehen was, dann übernehmen.",
+  "nicht_geprueft": [
+    {
+      "script": "import-schlachter2000.ts",
+      "grund": "Die Schlachter 2000 kommt nicht aus einem Download, sondern aus einer Lieferung der Genfer Bibelgesellschaft. Sie ist damit weder öffentlich abrufbar noch aus diesem Repository heraus reproduzierbar, und ein Sollwert wäre für niemanden nachprüfbar. Die Zeile bleibt in der Datenbank, sie steht nur nicht im Manifest."
+    }
+  ],
+  "quellen": [
+    {
+      "script": "download-byz.ts",
+      "source": "https://raw.githubusercontent.com/byztxt/byzantine-majority-text/master/csv-unicode/strongs/with-parsing/*.csv",
+      "files": 27,
+      "sha256": "e8c923354ea6d00538333daee05728c77edd31ec0451dee9cd8c47eec11cbaff"
+    },
+    {
+      "script": "download-byz.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js",
+      "files": 1,
+      "sha256": "7624ee738ae47e80f1a352223e28a26d011c9cd4898822cee52f47a010c04efd"
+    },
+    {
+      "script": "download-crossrefs.ts",
+      "source": "https://a.openbible.info/data/cross-references.zip",
+      "files": 1,
+      "sha256": "9beb9c3eac58c9709f9a53861e9d42317d7b98da74e827c5e7090719294ed831"
+    },
+    {
+      "script": "download-heb.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/morphhb/master/wlc/*.xml",
+      "files": 39,
+      "sha256": "fa5869bd42c4bab5dd5e78d1f7d7fb7639917051bf6fa59bbb2acef602557afd"
+    },
+    {
+      "script": "download-heb.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js",
+      "files": 1,
+      "sha256": "5ce6aeed551c709f49bcfa341cadf2f34bc7599b85d9de9e6ac2ecbf60fc3739"
+    },
+    {
+      "script": "download-lexicon.ts",
+      "source": "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Lexicons/TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt",
+      "files": 1,
+      "sha256": "e8f58a8f841f2a338b3df648466a773928127e6080c06d32ee88694fb761facb"
+    },
+    {
+      "script": "download-lexicon.ts",
+      "source": "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Lexicons/TBESH%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Hebrew%20-%20STEPBible.org%20CC%20BY.txt",
+      "files": 1,
+      "sha256": "da0a8d2aafba429421f55f2906e8896a7ea83458a0d905deb2668d91f2a75e31"
+    },
+    {
+      "script": "download-lexicon.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js",
+      "files": 1,
+      "sha256": "7624ee738ae47e80f1a352223e28a26d011c9cd4898822cee52f47a010c04efd"
+    },
+    {
+      "script": "download-lexicon.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/strongs/master/hebrew/strongs-hebrew-dictionary.js",
+      "files": 1,
+      "sha256": "5ce6aeed551c709f49bcfa341cadf2f34bc7599b85d9de9e6ac2ecbf60fc3739"
+    },
+    {
+      "script": "download-morph.ts",
+      "source": "https://raw.githubusercontent.com/morphgnt/sblgnt/master/*-morphgnt.txt",
+      "files": 27,
+      "sha256": "f5c7b1fed14f605e89b3d5c0d08795c9ce680c42d6bb2ca21939c0b768066b02"
+    },
+    {
+      "script": "download-tagnt.ts",
+      "source": "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Translators%20Amalgamated%20OT%2BNT/TAGNT *.txt",
+      "files": 2,
+      "sha256": "27eb96114bf9aec905632ea52d27e675343580478dc81737d50bc6fe5cbafb6b"
+    },
+    {
+      "script": "download-tr.ts",
+      "source": "https://raw.githubusercontent.com/byztxt/greektext-textus-receptus/master/parsed/*.UTR",
+      "files": 27,
+      "sha256": "ad929a698885db1d59fd4dcddef3e6d25eeea3b8254594800f2d21b34bd26a85"
+    },
+    {
+      "script": "download-tr.ts",
+      "source": "https://raw.githubusercontent.com/openscriptures/strongs/master/greek/strongs-greek-dictionary.js",
+      "files": 1,
+      "sha256": "7624ee738ae47e80f1a352223e28a26d011c9cd4898822cee52f47a010c04efd"
+    },
+    {
+      "script": "download.ts#ELB",
+      "source": "https://bolls.life/static/translations/ELB.json (+ https://bolls.life/get-books/ELB/)",
+      "files": 2,
+      "sha256": "fd8ca8535faff13cd5fa4e25e7060eb29e2af815b5ac60b666a5c553f61448d8"
+    },
+    {
+      "script": "download.ts#LUT",
+      "source": "https://bolls.life/static/translations/LUT.json (+ https://bolls.life/get-books/LUT/)",
+      "files": 2,
+      "sha256": "4a9ebddb18d0106e11f8bfc3d086eb3a5c96e2878f17691b316207e5b0e9eb16"
+    },
+    {
+      "script": "download.ts#MB",
+      "source": "https://bolls.life/static/translations/MB.json (+ https://bolls.life/get-books/MB/)",
+      "files": 2,
+      "sha256": "22f22798bf5170b43a1bea9773d19075500869ce9ae19451d59624d1d5a6fa08"
+    },
+    {
+      "script": "download.ts#SCH",
+      "source": "https://bolls.life/static/translations/SCH.json (+ https://bolls.life/get-books/SCH/)",
+      "files": 2,
+      "sha256": "2fb16afb89244d1c35d1a1d3d0e3e2ae878fb797ea446c6783c5481dc9e5bac4"
+    }
+  ]
+}

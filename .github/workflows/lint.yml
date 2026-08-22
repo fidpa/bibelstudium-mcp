@@ -7,6 +7,41 @@ on:
     branches: [main]
 
 jobs:
+  data-absent:
+    name: No Bible data is tracked in this repository
+    runs-on: ubuntu-latest
+    # data/ carries the Bible database and its sources. Some of it may not
+    # be redistributed: STEPBible asks that their files are not passed on,
+    # and one German translation is licensed for the hosted service only.
+    # .gitignore alone does not enforce this — ignore rules apply to
+    # untracked files only, so a single "git add -f" would publish text
+    # this project must not publish. This guard is what would notice.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No file under data/ is tracked
+        run: |
+          set -euo pipefail
+          tracked=$(git ls-files data | wc -l)
+          echo "tracked files under data/: $tracked"
+          if [ "$tracked" -ne 0 ]; then
+            echo "::error::data/ must never be committed. Offending files:"
+            git ls-files data
+            exit 1
+          fi
+
+      - name: No database file is tracked anywhere
+        run: |
+          set -euo pipefail
+          patterns=('*.db' '*.db-wal' '*.db-shm' '*.sqlite' '*.sqlite3')
+          hits=$(git ls-files "${patterns[@]}" | wc -l)
+          echo "tracked database files: $hits"
+          if [ "$hits" -ne 0 ]; then
+            echo "::error::A database file is tracked:"
+            git ls-files "${patterns[@]}"
+            exit 1
+          fi
+
   typecheck:
     name: TypeScript (tsc --noEmit, strict)
     runs-on: ubuntu-latest

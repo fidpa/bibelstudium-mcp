@@ -386,6 +386,37 @@ sqlite3 data/bible.db "SELECT edition, COUNT(*) FROM original_words GROUP BY edi
 sqlite3 data/bible.db "PRAGMA integrity_check"
 ```
 
-Weichen zwei Datenbanken voneinander ab, obwohl sie aus denselben Quellen
-stammen, zeigt der Vergleich der `provenance`-Prüfsummen, welche Quelle sich
-verändert hat.
+Dafür braucht es keine zweite Datenbank zum Vergleich: Die Sollwerte stehen im
+Repository.
+
+```bash
+bun run pruefe:quellen
+```
+
+Der Abgleich läuft in beide Richtungen und nennt jede Abweichung einzeln.
+
+### `Quellenprüfung: 1 Abweichung(en)` mit `Prüfsumme weicht ab`
+
+Die Gegenstelle liefert heute etwas anderes als beim Aufbau dieser Datenbank.
+Das ist der Fall, für den die Prüfung existiert, und **kein Fehler des
+Servers**: Bibelquellen werden nachbearbeitet, und eine stille Korrektur an
+einem Vers sieht in der Datenbank aus wie schon immer dagewesen.
+
+Was zu tun ist, in dieser Reihenfolge: nachsehen, *was* sich geändert hat (die
+Quell-URL steht in der Meldung), erst dann entscheiden. Ist die Änderung geprüft
+und gewollt, schreibt `bun run pruefe:quellen --uebernehmen` den neuen Stand
+fest; das Werkzeug nennt vorher jede Abweichung, die es übernimmt.
+
+### `Nicht im Manifest` oder `Fehlt in der Datenbank`
+
+Kein Datenschaden, sondern ein Auseinanderlaufen von Datenbank und Repository:
+Der Datenbestand kennt eine Quelle, die `quellen-pruefsummen.json` nicht führt,
+oder umgekehrt. Der häufigste Grund ist ein Datenbestand, der älter oder neuer
+ist als der ausgecheckte Stand. `bun run setup` baut ihn passend neu auf.
+
+### `hat keine provenance-Tabelle`
+
+Die Datenbank stammt aus einer Fassung vor dem Herkunftsnachweis oder ist nicht
+über die Aufbau-Skripte entstanden. Die Prüfung endet dann mit Code 2 und trifft
+bewusst keine Aussage: Ein fehlender Nachweis ist etwas anderes als ein
+widerlegter.

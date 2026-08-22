@@ -1346,3 +1346,68 @@ Was er trägt, ist `publish`, und damit lässt sich eine Version über
 existiert also, nur kein korrigierender. Das Anmeldetoken lebt **fünf Minuten**
 (gemessen 17.08.2026), jeder Vorgang beginnt deshalb mit einer frischen
 Anmeldung.
+
+## Eine Prüfsumme ohne Sollwert ist eine Notiz, keine Prüfung
+
+Seit dem 25.07.2026 schreibt jedes Download-Skript eine fortlaufende SHA-256 je
+Quelle in die Tabelle `provenance`, und `README.md` nannte das einen Vorzug
+gegenüber einer mitgelieferten Datenbank: überprüfbar, wie es ein
+heruntergeladener Datenklumpen nie sein könne.
+
+Am 22.08.2026 fiel auf, dass diese Summen **nie gelesen wurden**. Die beiden
+einzigen Leser (`src/db.ts`, `tests/golden/server-info.ts`) holten
+`MAX(fetched_at)`, also das Datum des jüngsten Abrufs. Der Hash wurde
+geschrieben und nie verglichen. Damit dokumentierte er, was ankam, konnte aber
+nicht bemerken, dass etwas anderes ankam als beim letzten Mal: Ändert eine
+Gegenstelle einen Vers still, trägt der nächste Lauf die neue Summe ein, und der
+Bestand sieht unverändert aus. Für einen Server, dessen Daseinsgrund die
+Wortgetreue ist, ist das die empfindlichste Stelle überhaupt.
+
+Seitdem stehen die Sollwerte als `quellen-pruefsummen.json` **im Repository**,
+und `bun run pruefe:quellen` stellt die Tabelle dagegen.
+
+### Der Abgleich läuft in beide Richtungen
+
+Die naheliegende Fassung prüft, ob jede gelistete Quelle noch stimmt. Sie
+übersieht die neu hinzugekommene: genau der Fall, in dem eine ungeprüfte
+Datenquelle in die Auslieferung gerät. Geprüft wird deshalb auch, ob jede Zeile
+der Datenbank im Manifest steht, dazu die Hygiene der Datei selbst (sortiert,
+duplikatfrei).
+
+Alle sechs Prüfungen wurden mit Fehlereinbau abgenommen, nicht mit einem grünen
+Lauf: verfälschte Summe, gelöschter Eintrag, erfundener Eintrag, Duplikat,
+vertauschte Reihenfolge, entfernte Ausnahme.
+
+### Zwei Ordnungen, die nicht dieselbe sind
+
+Beim Bauen sortierte das Skript beim Schreiben mit `localeCompare()` und prüfte
+binär. `localeCompare()` stellt `openscriptures` vor `STEPBible`, die binäre
+Ordnung `STEPBible` vor `openscriptures` (`S` = 0x53 vor `o` = 0x6F), und
+SQLite `ORDER BY` sortiert binär. Das Manifest galt als unsortiert, direkt
+nachdem dasselbe Skript es geschrieben hatte. Sortiert wird jetzt überall binär,
+passend zur Datenbank.
+
+### Verworfen: die Quelldateien selbst versionieren
+
+Der naheliegendere Weg wäre, die Rohdaten mit ins Repository zu nehmen; dann ist
+die Datenbank aus getracktem Material reproduzierbar, und ein Manifest über
+Dateien ist einfacher als eines über Abrufe. Das scheitert hier an der Lizenz:
+STEPBible bittet darum, ihre Dateien nicht weiterzuverbreiten, und `data/` wird
+deshalb nie eingecheckt. **Ein Manifest braucht die Dateien aber nicht.** Hashes
+sind kein Text, und die Prüfbarkeit entsteht auch ohne Weitergabe.
+
+### Was ausgenommen ist, steht als ausgenommen da
+
+Die Schlachter 2000 kommt aus keinem Download. Ein Sollwert dafür wäre für
+niemanden nachprüfbar, also führt das Manifest sie unter `nicht_geprueft`, mit
+Grund. Eine still weggelassene Zeile wäre von einer vergessenen Quelle nicht zu
+unterscheiden; wird die Ausnahme entfernt, meldet die Prüfung die Zeile sofort
+als unbekannt.
+
+### Der zweite Guard sitzt in der CI
+
+`.gitignore` schützt `data/` nur, solange nichts dort getrackt ist: Ignore-Regeln
+greifen ausschließlich bei ungetrackten Dateien, ein `git add -f` ginge daran
+vorbei. Der CI-Job `data-absent` zählt deshalb `git ls-files data` und
+Datenbankdateien im ganzen Baum; beide Zahlen müssen 0 sein. Auch er wurde gegen
+ein präpariertes Repository geprüft, nicht nur gegen den sauberen Stand.

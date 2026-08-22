@@ -30,7 +30,7 @@ Dieser Server gibt dem Modell stattdessen die Daten, nämlich exakten deutschen 
 - **Volltextsuche** (`bible_search`) – FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
 - **Editionsvergleich** (`bible_compare`) – Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
 - **Geführte Arbeitsabläufe** – drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
-- **Herkunftsnachweis eingebaut** – jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank
+- **Herkunftsnachweis eingebaut** – jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank, und `bun run pruefe:quellen` stellt sie gegen die im Repository hinterlegten Sollwerte in `quellen-pruefsummen.json`
 - **Namensnennung in jeder Antwort** – das Feld `quellen` nennt Werk, Lizenz und die von der Lizenz verlangte Nennung, und zwar nur für die Quellen, die die jeweilige Antwort tatsächlich benutzt hat. Verlangt die Ausgabe eine Nennung, sagt der `hinweis` derselben Antwort zusätzlich, dass sie in jedes Dokument mitgeht, das den Wortlaut übernimmt
 
 ## Bekannte Grenzen
@@ -281,7 +281,7 @@ und nie im Serverbetrieb. Welche Datei was tut, steht in
 
 ### Designentscheidungen
 
-**Warum keine mitgelieferte Datenbank?** Drei Gründe: STEPBible bittet darum, ihre Datendateien nur aus dem eigenen Repository zu verbreiten; eine selbst aufgebaute Datenbank mit `provenance`-Tabelle (Quell-URL + SHA-256 je Download) ist auf eine Weise überprüfbar, wie es ein heruntergeladener Datenklumpen nie sein kann; und die Aufbau-Skripte dokumentieren zugleich, woher jedes einzelne Wort stammt. Der Preis dafür war früher ein Terminal-Schritt. Den nimmt seit `bible_setup` der Server ab.
+**Warum keine mitgelieferte Datenbank?** Drei Gründe: STEPBible bittet darum, ihre Datendateien nur aus dem eigenen Repository zu verbreiten; eine selbst aufgebaute Datenbank mit `provenance`-Tabelle (Quell-URL + SHA-256 je Download) ist auf eine Weise überprüfbar, wie es ein heruntergeladener Datenklumpen nie sein kann, und zwar nachrechenbar: `bun run pruefe:quellen` vergleicht jede Prüfsumme mit `quellen-pruefsummen.json` und meldet in beide Richtungen, was fehlt oder zu viel ist; und die Aufbau-Skripte dokumentieren zugleich, woher jedes einzelne Wort stammt. Der Preis dafür war früher ein Terminal-Schritt. Den nimmt seit `bible_setup` der Server ab.
 
 **Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von acht fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
 

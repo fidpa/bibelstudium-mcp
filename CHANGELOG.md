@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.19] - 2026-08-22
+
+### Hinzugefügt
+
+- **`bun run pruefe:quellen` stellt die Herkunftsprüfsummen gegen Sollwerte.**
+  Die Download-Skripte schreiben seit 0.2.x eine SHA-256 je Quelle in die
+  Tabelle `provenance`, gelesen wurde daraus bisher nur das Datum des jüngsten
+  Abrufs. Die Summen selbst wurden nie verglichen, und eine stille Textänderung
+  an einer Bibelquelle wäre damit unbemerkt in den Bestand gelangt. Die
+  Sollwerte stehen jetzt als `quellen-pruefsummen.json` im Repository: 17
+  Quellen, dazu ein Skript, das in beide Richtungen abgleicht und auch meldet,
+  was in der Datenbank steht, aber nicht im Manifest. Abweichung endet mit Code
+  1, eine fehlende oder nachweislose Datenbank mit Code 2.
+
+- **CI-Job `data-absent`.** Er prüft, dass unter `data/` nichts versioniert ist
+  und keine Datenbankdatei im Baum liegt. `.gitignore` allein leistet das nicht:
+  Ignore-Regeln greifen nur bei ungetrackten Dateien.
+
+### Geändert (Dokumentation)
+
+- `README.md` nennt für den Herkunftsnachweis jetzt den Prüfbefehl statt nur die
+  Prüfsummen, `docs/FEHLERBEHEBUNG.md` beschreibt vier Fehlerbilder der Prüfung,
+  `docs/ENTSCHEIDUNGEN.md` begründet den beidseitigen Abgleich.
+
 ## [0.6.18] - 2026-08-20
 
 ### Hinzugefügt
