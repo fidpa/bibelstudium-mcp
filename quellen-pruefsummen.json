@@ -69,6 +69,12 @@
       "sha256": "f5c7b1fed14f605e89b3d5c0d08795c9ce680c42d6bb2ca21939c0b768066b02"
     },
     {
+      "script": "download-parallels.ts",
+      "source": "https://raw.githubusercontent.com/ubsicap/ubs-open-license/fd7bcf88b20a1522d3916f437f012c561466fe7b/parallel%20passages/ParallelPassages.xml",
+      "files": 1,
+      "sha256": "d43e7554556c1a1c5e2464e6b5ad8a4ab9118ada11060bf6b200abf3d0d0a394"
+    },
+    {
       "script": "download-tagnt.ts",
       "source": "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Translators%20Amalgamated%20OT%2BNT/TAGNT *.txt",
       "files": 2,

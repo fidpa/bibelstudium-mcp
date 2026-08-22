@@ -46,7 +46,7 @@ läuft ausschließlich beim Datenaufbau.
 | `src/verse-budget.ts` | Wie viele Verse eine Ausgabe je Antwort im Wortlaut trägt, und wie das Kürzen gemeldet wird |
 | `src/greek-diff.ts` | Wortvergleich zweier Grundtext-Editionen, Abgleich mit der Bezeugungsnotiz |
 | `src/db-path.ts` | Wo die Datenbank liegt, geteilt von Server und Datenaufbau |
-| `scripts/setup.ts` | Führt die acht Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
+| `scripts/setup.ts` | Führt die neun Downloads nacheinander aus; ein Teilausfall bricht den Lauf nicht ab |
 | `scripts/schema.ts` | Tabellen-Schemata + FTS-Neuaufbau |
 | `scripts/atomic-db.ts` | Atomare Datenbank-Schreibvorgänge (temporäre Kopie + Umbenennen), sicher bei parallelen Lesern |
 | `scripts/provenance.ts` | Quellen-/Prüfsummen-Protokoll für jeden Download |

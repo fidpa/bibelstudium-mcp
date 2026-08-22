@@ -54,6 +54,32 @@ export const crossrefsBuendel = buendel({
     xrefGesamtVorgabe: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1 }],
     xrefGesamtMax: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1, limit: 100 }],
     xrefGesamtVoll: ["bible_crossrefs", { book: "Psalm", chapter: 2, verse: 7, limit: 30 }],
+    // Die Parallelstellen aus der UBS-Datenbank. Markus 2,12 ist der Fall, der
+    // den Zugewinn trägt: Die zehn bestbewerteten Verweise nennen weder Lukas
+    // 5,25-26 noch Johannes 5,9, die Parallelgruppe nennt beide
+    // (gemessen 22.08.2026).
+    parallelenMk2_12: ["bible_crossrefs", { book: "Markus", chapter: 2, verse: 12, limit: 3 }],
+    // Bedingtes Feld: Matthäus 5,1 steht in keiner Gruppe, hat aber Verweise.
+    parallelenOhne: ["bible_crossrefs", { book: "Matthäus", chapter: 5, verse: 1, limit: 3 }],
+    // Gruppe ohne einen einzigen Querverweis. Bis dieser Datensatz dazukam,
+    // war das eine Fehlerantwort; betroffen sind 338 Verse (gemessen 22.08.2026).
+    parallelenOhneVerweis: ["bible_crossrefs", { book: "Matthäus", chapter: 12, verse: 47 }],
+    // Die Referenzform mit Komma. Zehn Referenzen der Quelle nennen zwei
+    // Abschnitte mit einer echten Lücke dazwischen; als eine Spanne gelesen
+    // lieferte diese Antwort Lukas 6,29 bis 6,34 mit, die nicht zur Stelle
+    // gehören.
+    parallelenKomma: ["bible_crossrefs", { book: "Matthäus", chapter: 5, verse: 44, limit: 1 }],
+    // Alttestamentlicher Fall: Die Quelle zählt nach der hebräischen Bibel,
+    // Psalm 18 hat dort 51 Verse und in Luther 50.
+    parallelenAt: ["bible_crossrefs", { book: "2. Samuel", chapter: 22, verse: 2, limit: 1 }],
+    // Die Wortlaut-Grenze gegen die größte Gruppe, die Wortereignisformel in
+    // Jeremia und Ezechiel mit 37 anderen Stellen. Erwartet werden Zahlen und
+    // Flaggen, kein Wortlaut: Ein Erwartungswert mit Text der Schlachter 2000
+    // gehört nicht in dieses Repository.
+    parallelenSltGrenze: [
+      "bible_crossrefs",
+      { book: "Hesekiel", chapter: 12, verse: 1, translation: "SLT", limit: 30 },
+    ],
   },
   pruefe({ res }) {
     const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
@@ -156,6 +182,89 @@ export const crossrefsBuendel = buendel({
     // Auch die Verweisantwort trägt die Kopiervorlage: Aus ihr wird zitiert.
     eq("kurzref: Joh 14,6", xrefJoh146.json?.kurzref, "Joh 14,6");
 
+    // --- Parallelstellen ---
+    const { parallelenMk2_12, parallelenOhne, parallelenOhneVerweis } = res;
+    const { parallelenKomma, parallelenAt, parallelenSltGrenze } = res;
+
+    /** Alle Stellen einer Antwort, über die Gruppen hinweg flach gelesen. */
+    const stellen = (j: Json | null | undefined): Array<Record<string, unknown>> => {
+      const p = j?.parallelen as { gruppen?: Array<{ stellen?: unknown }> } | undefined;
+      return (p?.gruppen ?? []).flatMap(
+        (g) => (g.stellen ?? []) as Array<Record<string, unknown>>
+      );
+    };
+
+    const mk = stellen(parallelenMk2_12.json);
+    eq("Mk 2,12: drei Parallelstellen", mk.length, 3);
+    check(
+      "Mk 2,12: Lukas 5,25-26 ist dabei, obwohl kein Verweis sie nennt",
+      mk.some((s) => s.stelle === "Lukas 5,25-26")
+    );
+    check("Mk 2,12: Johannes 5,9 ist dabei", mk.some((s) => s.stelle === "Johannes 5,9"));
+    check(
+      "Mk 2,12: der abgefragte Vers steht nicht in seiner eigenen Gruppe",
+      mk.every((s) => s.stelle !== "Markus 2,12")
+    );
+    check("Mk 2,12: Locator der Quelle liegt bei", mk.every((s) => typeof s.locator === "string"));
+    has("Mk 2,12: die UBS-Nennung geht mit hinaus",
+      JSON.stringify(parallelenMk2_12.json?.quellen),
+      "UBS Parallel Passage Database, © 2023 United Bible Societies.");
+    // Der Vorbehalt zur Zählung gehört ins Alte Testament und sonst nirgends
+    // hin: Eine rein neutestamentliche Gruppe hat das Problem nicht, und ein
+    // Vorbehalt, der überall steht, wird nirgends gelesen.
+    lacks("Mk 2,12 (nur NT): kein Zählungsvorbehalt",
+      hint(parallelenMk2_12.json), "hebräischen Bibel");
+
+    // Das Feld ist bedingt. Stünde es leer da, hieße das etwas anderes, nämlich
+    // „geprüft und nichts gefunden" statt „diese Frage stellt sich hier nicht".
+    eq("Mt 5,1: kein Feld 'parallelen'", parallelenOhne.json?.parallelen, undefined);
+    check("Mt 5,1: Verweise gibt es trotzdem",
+      (parallelenOhne.json?.verweise as unknown[] ?? []).length > 0);
+
+    eq("Mt 12,47: keine Fehlerantwort mehr", parallelenOhneVerweis.isError, false);
+    eq("Mt 12,47: null Verweise", parallelenOhneVerweis.json?.gesamt, 0);
+    eq("Mt 12,47: zwei Parallelstellen", stellen(parallelenOhneVerweis.json).length, 2);
+    // Genannt wird nur, was die Antwort benutzt hat. Ohne einen einzigen
+    // Verweis wäre die OpenBible-Nennung eine Behauptung.
+    lacks("Mt 12,47: OpenBible nicht genannt, weil nicht benutzt",
+      JSON.stringify(parallelenOhneVerweis.json?.quellen), "OpenBible.info");
+
+    const komma = stellen(parallelenKomma.json).find((s) => s.locator === "LUK 6:27-28,35");
+    check("Mt 5,44: die Referenz mit Komma ist erhalten", komma !== undefined);
+    eq("Mt 5,44: Stellenangabe in deutscher Zitierform", komma?.stelle, "Lukas 6,27-28.35");
+    eq(
+      "Mt 5,44: nur die drei genannten Verse, nicht die Spanne dazwischen",
+      JSON.stringify(((komma?.verse_einzeln ?? []) as Array<{ nr: number }>).map((v) => v.nr)),
+      "[27,28,35]"
+    );
+
+    const at = stellen(parallelenAt.json);
+    eq("2Sam 22,2: Psalter 18,2-3 ist die Parallele", at[0]?.stelle, "Psalter 18,2-3");
+    eq("2Sam 22,2: abweichende Zählung ist markiert", at[0]?.zaehlung_abweichend, true);
+    has("2Sam 22,2: der Vorbehalt steht im Hinweis",
+      hint(parallelenAt.json), "nach der Zählung der hebräischen Bibel");
+    has("2Sam 22,2: und nennt den Locator als maßgeblich",
+      hint(parallelenAt.json), "maßgeblich ist 'locator'");
+
+    // Die Wortlaut-Grenze. Geprüft werden Zahlen, nie ein Erwartungswert mit
+    // Text: Bis zum 22.08.2026 meldete `gekuerzt` hier 29 entfallene Stellen,
+    // während der `hinweis` schwieg, weil das Teilbudget das Hauptbudget nicht
+    // belastet. Genau das fängt die dritte Zusicherung ab.
+    const slt = stellen(parallelenSltGrenze.json);
+    const gekuerztSlt = parallelenSltGrenze.json?.gekuerzt as Record<string, number> | undefined;
+    eq("Hes 12,1 (SLT): 37 Parallelstellen gelistet", slt.length, 37);
+    eq("Hes 12,1 (SLT): acht davon tragen Wortlaut",
+      slt.filter((s) => typeof s.text === "string").length, 8);
+    has("Hes 12,1 (SLT): die Kürzung steht auch im Hinweis, nicht nur im Feld",
+      hint(parallelenSltGrenze.json), "Von den 37 Parallelstellen tragen 8 ihren Text");
+    eq("Hes 12,1 (SLT): entfallene Stellen sind beziffert",
+      gekuerztSlt?.parallelen_entfallen, 29);
+    eq("Hes 12,1 (SLT): die eigene Obergrenze steht dabei",
+      gekuerztSlt?.parallelen_max, 8);
+    // Die Zusage gilt über beide Teile zusammen: Ein zweites volles Budget
+    // machte aus „höchstens 20 Verse je Abruf" stillschweigend 40.
+    check("Hes 12,1 (SLT): Wortlaut insgesamt unter der Grenze",
+      (gekuerztSlt?.im_wortlaut ?? 0) <= (gekuerztSlt?.verse_max ?? 0));
   },
 });
 

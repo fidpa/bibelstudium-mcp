@@ -70,6 +70,7 @@ import {
   hasStrongDefs,
   hasTagnt,
   hasVerseNotes,
+  hasParallels,
   hasXrefs,
   originalEditions,
   stmtBooks,
@@ -292,7 +293,16 @@ const ORIGINAL_OUTPUT = {
  *  und Schlachter 2000, in den drei gemeinfreien Ausgaben steht es in jeder
  *  Antwort. Bei `limit: 30` überschreiten 8941 der 29 364 möglichen Abrufe die
  *  Grenze, bei der Vorgabe `limit: 10` sind es 1053 (gemessen 05.08.2026).
- *  `gekuerzt` wie in bible_lookup. */
+ *  `gekuerzt` wie in bible_lookup, um drei Zahlen zu den Parallelstellen
+ *  erweitert.
+ *  `parallelen` steht nur, wo die UBS-Datenbank eine Gruppe zu diesem Vers
+ *  führt: bei 5687 der 29 364 Verse mit Verweisen (gemessen 22.08.2026), und
+ *  gar nicht, solange download-parallels.ts nicht gelaufen ist. Innerhalb einer
+ *  Stelle ist `zaehlung_abweichend` bedingt (nur im Alten Testament, und nur
+ *  wenn der hebräische Grundtext geladen ist), `text` und `verse_einzeln` wie
+ *  bei den Verweisen.
+ *  `lesehinweis` erscheint jetzt auch, wenn allein eine Parallelstelle
+ *  mehrversig ist. */
 const CROSSREFS_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -358,6 +368,70 @@ const CROSSREFS_OUTPUT = {
         },
         required: ["stelle", "votes"],
       },
+    },
+    parallelen: {
+      type: "object",
+      properties: {
+        gruppen: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              stellen: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    stelle: { type: "string" },
+                    locator: {
+                      type: "string",
+                      description:
+                        "The reference exactly as the UBS source writes it (USFM book code). " +
+                        "In the Old Testament the source counts verses after the Hebrew Bible " +
+                        "while this server follows its German editions; where the two differ, " +
+                        "this string is authoritative and `stelle` is the resolved approximation.",
+                    },
+                    sprache: { type: "string" },
+                    zaehlung_abweichend: {
+                      type: "boolean",
+                      description:
+                        "Present and true only where the Hebrew text and the requested edition " +
+                        "count this chapter differently, so `stelle` may be off by a verse or " +
+                        "more. Absence is not a clearance: it also means the check could not " +
+                        "run because the Hebrew text is not loaded.",
+                    },
+                    text: {
+                      type: "string",
+                      description:
+                        "Absent once the verbatim quota reserved for parallels is used up, and " +
+                        "absent when the verses are missing from this translation.",
+                    },
+                    verse_einzeln: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: { nr: { type: "integer" }, text: { type: "string" } },
+                        required: ["nr", "text"],
+                      },
+                    },
+                  },
+                  required: ["stelle", "locator", "sprache"],
+                },
+              },
+            },
+            required: ["stellen"],
+          },
+        },
+        stellen: {
+          type: "integer",
+          description: "Number of parallel places across all groups, the queried verse excluded.",
+        },
+      },
+      required: ["gruppen", "stellen"],
+      description:
+        "Present only when the UBS Parallel Passage Database lists this verse. A group is an " +
+        "unordered set with no direction and no ranking, unlike `verweise`; a verse can belong " +
+        "to more than one group.",
     },
     lesehinweis: { type: "string" },
     hinweis: { type: "string" },
@@ -640,12 +714,13 @@ const SERVER_INFO_OUTPUT = {
         },
         editionsbezeugung: { type: "boolean" },
         querverweise: { type: "boolean" },
+        parallelstellen: { type: "boolean" },
         volltextsuche: { type: "boolean" },
         fussnoten: { type: "boolean" },
       },
       required: [
         "strong_lexikon", "strong_lexikon_vollstaendig", "editionsbezeugung",
-        "querverweise", "volltextsuche", "fussnoten",
+        "querverweise", "parallelstellen", "volltextsuche", "fussnoten",
       ],
     },
     ressourcen: {
@@ -852,8 +927,11 @@ const handleListTools = async () => ({
         "Find cross-references (related/parallel passages) for one Bible verse, ranked by " +
         "relevance votes, with the German text of the targets (in editions " +
         "that cap verbatim quoting, the later targets carry `stelle` and `votes` only). Use this " +
-        "to find where a theme, quote or promise recurs elsewhere in Scripture. Data: Treasury of " +
-        "Scripture Knowledge (expanded), OpenBible.info, CC-BY.",
+        "to find where a theme, quote or promise recurs elsewhere in Scripture. Where the UBS " +
+        "Parallel Passage Database lists the verse, `parallelen` adds the closed set of parallel " +
+        "places (synoptic pericopes, Kings/Chronicles doublets, OT quotations in the NT, " +
+        "recurring formulas) that the vote ranking often buries. Data: Treasury of Scripture " +
+        "Knowledge (expanded), OpenBible.info, CC-BY; UBS Parallel Passage Database, CC BY-SA 4.0.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -1142,7 +1220,7 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
       `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools: zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
       `1. Bestimme das Urtext-Wort: ${startpunkt}\n` +
       `2. Rufe bible_concordance mit der Strong-Nummer ab. Die Zahlen stehen in der Antwort und werden übernommen, nicht nachgezählt: 'gesamt' sind die Vorkommen, 'verse' die Verse, 'buecher' die vollständige Verteilung, auch wenn die Liste 'vorkommen' gekürzt ist (dann sagt es 'hinweis'). Alle Zahlen gelten je Edition.${lexikon}\n` +
-      `3. Wähle 2 bis 3 Vorkommen aus, und zwar nach der Verteilung in 'buecher' (verschiedene Bücher, auffällige Häufungen), nicht nach Bekanntheit. Rufe für sie bible_lookup ab${hasXrefs ? " und bible_crossrefs für die Parallelstellen" : ""}.\n` +
+      `3. Wähle 2 bis 3 Vorkommen aus, und zwar nach der Verteilung in 'buecher' (verschiedene Bücher, auffällige Häufungen), nicht nach Bekanntheit. Rufe für sie bible_lookup ab${hasXrefs || hasParallels ? " und bible_crossrefs für die Parallelstellen" : ""}.\n` +
       `4. Fasse das Bedeutungsspektrum zusammen: Grundbedeutung, Bedeutungsnuancen nach Kontext, auffällige Verteilung. Belege jede Aussage mit einer konkret abgerufenen Stelle; kennzeichne offene Fragen als offen.`;
   } else if (name === "variant-check") {
     const ref = promptArg(args, "reference", true);
@@ -1542,6 +1620,7 @@ function sourcesPayload(): Record<string, unknown> {
       ...loadedTranslationCodes().map(translationQuelle),
       ...EDITION_ORDER.filter((e) => availableEditions.has(e)).map((e) => EDITION_META[e]!.quelle),
       hasXrefs ? DATASET_QUELLEN.crossrefs : undefined,
+      hasParallels ? DATASET_QUELLEN.parallelen : undefined,
       hasTagnt ? DATASET_QUELLEN.tagnt : undefined,
       hasStrongDefs ? DATASET_QUELLEN.lexikon_strongs : undefined,
       hasStepCols ? DATASET_QUELLEN.lexikon_step : undefined
@@ -1705,7 +1784,7 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
     );
   }
 
-  // Import hier und nicht auf Modulebene: Er zieht alle acht Download-Module
+  // Import hier und nicht auf Modulebene: Er zieht alle neun Download-Module
   // herein, und ein Server, der seine Daten schon hat, soll sie nie laden.
   const { runSetup, SETUP_STEPS } = await import("../scripts/setup.ts");
 
@@ -1864,6 +1943,12 @@ function handleServerInfo() {
       ...(hasStrongDefs ? { strong_lexikon_sprache: "en" } : {}),
       editionsbezeugung: hasTagnt,
       querverweise: hasXrefs,
+      // Eigenes Merkmal und nicht unter `querverweise` mitgezählt: Die beiden
+      // Datensätze sind eigene Setup-Schritte und können einzeln fehlen. Ohne
+      // die Anzeige läse ein Aufrufer eine Antwort ohne `parallelen` als „zu
+      // diesem Vers gibt es keine Parallelstelle" statt als „dieser Server
+      // führt sie nicht".
+      parallelstellen: hasParallels,
       volltextsuche: hasFts,
       // Der Anmerkungsapparat erscheint an rund 4 % der Abrufe. Ohne diese
       // Bestandsanzeige könnte ein Aufrufer nicht wissen, dass es ihn überhaupt

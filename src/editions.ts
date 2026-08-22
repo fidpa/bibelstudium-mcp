@@ -139,6 +139,21 @@ export const DATASET_QUELLEN = {
     lizenz: "CC BY 4.0",
     nennung: "OpenBible.info, CC BY 4.0, https://www.openbible.info/labs/cross-references/",
   },
+  parallelen: {
+    werk: "Parallelstellen und Zitate (UBS Parallel Passage Database)",
+    lizenz: "CC BY-SA 4.0",
+    // Die erste Klammer ist der Wortlaut, den die Quelle als Nennung verlangt,
+    // und sie steht deshalb unverändert und zuerst; die eigenen Angaben folgen
+    // dahinter. Die Lizenz-URI führt sonst kein Eintrag hier: Bei Share-Alike
+    // ist sie das Mittel, mit dem ein Weiterverwender die Auflage überhaupt
+    // erfüllen kann, bei einer reinen Namensnennung nicht.
+    nennung:
+      "(UBS Parallel Passage Database, © 2023 United Bible Societies.) " +
+      "CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/, Quelle " +
+      "https://github.com/ubsicap/ubs-open-license. Übernommen sind allein die " +
+      "Versreferenzen, aufgelöst auf die Buchnummerierung dieses Servers; die " +
+      "Wortabgleichs-Ziffern der Quelle sind nicht übernommen.",
+  },
   tagnt: {
     werk: "Bezeugung über acht griechische Editionen (STEPBible TAGNT)",
     lizenz: "CC BY 4.0",

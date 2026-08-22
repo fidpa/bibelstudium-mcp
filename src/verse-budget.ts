@@ -96,9 +96,19 @@ export function verseBudget(code: TranslationCode): VerseBudget {
  * steht neben dem Satz im `hinweis` und nicht an seiner Stelle: Der Satz ist für
  * das Modell geschrieben, die drei Zahlen sind für den, der nachrechnet.
  */
-export function gekuerztFeld(b: VerseBudget, noten?: VerseBudget): Record<string, unknown> {
+export function gekuerztFeld(
+  b: VerseBudget,
+  weitere?: { noten?: VerseBudget; parallelen?: VerseBudget }
+): Record<string, unknown> {
+  const noten = weitere?.noten;
+  const parallelen = weitere?.parallelen;
   const notenGekuerzt = noten !== undefined && noten.gekuerzt;
-  if (b.verseMax === null || (!b.gekuerzt && !notenGekuerzt)) return {};
+  // Ein Teilbudget kann greifen, ohne dass das Hauptbudget es merkt: Es lehnt
+  // aus eigener Obergrenze ab und belastet das Hauptbudget dabei nicht. Ohne
+  // diese Abfrage bliebe eine Kürzung, die allein die Parallelstellen trifft,
+  // ohne jede Meldung.
+  const parallelenGekuerzt = parallelen !== undefined && parallelen.gekuerzt;
+  if (b.verseMax === null || (!b.gekuerzt && !notenGekuerzt && !parallelenGekuerzt)) return {};
   return {
     gekuerzt: {
       verse_max: b.verseMax,
@@ -107,6 +117,73 @@ export function gekuerztFeld(b: VerseBudget, noten?: VerseBudget): Record<string
       ...(notenGekuerzt
         ? { fussnoten_gezeigt: noten.imWortlaut, fussnoten_entfallen: noten.ohneWortlaut }
         : {}),
+      ...(parallelenGekuerzt
+        ? {
+            parallelen_max: parallelen.verseMax,
+            parallelen_gezeigt: parallelen.imWortlaut,
+            parallelen_entfallen: parallelen.ohneWortlaut,
+          }
+        : {}),
+    },
+  };
+}
+
+/**
+ * Ein Teilbudget, das aus einem Hauptbudget schöpft, aber höchstens `hoechstens`
+ * Verse nimmt.
+ *
+ * Gebraucht für die Parallelstellen in `bible_crossrefs`. Sie werden **vor** den
+ * Verweisen bedient, weil `nimmGanz` nach der ersten Ablehnung sperrt: Wer sie
+ * hinten anstellt, bekommt sie bei der Schlachter 2000 in 6,2 % der Abrufe mit
+ * dem Vorgabelimit und in 29,2 % mit dem Höchstlimit ohne Wortlaut (gemessen
+ * 22.08.2026). Umgekehrt dürfen sie das Budget nicht leerräumen, deshalb die
+ * eigene Obergrenze.
+ *
+ * Die Sperre des Teilbudgets greift **nicht** auf das Hauptbudget durch. Das ist
+ * der Kern: Eine Ablehnung aus eigener Obergrenze fragt das Hauptbudget gar
+ * nicht erst, sonst setzte sie dort `gesperrt` und die Verweise gingen
+ * sämtlich ohne Text hinaus. Verbraucht ein Mitglied dagegen echtes Budget,
+ * wird das Hauptbudget belastet, und die Zusage „höchstens `verseMax` Verse je
+ * Abruf" gilt über beide Teile zusammen.
+ */
+export function teilBudget(eltern: VerseBudget, hoechstens: number): VerseBudget {
+  if (eltern.verseMax === null) return eltern;
+  const grenze = Math.min(hoechstens, eltern.verseMax);
+  let imWortlaut = 0;
+  let ohneWortlaut = 0;
+  let gesperrt = false;
+  return {
+    verseMax: grenze,
+    ausgabe: eltern.ausgabe,
+    get imWortlaut() {
+      return imWortlaut;
+    },
+    get ohneWortlaut() {
+      return ohneWortlaut;
+    },
+    get gekuerzt() {
+      return ohneWortlaut > 0;
+    },
+    nimm(anzahl) {
+      const frei = Math.min(grenze - imWortlaut, (eltern.verseMax ?? 0) - eltern.imWortlaut);
+      const bewilligt = Math.max(Math.min(anzahl, frei), 0);
+      if (bewilligt > 0) eltern.nimmGanz(bewilligt);
+      imWortlaut += bewilligt;
+      ohneWortlaut += anzahl - bewilligt;
+      return bewilligt;
+    },
+    nimmGanz(anzahl) {
+      const passt =
+        !gesperrt &&
+        imWortlaut + anzahl <= grenze &&
+        eltern.imWortlaut + anzahl <= (eltern.verseMax ?? 0);
+      if (passt && eltern.nimmGanz(anzahl)) {
+        imWortlaut += anzahl;
+        return true;
+      }
+      gesperrt = true;
+      ohneWortlaut += anzahl;
+      return false;
     },
   };
 }
@@ -121,10 +198,29 @@ export function verseMaxHinweis(
   b: VerseBudget,
   lage:
     | { art: "verse"; gefunden: number }
-    | { art: "verweise"; mitText: number; gesamt: number }
+    | {
+        art: "verweise";
+        mitText: number;
+        gesamt: number;
+        /** Die Parallelstellen derselben Antwort, wenn sie welche trägt. Sie
+         *  teilen sich das Budget mit den Verweisen und werden vor ihnen
+         *  bedient; ohne diese beiden Zahlen nennte der Satz nur die eine
+         *  Hälfte der Kürzung und läse sich, als sei die andere vollständig. */
+        parallelenMitText?: number;
+        parallelenGesamt?: number;
+      }
     | { art: "treffer"; mitText: number; gesamt: number }
 ): string | null {
-  if (b.verseMax === null || !b.gekuerzt) return null;
+  // Auch dann melden, wenn allein die Parallelstellen gekürzt wurden: Sie
+  // schöpfen aus einem Teilbudget, das ablehnen kann, ohne das Hauptbudget zu
+  // belasten. Ohne diese Bedingung stand die Kürzung im Feld `gekuerzt` und in
+  // keinem Satz (gemessen 22.08.2026 an Hesekiel 12,1 mit der Schlachter 2000:
+  // 29 von 37 Stellen ohne Wortlaut, `hinweis` schwieg).
+  const parallelenGekuerzt =
+    lage.art === "verweise" &&
+    lage.parallelenGesamt !== undefined &&
+    lage.parallelenGesamt > (lage.parallelenMitText ?? 0);
+  if (b.verseMax === null || (!b.gekuerzt && !parallelenGekuerzt)) return null;
   const kopf =
     `Für die ${b.ausgabe} gibt dieser Server je Abruf höchstens ` +
     `${b.verseMax} Verse im Wortlaut aus.`;
@@ -134,12 +230,27 @@ export function verseMaxHinweis(
         `${kopf} Gefunden wurden ${lage.gefunden} Verse; enthalten sind die ` +
         `ersten ${b.imWortlaut}. Welche enthalten sind, sagt 'reference'.`
       );
-    case "verweise":
-      return (
-        `${kopf} ${lage.mitText} der ${lage.gesamt} Verweise tragen deshalb ` +
-        `ihren Text, die übrigen allein 'stelle' und 'votes'. Die Zahl der ` +
-        `Verweise ist davon nicht berührt.`
-      );
+    case "verweise": {
+      // Beide Teile werden nur benannt, wenn sie wirklich gekürzt wurden. Ein
+      // Satz über die Verweise, von denen keiner Text verloren hat, lenkte auf
+      // die falsche Hälfte.
+      const teile = [
+        b.gekuerzt
+          ? `${lage.mitText} der ${lage.gesamt} Verweise tragen deshalb ihren ` +
+            `Text, die übrigen allein 'stelle' und 'votes'.`
+          : null,
+        parallelenGekuerzt
+          ? `Von den ${lage.parallelenGesamt} Parallelstellen tragen ` +
+            `${lage.parallelenMitText ?? 0} ihren Text; für sie gilt zusätzlich ` +
+            `eine eigene Obergrenze innerhalb dieser Zahl, und sie werden vor ` +
+            `den Verweisen bedient.`
+          : null,
+      ].filter((t): t is string => t !== null);
+      const unberuehrt = parallelenGekuerzt
+        ? "Die Zahl der Verweise und der Parallelstellen ist davon nicht berührt."
+        : "Die Zahl der Verweise ist davon nicht berührt.";
+      return `${kopf} ${teile.join(" ")} ${unberuehrt}`;
+    }
     case "treffer":
       return (
         `${kopf} Die ersten ${lage.mitText} gelisteten Treffer tragen deshalb ` +

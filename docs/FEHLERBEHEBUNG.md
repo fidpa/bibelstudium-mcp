@@ -235,7 +235,7 @@ nötig, weil der Prozess über seinen Dateideskriptor weiter die alte Datei häl
 
 ### `bible_setup` fehlt in der Werkzeugliste
 
-Kein Fehler, sondern Absicht. Das Werkzeug lädt rund 145 MB von acht fremden
+Kein Fehler, sondern Absicht. Das Werkzeug lädt rund 145 MB von neun fremden
 Quellen und ersetzt die Datenbankdatei, und das gehört nicht in die Hand eines
 beliebigen Aufrufers. Im HTTP-Modus wird es weder angeboten noch ausgeführt.
 
@@ -312,7 +312,7 @@ einfach erneut starten.
 
 ### Der Aufbau dauert deutlich länger als angegeben
 
-Zu erwarten ist **unter einer Minute** für alle acht Schritte: `download.ts`
+Zu erwarten ist **unter einer Minute** für alle neun Schritte: `download.ts`
 holt je Übersetzung einen statischen Export, die sieben übrigen Skripte je wenige
 Dateien. Gemessen wurden 26 s auf einem Mac mini und 46 s auf einem
 NAS (x86-64, Ubuntu). Der Aufbau ist netzwerk-, nicht CPU-gebunden.

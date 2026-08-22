@@ -124,7 +124,7 @@ jobs:
         run: |
           # The counterpart to the two stdio guards above, and the one that
           # matters for a reachable endpoint: bible_setup downloads ~145 MB from
-          # eight external sources and replaces the database, so it is stdio-only.
+          # nine external sources and replaces the database, so it is stdio-only.
           # Guarded here because the state that would unlock it (no database) is
           # exactly what CI has, and because a regression would be invisible
           # locally, where the database is present.

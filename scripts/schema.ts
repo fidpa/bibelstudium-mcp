@@ -233,6 +233,50 @@ export function ensureCrossRefsSchema(db: Database): void {
   );
 }
 
+/**
+ * Stellt sicher, dass `parallel_passages` existiert (gefüllt von
+ * download-parallels.ts).
+ *
+ * Eine Gruppe je `group_id`, ein Mitglied je `member_seq`, und innerhalb eines
+ * Mitglieds ein zusammenhängender Versabschnitt je `span_seq`. Anders als
+ * `cross_references` ist das keine gerichtete Kante mit Bewertung, sondern eine
+ * ungeordnete Menge: Die Quelle sagt „diese Stellen sind parallel" und trifft
+ * keine Aussage darüber, welche die Vorlage ist.
+ *
+ * `span_seq` ist nicht überflüssig. Zehn der 5266 Referenzen haben die Form
+ * `LUK 6:27-28,35`, also zwei Abschnitte mit einer echten Lücke dazwischen
+ * (gemessen 22.08.2026). Als eine Spanne von 27 bis 35 geführt, behauptete die
+ * Tabelle neun Verse, die die Quelle nicht nennt, und ein Konsument gäbe die
+ * dazwischenliegenden im Wortlaut aus.
+ *
+ * `locator` hält die Referenz so fest, wie die Quelle sie schreibt. Im Alten
+ * Testament zählt die UBS nach der hebräischen Bibel, unsere `verses`-Tabelle
+ * nach bolls.life; 337 der 2788 AT-Referenzen liegen in einem Kapitel, dessen
+ * Verszahl zwischen beiden Zählungen abweicht (gemessen 22.08.2026). Dort ist
+ * der Locator die einzige verlustfreie Angabe, und die aufgelösten Zahlen
+ * daneben sind eine Näherung, die als solche ausgeliefert wird.
+ */
+export function ensureParallelPassagesSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS parallel_passages (
+      group_id   INTEGER NOT NULL,
+      member_seq INTEGER NOT NULL,
+      span_seq   INTEGER NOT NULL,
+      book_id    INTEGER NOT NULL,
+      chapter    INTEGER NOT NULL,
+      verse      INTEGER NOT NULL,
+      verse_end  INTEGER NOT NULL,
+      lang       TEXT    NOT NULL,
+      locator    TEXT    NOT NULL,
+      PRIMARY KEY (group_id, member_seq, span_seq)
+    )
+  `);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_parallel_verse ON parallel_passages " +
+      "(book_id, chapter, verse, verse_end)"
+  );
+}
+
 export function ensureOriginalWordsSchema(db: Database): void {
   const cols = db
     .query("PRAGMA table_info(original_words)")

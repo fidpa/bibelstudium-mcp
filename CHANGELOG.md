@@ -6,6 +6,37 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.21] - 2026-08-22
+
+### Hinzugefügt
+
+- **`bible_crossrefs` liefert Parallelstellen: das neue Feld `parallelen` aus
+  der UBS Parallel Passage Database** (CC BY-SA 4.0, © 2023 United Bible
+  Societies), 2193 Gruppen mit 5265 Stellen. Anders als `verweise` ist eine
+  Gruppe eine geschlossene Menge ohne Richtung und ohne Bewertung: Synoptiker-
+  Perikopen, Königs- und Chronik-Dubletten, alttestamentliche Zitate im Neuen
+  Testament, formelhafte Wiederholungen. 387 Gruppen sind über
+  `cross_references` gar nicht erreichbar; zu Markus 2,12 nennen die zehn
+  bestbewerteten Verweise weder Lukas 5,25-26 noch Johannes 5,9.
+
+  Geladen über `bun run download:parallels`, ein optionaler Schritt in
+  `setup.ts`. Ohne ihn fehlt das Feld, und `bible_server_info` sagt es unter
+  `bestand.parallelstellen`.
+
+### Geändert
+
+- Ein Vers ohne Querverweis, aber mit Parallelgruppe ist keine Fehlerantwort
+  mehr. Betrifft 338 Verse.
+- **Die Parallelstellen bekommen ihren Wortlaut vor den Verweisen** und nehmen
+  höchstens 8 der 20 Verse, die beide Schlachter-Ausgaben je Abruf zulassen; das
+  deckt 95,6 % der Fälle. Umgekehrt gingen sie dort regelmäßig ohne Text hinaus.
+  Ein Verweis am Ende einer langen Liste kann dadurch Text verlieren, den er
+  vorher hatte; `gekuerzt` und `hinweis` nennen beide Teile getrennt.
+- **Im Alten Testament zählt die Quelle nach der hebräischen Bibel.** Jede
+  Stelle trägt deshalb `locator`, die Referenz im Wortlaut der Quelle, und jede
+  Antwort mit einem AT-Mitglied einen Vorbehalt im `hinweis`; `zaehlung_abweichend`
+  markiert die betroffenen Stellen, sofern der Grundtext geladen ist.
+
 ## [0.6.20] - 2026-08-22
 
 ### Hinzugefügt

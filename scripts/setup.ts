@@ -28,6 +28,7 @@ import { main as downloadSblgnt } from "./download-morph.ts";
 import { main as downloadTextusReceptus } from "./download-tr.ts";
 import { main as downloadHebrew } from "./download-heb.ts";
 import { main as downloadCrossrefs } from "./download-crossrefs.ts";
+import { main as downloadParallels } from "./download-parallels.ts";
 import { main as downloadTagnt } from "./download-tagnt.ts";
 import { main as downloadLexicon } from "./download-lexicon.ts";
 
@@ -91,6 +92,14 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     provides: "die Querverweise (bible_crossrefs)",
     command: "bun run download:crossrefs",
     run: downloadCrossrefs,
+  },
+  {
+    id: "parallels",
+    label: "Parallelstellen",
+    required: false,
+    provides: "die Parallelstellen und AT-Zitate (Feld 'parallelen' in bible_crossrefs)",
+    command: "bun run download:parallels",
+    run: downloadParallels,
   },
   {
     id: "tagnt",

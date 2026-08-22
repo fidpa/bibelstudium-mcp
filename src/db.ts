@@ -19,7 +19,7 @@
  * und nicht aus der Datenbank: Sie werden neben `dataMissing` gelesen, weil die
  * drei zusammen entscheiden, welche Werkzeuge es überhaupt gibt.
  *
- * Die acht Bannerabschnitte gliedern nach Tabelle, nicht nach Belieben: Wer
+ * Die neun Bannerabschnitte gliedern nach Tabelle, nicht nach Belieben: Wer
  * eine Abfrage sucht, sucht sie über die Tabelle, aus der sie liest.
  */
 import { Database } from "bun:sqlite";
@@ -113,7 +113,7 @@ try {
  * Hier ausgelesen, neben `dataMissing`, weil die beiden zusammen entscheiden,
  * ob es bible_setup überhaupt gibt. Über stdio hat der Aufrufer diesen Prozess
  * gestartet und verfügt über die Maschine; ein Werkzeug, das rund 145 MB von
- * acht Quellen lädt und die Datenbankdatei ersetzt, ist dort eine
+ * neun Quellen lädt und die Datenbankdatei ersetzt, ist dort eine
  * Bequemlichkeit. An einem HTTP-Endpunkt ist der Aufrufer ein Fremder: Das
  * Werkzeug ließe jeden diese Downloads beliebig oft auslösen, und der Zustand,
  * der es freischaltet, nämlich keine Datenbank, ist genau der, den eine
@@ -473,6 +473,74 @@ export const stmtXrefsCount = hasXrefs
   ? db.prepare<{ n: number }, [number, number, number]>(
       "SELECT COUNT(*) AS n FROM cross_references " +
         "WHERE from_book = ? AND from_chapter = ? AND from_verse = ?"
+    )
+  : null;
+
+// --- Parallelstellen (UBS Parallel Passage Database, optionale Tabelle) ----
+// Wie bei den Querverweisen entscheidet das Vorhandensein der Tabelle. Der
+// Wächter ist hier nicht Kosmetik: Die Notdatenbank oben deklariert allein
+// `books`, `aliases` und `verses`, und ein `db.prepare` auf eine fehlende
+// Tabelle wirft beim Import dieses Moduls, also bevor der Server überhaupt
+// antworten kann. Jede vor diesem Stand aufgebaute Datenbank hat
+// `parallel_passages` nicht.
+export const hasParallels =
+  db
+    .query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='parallel_passages'"
+    )
+    .get() !== null;
+
+/** Die Gruppen, in denen ein Vers Mitglied ist. Ein Vers kann in mehreren
+ *  stehen: 51 Gruppen sind echte Teilmenge einer anderen, etwa Mt 19,4 = Mk 10,6
+ *  innerhalb der Vierergruppe mit 1. Mose 1,27 (gemessen 22.08.2026). Beide sind
+ *  Aussagen der Quelle, keine Dublette. */
+export const stmtParallelGroups = hasParallels
+  ? db.prepare<{ group_id: number }, [number, number, number, number]>(
+      "SELECT DISTINCT group_id FROM parallel_passages " +
+        "WHERE book_id = ? AND chapter = ? AND verse <= ? AND verse_end >= ? " +
+        "ORDER BY group_id"
+    )
+  : null;
+
+/** Alle Abschnitte einer Gruppe, in der Reihenfolge der Quelldatei. Ein Mitglied
+ *  kann mehrere Zeilen haben, siehe `span_seq` in scripts/schema.ts. */
+export const stmtParallelMembers = hasParallels
+  ? db.prepare<
+      {
+        member_seq: number;
+        span_seq: number;
+        book_id: number;
+        chapter: number;
+        verse: number;
+        verse_end: number;
+        lang: string;
+        locator: string;
+      },
+      [number]
+    >(
+      "SELECT member_seq, span_seq, book_id, chapter, verse, verse_end, lang, locator " +
+        "FROM parallel_passages WHERE group_id = ? ORDER BY member_seq, span_seq"
+    )
+  : null;
+
+/**
+ * Die Verszahl eines Kapitels im hebräischen Grundtext.
+ *
+ * Gebraucht wird sie allein für den Vorbehalt zu den Parallelstellen: Die UBS
+ * zählt im Alten Testament nach der hebräischen Bibel, die `verses`-Tabelle
+ * folgt bolls.life, und 137 der 929 AT-Kapitel zählen deshalb verschieden
+ * (gemessen 22.08.2026). Wo die Zahlen auseinandergehen, kann eine aufgelöste
+ * Referenz auf einen anderen Vers zeigen, als die Quelle meint.
+ *
+ * Eine Abbildung von Vers zu Vers entsteht daraus nicht, und das ist dieselbe
+ * Entscheidung wie bei den deutschen Ausgaben: Eine geschätzte Zuordnung wäre
+ * schlimmer als keine. Ist `original_words` nicht geladen, bleibt der Vergleich
+ * aus, und der Vorbehalt wird trotzdem genannt.
+ */
+export const stmtWlcKapitelLaenge = hasOriginal
+  ? db.prepare<{ n: number }, [number, number]>(
+      "SELECT MAX(verse) AS n FROM original_words " +
+        "WHERE edition = 'wlc' AND book_id = ? AND chapter = ?"
     )
   : null;
 

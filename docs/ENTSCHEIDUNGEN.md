@@ -1411,3 +1411,110 @@ greifen ausschließlich bei ungetrackten Dateien, ein `git add -f` ginge daran
 vorbei. Der CI-Job `data-absent` zählt deshalb `git ls-files data` und
 Datenbankdateien im ganzen Baum; beide Zahlen müssen 0 sein. Auch er wurde gegen
 ein präpariertes Repository geprüft, nicht nur gegen den sauberen Stand.
+
+## Parallelstellen sind eine andere Frage als Querverweise, und sie bekommen kein eigenes Werkzeug
+
+Aufgenommen am 22.08.2026. `cross_references` führt 344 781 gerichtete Verweise
+von OpenBible.info, nach Gemeinschaftsstimmen sortiert. Diese Sortierung ist eine
+Beliebtheitsordnung und keine Aussage über die Art des Bezugs, und deshalb
+beantwortet sie die Frage „wo steht dieselbe Begebenheit noch" oft nicht: Zu
+Markus 2,12 nennen die zehn bestbewerteten Verweise Matthäus 9,33, Lukas 7,16 und
+Johannes 9,32, während die eigentlichen Parallelen Lukas 5,25-26 und Johannes 5,9
+gar nicht vorkommen.
+
+**Gemessen, bevor entschieden wurde.** Von den 2193 Gruppen der UBS-Datenbank
+sind 1646 (75,1 %) über `cross_references` schon vollständig abgedeckt, 160
+teilweise, 387 (17,7 %) gar nicht. Entscheidend ist aber nicht, ob die Kante
+existiert, sondern ob der Aufrufer sie zu sehen bekommt:
+
+| Teilmenge | im Vorgabe-`limit` 10 sichtbar | im Höchstwert 30 |
+|---|---|---|
+| alle 10 994 geordneten Paare | 50,2 % | 54,7 % |
+| rein neutestamentlich (5306) | 62,0 % | 68,4 % |
+| Synoptiker untereinander (2838) | 69,7 % | 74,1 % |
+| AT in Kapiteln mit gleicher Zählung (3988) | 33,5 % | 36,3 % |
+
+Rund 45 % der von der UBS benannten Parallelen sind über das Werkzeug also auch
+bei maximalem `limit` nicht erreichbar, und 338 Verse aus Gruppen hatten
+überhaupt keinen Querverweis und liefen in eine Fehlermeldung.
+
+Gegen die eigene Zahl gehalten: Die Paarzählung überzeichnet den Nutzen. Von den
+3131 unerreichbaren AT-Paaren stellt EZK→EZK allein 1207, und ein großer Teil des
+übrigen AT-Zugewinns sind Genealogien (1. Mose 10 und 36 gegen 1. Chronik 1). Die
+Gruppenzahl ist das belastbare Maß. Was den Ausschlag gab, ist eine Klasse, die
+ein statistischer Verweisdatensatz strukturell nicht finden kann: formelhafte
+Wiederholungen. Die Wortereignisformel in Jeremia und Ezechiel (38 Stellen), der
+paulinische Gruß über 17 Briefanfänge, die Opfergaben der zwölf Stämme in Numeri
+7. Kein einziges dieser Paare steht in `cross_references`.
+
+**Verworfen: ein eigenes Werkzeug `bible_parallels`.** Es hätte eine achte
+Beschreibung in `tools/list` gekostet, ein eigenes Ausgabeschema, einen eigenen
+Handler und ein eigenes Testbündel, und der Zugewinn wäre nur dort angekommen, wo
+das Modell weiß, dass es ein zweites Werkzeug fragen muss. Der Fall Markus 2,12
+wäre damit nicht besser geworden: Wer nach Querverweisen fragt, fragt
+`bible_crossrefs`. Das Feld `parallelen` landet stattdessen in genau dem Aufruf,
+in dem es heute fehlt, und ist eine additive Änderung. Vermischt werden die
+beiden Datensätze trotzdem nicht: Eine Gruppe hat weder Richtung noch Bewertung,
+und ein erfundener `votes`-Wert wäre eine Aussage, die die Quelle nicht macht.
+
+**Verworfen: die Wortabgleichs-Ziffern.** Die Quelle markiert je Wort, wie genau
+es der Parallele entspricht. Diese Ziffern zählen die Wörter von BHS und
+UBSGNT5; dieser Server führt WLC, Byzantine, SBLGNT und TR, keine davon trennt
+Wörter gleich, und UBSGNT5 liegt gar nicht vor. Die Ziffern wären nicht
+zuzuordnen und werden nicht gespeichert.
+
+## Die UBS zählt im Alten Testament anders, und wir bauen keine Zuordnung
+
+Der Befund vom 22.08.2026, der beinahe unbemerkt geblieben wäre. Von 6075
+aufgelösten Einzelversen finden sich 14 (0,23 %) nicht in Luther 1912:
+`PSA 18:51`, `PSA 53:7`, `1KI 5:25`, `2CH 13:23`, `ISA 8:23`, `HOS 2:25` und acht
+weitere. Alle 14 sind Fälle, in denen die hebräische Zählung über das Kapitelende
+hinausläuft und deshalb **laut** scheitert.
+
+Die stillen Fälle sind die eigentliche Sache. Gemessen an den WLC-Verszahlen in
+`original_words` gegen Luther zählen 137 der 929 AT-Kapitel verschieden, und 337
+der 2788 AT-Referenzen (12,1 %) liegen in einem solchen Kapitel. Das ist die
+Obergrenze des Risikos, nicht die Zahl der falschen Referenzen; die genaue Zahl
+ist ohne eine Versabbildung nicht zu bestimmen.
+
+**Eine solche Abbildung entsteht hier nicht**, und das ist keine neue
+Entscheidung: Für dieselbe Lage unter den deutschen Ausgaben steht sie seit dem
+06.08.2026 fest, siehe „Dieselbe Stellenangabe trifft nicht in jeder Ausgabe
+denselben Text" weiter oben. Eine geschätzte Zuordnung wäre schlimmer als keine.
+Stattdessen gilt die Hausregel: ausliefern und den Vorbehalt ins Ergebnis
+schreiben. Jede Referenz trägt ihren `locator`, also die Referenz im Wortlaut der
+Quelle, jede Antwort mit einem AT-Mitglied trägt den Vorbehalt im `hinweis`, und
+wo der hebräische Grundtext geladen ist, tragen die betroffenen Stellen
+zusätzlich `zaehlung_abweichend`.
+
+Der Vorbehalt hängt **nicht** an der Flagge. Die Flagge setzt `original_words`
+mit WLC voraus, und ihre Abwesenheit ist keine Entwarnung; der Satz im `hinweis`
+steht deshalb bei jeder Gruppe mit einem AT-Mitglied, auch wenn nichts geprüft
+werden konnte.
+
+## Die Parallelstellen bekommen ein Teilbudget, kein zweites Budget
+
+Beim Einbau am 22.08.2026 gemessen und beinahe falsch gemacht. `nimmGanz()` in
+`verse-budget.ts` sperrt nach der ersten Ablehnung jede weitere Anfrage, und
+verbraucht wird in `votes`-Reihenfolge. Wer die Parallelstellen hinter den
+Verweisen bedient, liefert sie bei der Schlachter 2000 in 6,2 % der Abrufe mit
+dem Vorgabelimit und in 29,2 % mit dem Höchstlimit ohne einen einzigen Vers
+Wortlaut aus, und zwar genau in dem Feld, dessen Zweck der Wortlaut ist.
+
+**Verworfen: ein zweites, eigenes Budget.** Es gäbe einen Präzedenzfall, die
+Fußnoten holen sich in `werkzeug-helfer.ts` eins. Fußnoten sind aber
+Anmerkungen, Gruppenmitglieder sind Bibeltext im Wortlaut; ein zweites Budget
+machte aus der Zusage „höchstens 20 Verse im Wortlaut je Abruf" stillschweigend
+40.
+
+Gewählt ist ein Teilbudget: Die Parallelstellen werden zuerst bedient, nehmen
+aber höchstens acht der zwanzig Verse, und was sie nehmen, belastet das
+Hauptbudget. Acht deckt 4763 der 4983 Verse mit Parallelstellen ab, also 95,6 %.
+Der Kern der Sache steckt in einer Verneinung: Eine Ablehnung aus der eigenen
+Obergrenze fragt das Hauptbudget **gar nicht erst**, sonst setzte sie dort
+`gesperrt`, und sämtliche Verweise gingen ohne Text hinaus.
+
+Beim ersten Lauf trat prompt der Hausfehler auf: Hesekiel 12,1 mit der Schlachter
+2000 meldete im Feld `gekuerzt` 29 entfallene Stellen, und der `hinweis`
+schwieg, weil `verseMaxHinweis` nur das Hauptbudget ansah. Ein Teilbudget kann
+kürzen, ohne dass das Hauptbudget es merkt; die Meldung fragt seither beide.

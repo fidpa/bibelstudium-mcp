@@ -17,12 +17,14 @@
  * `bible_lookup` (137 von 31 166 Menge-Versen) erschien in keiner einzigen.
  * `test-golden.ts` benennt diesen Fall ausdrücklich.
  *
- * Zwei bedingte Felder werden deshalb gezielt angesteuert statt der Schrittweite
+ * Drei bedingte Felder werden deshalb gezielt angesteuert statt der Schrittweite
  * überlassen: `bezeugung` über die neun NT-Verse ohne TAGNT-Zeile, `fussnoten`
  * über Verse, die eine Fußnote tragen (1134 von 31 171, bei Schrittweite 700
- * sonst im Regelfall kein einziger). Stand 05.08.2026: 582 Aufrufe,
- * 578 sauber geprüft, 0 Schemafehler, 4 sachliche Fehlerantworten (drei Verse
- * ohne Querverweis, eine Suche ohne Treffer).
+ * sonst im Regelfall kein einziger), und `parallelen` über Verse aus der
+ * UBS-Datenbank, je zwölf aus beiden Testamenten, dazu ein Aufruf gegen eine
+ * Ausgabe mit Wortlaut-Grenze für den gekürzten Zweig. Stand 22.08.2026:
+ * 623 Aufrufe, 619 sauber geprüft, 0 Schemafehler, 4 sachliche Fehlerantworten
+ * (drei Verse ohne Querverweis, eine Suche ohne Treffer).
  *
  * Ausgaben mit eigener Versifikation bekommen ihre eigene Stichprobe. Die
  * Luther-Stichprobe trifft bei ihnen reihenweise daneben (gemessen 05.08.2026:
@@ -114,6 +116,30 @@ const mitFussnote = db
       .all() as Array<Ref & { translation: string }>)
   : [];
 
+// Parallelstellen: `parallelen` hängt an 5687 der 31 171 Verse und träfe die
+// Schrittweite nur zufällig, `zaehlung_abweichend` innerhalb einer Stelle so gut
+// wie nie. Angesteuert werden deshalb drei Lagen gezielt: eine rein
+// neutestamentliche Gruppe, eine alttestamentliche in einem Kapitel mit
+// abweichender Zählung, und dieselbe große Gruppe einmal gegen eine Ausgabe mit
+// Wortlaut-Grenze, damit auch der gekürzte Zweig einmal geprüft wird.
+const mitParallelen = db
+  .query("SELECT name FROM sqlite_master WHERE type='table' AND name='parallel_passages'")
+  .get()
+  ? (db
+      .query(
+        "SELECT DISTINCT book_id, chapter, verse FROM parallel_passages " +
+          "WHERE book_id >= 40 ORDER BY book_id, chapter, verse LIMIT 12 "
+      )
+      .all() as Ref[]).concat(
+      db
+        .query(
+          "SELECT DISTINCT book_id, chapter, verse FROM parallel_passages " +
+            "WHERE book_id <= 39 ORDER BY book_id, chapter, verse LIMIT 12"
+        )
+        .all() as Ref[]
+    )
+  : [];
+
 // Die neun NT-Verse ohne TAGNT-Zeile: Dort fehlt `bezeugung`, und genau solch
 // ein bedingtes Feld übersähe eine Stichprobe mit fester Schrittweite.
 const ohneTagnt = db.query(
@@ -158,6 +184,18 @@ for (const v of mitFussnote) {
   calls.push([
     "bible_lookup",
     { book, chapter: v.chapter, verses: String(v.verse), translation: v.translation },
+  ]);
+}
+for (const v of mitParallelen) {
+  const book = books.get(v.book_id)!;
+  calls.push(["bible_crossrefs", { book, chapter: v.chapter, verse: v.verse }]);
+}
+// Die Wortlaut-Grenze greift nur bei einer Ausgabe mit `verseMax`. Ohne diesen
+// Aufruf bliebe der gekürzte Zweig der Parallelstellen ungeprüft.
+for (const translation of geladeneUebersetzungen.filter((t) => t === "SCH" || t === "SLT")) {
+  calls.push([
+    "bible_crossrefs",
+    { book: "Hesekiel", chapter: 12, verse: 1, translation, limit: 30 },
   ]);
 }
 for (const v of ohneTagnt) {

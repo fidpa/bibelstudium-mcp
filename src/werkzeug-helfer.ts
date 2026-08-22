@@ -836,7 +836,7 @@ export function lookupPayload(
       : { verse_einzeln }),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
     ...(fussnoten.length > 0 ? { fussnoten } : {}),
-    ...gekuerztFeld(budget, notenBudget),
+    ...gekuerztFeld(budget, { noten: notenBudget }),
     quellen: quellen(translationQuelle(code)),
   };
 }

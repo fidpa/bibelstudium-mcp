@@ -105,4 +105,5 @@ JSON-RPC-Zeilen lassen sich direkt in den Server leiten:
 - „Zeig mir Johannes 3,16 in allen Übersetzungen" (Prompt `translation-compare`)
 - „Welche Verse sprechen von Gnade?" (`bible_search`)
 - „Welche Querverweise gibt es zu Römer 8,1?" (`bible_crossrefs`)
+- „Wo steht die Begebenheit aus Markus 2,12 noch?" (`bible_crossrefs`, Feld `parallelen`)
 - „Steht in Epheser 2,8 Singular oder Plural?" (`bible_original`)

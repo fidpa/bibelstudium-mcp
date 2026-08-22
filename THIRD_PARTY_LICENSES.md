@@ -58,6 +58,7 @@ Datenbank führt sie nicht.
 | [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TBESH | Tyndale-Glossen (hebräisch) | CC BY 4.0, das TBESH-Feld „Meaning" ist © Online Bible (Larry Pierce) und wird **bewusst nicht gespeichert** |
 | [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) TAGNT | Bezeugung jedes Wortes über acht griechische Editionen (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch) | CC BY 4.0 (Tyndale House, Cambridge) |
 | [OpenBible.info](https://www.openbible.info/labs/cross-references/) | Querverweise (Treasury of Scripture Knowledge, erweitert, mit Community-Stimmen) | CC BY 4.0 |
+| [ubsicap/ubs-open-license](https://github.com/ubsicap/ubs-open-license) | Parallelstellen und AT-Zitate im NT (UBS Parallel Passage Database, 2193 Gruppen) | **CC BY-SA 4.0**, © 2023 United Bible Societies (siehe Anmerkung unten) |
 
 ## Anmerkungen zu einzelnen Angaben (geprüft am 25.07.2026)
 
@@ -73,6 +74,20 @@ Datendateien: „Copyright 2009, Open Scriptures. CC-BY-SA. Derived from XML."
 Eine Versionsnummer der Lizenz wird nicht genannt. Das zugrunde liegende Werk
 (James Strong, 1890) ist wegen seines Alters gemeinfrei; die Share-Alike-Pflicht
 kann sich daher nur auf die digitale Aufbereitung von 2009 beziehen.
+
+**UBS Parallel Passage Database**: Die Quelle verlangt die Nennung im Wortlaut
+„(UBS Parallel Passage Database, © 2023 United Bible Societies.)", und genau so
+steht sie am Anfang des `nennung`-Feldes jeder betroffenen Antwort. Übernommen
+sind allein die Versreferenzen. Die Ziffernfolgen der Datei markieren je Wort,
+wie genau es der Parallele entspricht, und zählen dabei die Wörter von BHS und
+UBSGNT5; dieser Server führt keine dieser beiden Textformen, die Ziffern wären
+hier nicht zuzuordnen und werden nicht gespeichert. Die Bearbeitung besteht
+darin, die Referenzen zu zerlegen und auf die Buchnummerierung dieses Servers
+aufzulösen; eine Beziehungsart, eine Richtung, eine Bewertung oder eine
+erschlossene Parallele kommt dabei nicht hinzu. Im Alten Testament zählt die
+Quelle nach der hebräischen Bibel, dieser Server nach seinen deutschen Ausgaben;
+die Referenz im Wortlaut der Quelle geht deshalb als `locator` mit hinaus, und
+wo die Zählungen nachweislich auseinandergehen, sagt die Antwort es.
 
 **Menge**: Über bolls.life bezogen. Hermann Menge starb 1939, das Werk ist in
 Deutschland seit 2010 gemeinfrei. bolls.life selbst macht zu keiner Übersetzung
@@ -107,18 +122,33 @@ Dieses Projekt liefert keine Datenbank aus, dieser Teil ist also heute
 gegenstandslos. Er steht hier für den Fall, dass jemand seine eigene
 weitergibt.
 
-Zwei der Quellen stehen unter **CC BY-SA**: die MorphGNT-Morphologie (3.0) und
-die Strong-Wörterbücher. Beide werden hier bearbeitet, nicht nur weitergereicht
-(Morphologie-Dekodierung, Überführung des Lexikons in ein eigenes Schema). Eine
-ausgelieferte Datenbank müsste deshalb selbst unter CC BY-SA stehen; CC BY-SA
-4.0 wäre zulässig, weil CC BY-SA 3.0 die Weitergabe unter einer späteren Version
-derselben Lizenz erlaubt. Betroffen wären die **Daten**, nicht der Code dieses
-Repositories, der unter MIT steht.
+Drei der Quellen stehen unter **CC BY-SA**, und sie sind verschieden bestimmt:
+
+- die **MorphGNT-Morphologie** unter CC BY-SA **3.0**,
+- die **Strong-Wörterbücher** unter CC BY-SA **ohne genannte Version** (siehe
+  die Anmerkung oben),
+- die **UBS Parallel Passage Database** unter CC BY-SA **4.0**.
+
+Alle drei werden hier bearbeitet, nicht nur weitergereicht
+(Morphologie-Dekodierung, Überführung des Lexikons in ein eigenes Schema,
+Zerlegung und Auflösung der Parallelstellen-Referenzen). Eine ausgelieferte
+Datenbank müsste deshalb selbst unter CC BY-SA stehen. Bis zur Aufnahme der
+UBS-Daten war die Zielversion frei wählbar: CC BY-SA 3.0 erlaubt die Weitergabe
+unter einer späteren Version derselben Lizenz, 4.0 war damit zulässig, aber
+nicht vorgeschrieben. **Mit einer originären 4.0-Quelle ist sie es jetzt.** Für
+die Strong-Wörterbücher folgt daraus nichts Neues: Ohne genannte Version lässt
+sich aus ihnen keine Zielversion herleiten, und dieses Repository behauptet auch
+weiterhin keine. Betroffen wären in jedem Fall die **Daten**, nicht der Code
+dieses Repositories, der unter MIT steht.
 
 Ob dasselbe schon für die *Ausgaben* eines gehosteten Servers gilt, ist eine
-offene Frage. Ausgegeben werden bearbeitete Morphologiedaten, aber versweise und
-nicht als Datensammlung. Der Server nennt die Share-Alike-Lizenz deshalb in
-`quellen`, damit ein Weiterverwender sie kennt, statt sie selbst herleiten zu
+offene Frage, und die UBS-Daten machen sie spitzer. Bei der Morphologie ließ
+sich noch sagen, ausgegeben werde versweise und nicht als Datensammlung; eine
+Parallelgruppe ist dagegen genau die Struktur, die den Wert der Quelle ausmacht,
+und sie geht als Gruppe hinaus. Eine Antwort trägt allerdings die Gruppen zu
+einem einzigen Vers, nie den Datensatz. Der Server nennt die
+Share-Alike-Lizenz und ihre URI deshalb in `quellen`, damit ein
+Weiterverwender die Bedingung kennt und erfüllen kann, statt sie herleiten zu
 müssen.
 
 **Hinweis zur STEPBible-Weiterverbreitung**: STEPBible bittet darum, die eigenen

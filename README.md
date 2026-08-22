@@ -26,7 +26,7 @@ Dieser Server gibt dem Modell stattdessen die Daten, nämlich exakten deutschen 
 - **Exakter deutscher Verstext** (`bible_lookup`) – über den gehosteten Dienst unter `mcp.bibelstudium-mcp.de` die **Schlachter 2000** (dort Voreinstellung), in jeder Installation Luther 1912, Schlachter 1951, Elberfelder 1871 und Menge 1939
 - **Grundtext Wort für Wort** (`bible_original`) – ganze Bibel: hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie (drei native Morphologie-Schemata: Robinson, MorphGNT, OSHB)
 - **Konkordanz / Wortstudie** (`bible_concordance`) – alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
-- **Querverweise** (`bible_crossrefs`) – Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt. Wo die Antwort kürzt, sagt sie es und nennt die Zahl, die sie ausgelassen hat
+- **Querverweise und Parallelstellen** (`bible_crossrefs`) – Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt. Dazu, wo die UBS Parallel Passage Database den Vers führt, die **Parallelgruppe**: der geschlossene Satz paralleler Stellen (Synoptiker-Perikopen, Königs- und Chronik-Dubletten, AT-Zitate im NT, formelhafte Wiederholungen). Das ist eine andere Frage als der gewichtete Verweis und wird nicht mit ihm vermischt: Zu Markus 2,12 nennen die zehn bestbewerteten Verweise weder Lukas 5,25-26 noch Johannes 5,9, die Parallelgruppe nennt beide. Wo die Antwort kürzt, sagt sie es und nennt die Zahl, die sie ausgelassen hat
 - **Volltextsuche** (`bible_search`) – FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
 - **Editionsvergleich** (`bible_compare`) – Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen **plus Bezeugung jedes Wortes über acht Editionen** (NA27/28, Tyndale House, SBL, Westcott-Hort, Tregelles, TR, Byzantinisch; STEPBible TAGNT). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
 - **Geführte Arbeitsabläufe** – drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
@@ -65,7 +65,7 @@ git clone https://github.com/fidpa/bibelstudium-mcp.git
 cd bibelstudium-mcp
 bun install                    # eine Laufzeit-Abhängigkeit: @modelcontextprotocol/sdk
 
-# Datenbank aufbauen, alle acht Schritte auf einmal (~30 s):
+# Datenbank aufbauen, alle neun Schritte auf einmal (~30 s):
 bun run setup
 
 # …oder einzeln, streng der Reihe nach, niemals parallel:
@@ -75,6 +75,7 @@ bun run download:sblgnt     # Griechisch: SBLGNT + MorphGNT (Edition 'sblgnt')
 bun run download:tr         # Griechisch: Textus Receptus (Edition 'tr')
 bun run download:heb        # Hebräisch: Westminster Leningrad Codex (Edition 'wlc')
 bun run download:crossrefs  # Querverweise (OpenBible.info)
+bun run download:parallels  # Parallelstellen (UBS Parallel Passage Database)
 bun run download:tagnt      # Bezeugung über acht Editionen (STEPBible TAGNT)
 bun run download:lexicon    # Lexika (Strong + STEPBible-Glossen/Abbott-Smith)
 ```
@@ -136,7 +137,7 @@ Der Installationsdialog fragt nach einer vorhandenen `bible.db`. **Dieses Feld d
 
 Damit braucht es für die Einrichtung **kein Terminal, kein Bun und keine Skripte**. Wer die Datenbank bereits gebaut hat, trägt sie stattdessen im Dialog ein und überspringt den Download.
 
-Fällt eine der acht Quellen aus, laufen die übrigen trotzdem durch. Der Bericht nennt dann, welcher Schritt scheiterte, welche Funktion dadurch fehlt und mit welchem Befehl er sich nachholen lässt. Nur die deutschen Übersetzungen sind zwingend, ohne sie entsteht keine Datenbank.
+Fällt eine der neun Quellen aus, laufen die übrigen trotzdem durch. Der Bericht nennt dann, welcher Schritt scheiterte, welche Funktion dadurch fehlt und mit welchem Befehl er sich nachholen lässt. Nur die deutschen Übersetzungen sind zwingend, ohne sie entsteht keine Datenbank.
 
 Zwei Vorteile gegenüber dem JSON-Weg: Das Bundle bringt ein eigenständiges Binary mit, der Rechner braucht kein installiertes Bun, und es ist unempfindlich dagegen, dass Claude Desktop die Konfigurationsdatei beim Beenden zurückschreibt und unbekannte Schlüssel dabei verwirft.
 
@@ -166,7 +167,7 @@ Vier Umgebungsvariablen steuern den Betrieb:
 Die Datenbank baut auf einem Server `bun run setup` auf, oder, wenn dort kein Bun liegt, das Binary selbst:
 
 ```bash
-./bibelstudium-server --setup             # dieselben acht Schritte, danach beendet sich der Prozess
+./bibelstudium-server --setup             # dieselben neun Schritte, danach beendet sich der Prozess
 ```
 
 **Empfohlen:** In Claude Desktop zusätzlich den Text aus
@@ -197,7 +198,7 @@ Wie die Antworten aussehen, zeigt [docs/BEISPIELE.md](docs/BEISPIELE.md), samt e
 | `bible_lookup` | Exakter Verstext nach Stellenangabe (Buch/Kapitel/Verse, Übersetzung wählbar); in Ausgaben mit Wortlaut-Grenze bis zu deren `verse_max`. Die Antwort nennt die Stelle zweimal: `reference` mit dem Buchnamen der Datenbank, `kurzref` in der deutschen Kurzform zum Zitieren |
 | `bible_original` | Ein Vers Wort für Wort auf Hebräisch/Griechisch mit Grundform, Strong-Nummer, dekodierter Morphologie |
 | `bible_concordance` | Alle Vorkommen eines Grundtext-Wortes (Strong/Grundform) mit Statistik und Lexikondaten |
-| `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, mit deutschem Zieltext, soweit die Wortlaut-Grenze der Ausgabe ihn zulässt |
+| `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, dazu die Parallelgruppen der UBS-Datenbank, mit deutschem Zieltext, soweit die Wortlaut-Grenze der Ausgabe ihn zulässt |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen + Bezeugung über 8 Editionen |
 | `bible_server_info` | Fassung dieses Servers, welche Bibeldaten er geladen hat und welche Ressourcen er anbietet, dazu je Ausgabe Lizenz, geforderte Namensnennung und `verse_max` sowie der Kanonumfang. Liefert keinen Bibeltext |
@@ -283,7 +284,7 @@ und nie im Serverbetrieb. Welche Datei was tut, steht in
 
 **Warum keine mitgelieferte Datenbank?** Drei Gründe: STEPBible bittet darum, ihre Datendateien nur aus dem eigenen Repository zu verbreiten; eine selbst aufgebaute Datenbank mit `provenance`-Tabelle (Quell-URL + SHA-256 je Download) ist auf eine Weise überprüfbar, wie es ein heruntergeladener Datenklumpen nie sein kann, und zwar nachrechenbar: `bun run pruefe:quellen` vergleicht jede Prüfsumme mit `quellen-pruefsummen.json` und meldet in beide Richtungen, was fehlt oder zu viel ist; und die Aufbau-Skripte dokumentieren zugleich, woher jedes einzelne Wort stammt. Der Preis dafür war früher ein Terminal-Schritt. Den nimmt seit `bible_setup` der Server ab.
 
-**Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von acht fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
+**Warum baut der Server die Daten erst auf Nachfrage?** Der Aufbau lädt rund 145 MB von neun fremden Quellen. Das gehört nicht angestoßen, weil ein Modell nach einem Vers gefragt hat, sondern erst, wenn die Nutzerin zugestimmt hat. Ohne Bestätigung nennt `bible_setup` nur, was es täte.
 
 **Warum Luther 1912 als Voreinstellung?** Es ist die bekannteste gemeinfreie deutsche Übersetzung, und sie ist in **jeder** Installation vorhanden. Das ist der eigentliche Grund, denn eine Voreinstellung, die eine Instanz nicht geladen hat, ließe jeden Abruf ohne `translation` in eine Fehlermeldung laufen. Schlachter 1951 (CC BY), Elberfelder 1871 und Menge 1939 sind einen Parameter entfernt, und `translation-compare` stellt sie nebeneinander.
 
