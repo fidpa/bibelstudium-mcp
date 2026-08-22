@@ -1,0 +1,106 @@
+name: deployment-record
+
+# Records a GitHub deployment for the hosted endpoint AFTER it has been rolled
+# out to the LXC container, and proves the claim before recording it.
+#
+# Why a workflow at all: the deployment entry and the "Deployments" panel on the
+# repository page are only populated by deployments created through Actions.
+# The same entry created through the REST API carries no GitHub App as its
+# author and does not surface there (measured 2026-08-22 against a reference
+# repository whose entries do).
+#
+# Why this is not a rubber stamp: the rollout itself happens on a machine no
+# hosted runner can reach, but the *result* is a public endpoint that every
+# runner can reach. This job asks that endpoint which version it serves and
+# fails if the answer is not the expected one. A failed job marks the
+# deployment as failed, which is exactly what should show after a rollback.
+#
+# Triggered by the local /lxc-deploy command once the rollout is verified.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version that must be answering at the public endpoint
+        required: true
+        type: string
+
+concurrency:
+  group: deployment-record
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  record:
+    name: Verify endpoint and record deployment
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://mcp.bibelstudium-mcp.de/mcp
+    steps:
+      - name: Reject a version that is not a release tag
+        run: |
+          set -euo pipefail
+          v='${{ inputs.version }}'
+          echo "requested version: $v"
+          # A free-text input becomes the deployment ref. Anything that is not
+          # a plain version keeps this job from recording nonsense.
+          if ! printf '%s' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Not a version number: $v"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: The tag must carry that version
+        run: |
+          set -euo pipefail
+          tagged=$(jq -r .version package.json)
+          echo "package.json at tag v${{ inputs.version }}: $tagged"
+          if [ "$tagged" != "${{ inputs.version }}" ]; then
+            echo "::error::Tag v${{ inputs.version }} carries $tagged"
+            exit 1
+          fi
+
+      - name: The public endpoint must answer with that version
+        run: |
+          set -euo pipefail
+          # Cloudflare in front of this endpoint rate-limits at roughly 17
+          # requests per 10 seconds and answers 429 when tripped, which reads
+          # like an outage. Three attempts, spaced, are well below that.
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/answer.txt -w '%{http_code}' \
+              --max-time 20 -X POST https://mcp.bibelstudium-mcp.de/mcp \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json, text/event-stream' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                   "protocolVersion":"2025-06-18","capabilities":{},
+                   "clientInfo":{"name":"deployment-record","version":"1"}}}') || code=000
+            echo "attempt $attempt: HTTP $code"
+            [ "$code" = "200" ] && break
+            [ "$attempt" = "3" ] && { echo "::error::Endpoint did not answer 200"; exit 1; }
+            sleep 15
+          done
+
+          # The response is an SSE frame, not bare JSON: the payload sits on a
+          # "data:" line.
+          served=$(sed -n 's/^data: //p' /tmp/answer.txt \
+            | jq -r '.result.serverInfo.version // empty')
+          echo "endpoint serves: ${served:-<none>}"
+          if [ "$served" != "${{ inputs.version }}" ]; then
+            echo "::error::Endpoint serves ${served:-<none>}, expected ${{ inputs.version }}"
+            exit 1
+          fi
+
+      - name: Health endpoint must be green
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            https://mcp.bibelstudium-mcp.de/health)
+          echo "/health: HTTP $code"
+          [ "$code" = "200" ]

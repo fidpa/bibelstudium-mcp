@@ -6,6 +6,21 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.20] - 2026-08-22
+
+### Hinzugefügt
+
+- **Workflow `deployment-record`, der die Deployments des gehosteten Dienstes
+  auf GitHub verzeichnet.** Ausgerollt wird weiterhin von Hand auf einen
+  Server, den kein gehosteter Runner erreicht; der Workflow trägt das Ergebnis
+  nach und weist es vorher nach: Die übergebene Versionsnummer muss als Tag
+  existieren, die `package.json` an diesem Tag muss sie tragen, der öffentliche
+  Endpunkt muss mit genau dieser Version antworten und `/health` mit 200. Fällt
+  eine der vier Prüfungen durch, wird das Deployment als `failure` verzeichnet.
+
+  Ausgelöst wird er von Hand (`workflow_dispatch`) nach einem Rollout. Er
+  braucht kein Secret; `deployments: write` genügt.
+
 ## [0.6.19] - 2026-08-22
 
 ### Hinzugefügt
