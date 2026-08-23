@@ -184,6 +184,38 @@ export function zaehleRessource(art: string): void {
  *
  * Format: https://prometheus.io/docs/instrumenting/exposition_formats/
  */
+/**
+ * Die Schlussbilanz für das Journal, eine Zeile.
+ *
+ * **Warum es sie gibt.** Die Zähler laufen seit Prozessstart, ein Neustart setzt
+ * sie auf null. Zwischen dem letzten Abruf durch die Überwachung und dem Ende
+ * liegen bis zu einem Abholintervall, und was darin gezählt wurde, war bisher
+ * spurlos verloren. Die Bilanz ersetzt keine Persistenz; sie hinterlässt bloß
+ * einen Beleg, gegen den sich eine Lücke später einordnen lässt.
+ *
+ * **Eine Zeile, keine Tabelle**, und sie trägt dieselben Aggregate wie
+ * `metrikenText()`, nur ohne Grundstellungen: Was nie aufgerufen wurde, steht
+ * nicht drin. Kein Zeitstempel je Ereignis, keine Argumente, keine Adresse.
+ *
+ * **Diese Funktion gibt zurück und schreibt nicht.** Das Ausgeben gehört dorthin,
+ * wo der Prozess endet; auf stdout dieser Datei liegt der JSON-RPC-Strom.
+ */
+export function bilanzZeile(version: string): string {
+  const laufzeit = Math.round(Date.now() / 1000 - PROZESS_START_SEKUNDEN);
+  const teile: string[] = [];
+  for (const [schluessel, wert] of [...werkzeugAufrufe].sort()) {
+    if (wert > 0) teile.push(`${schluessel.replace(TRENNER, "/")}=${wert}`);
+  }
+  for (const [name, wert] of [...promptAufrufe].sort()) {
+    if (wert > 0) teile.push(`prompt:${name}=${wert}`);
+  }
+  for (const [art, wert] of [...ressourceAufrufe].sort()) {
+    if (wert > 0) teile.push(`ressource:${art}=${wert}`);
+  }
+  const summe = teile.length === 0 ? "keine Aufrufe" : teile.join(" ");
+  return `Schlussbilanz (Version ${version}, Laufzeit ${laufzeit}s): ${summe}`;
+}
+
 export function metrikenText(): string {
   const zeilen: string[] = [];
 

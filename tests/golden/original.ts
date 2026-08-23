@@ -9,6 +9,7 @@
  * Einzeln lauffähig: `bun run tests/golden/original.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
+import { MAX_BOOK_LENGTH } from "../../src/werkzeug-helfer.ts";
 import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
@@ -30,7 +31,7 @@ export const originalBuendel = buendel({
     // die werkzeugeigene „is required"-Meldung durch die eines anderen Werkzeugs
     // ersetzte, blieb in diesem Bündel grün (beides gemessen).
     origBuchFehlt: ["bible_original", { chapter: 1, verse: 1 }],
-    origBuchZuLang: ["bible_original", { book: "J".repeat(60), chapter: 1, verse: 1 }],
+    origBuchZuLang: ["bible_original", { book: "J".repeat(MAX_BOOK_LENGTH + 10), chapter: 1, verse: 1 }],
     // Ein Nicht-String, dessen String()-Form die Längengrenze überschreitet
     // (26 Zahlen = 71 Zeichen). Er hält fest, dass der Typ vor der Länge geprüft
     // wird: Vertauscht meldet der Helfer hier die Länge statt des Typs, nennt

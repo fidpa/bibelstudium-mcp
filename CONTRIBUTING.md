@@ -37,6 +37,8 @@ läuft ausschließlich beim Datenaufbau.
 | Datei | Aufgabe |
 |-------|---------|
 | `src/server.ts` | MCP-Server: Ausgabeschemata, Werkzeugliste, drei Prompts, vier Ressourcen und drei URI-Vorlagen, Verteilung der Anfragen, `bible_setup`, Start |
+| `src/transport.ts` | Der HTTP-Transport: CORS, Herkunftsprüfung, `/health`, Methodenweiche, Protokoll-Telemetrie und der eigene Metrik-Port. Weiß von den Werkzeugen nichts; `createServer` wird hereingereicht |
+| `src/metriken.ts` | Aufrufzähler nach Werkzeug, Prompt und Ressourcenart samt Ausgang, das Prometheus-Textformat und die Schlussbilanz beim Beenden |
 | `src/handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
 | `src/werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
 | `src/db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
@@ -80,7 +82,7 @@ bun run test:schemas   # jede Antwort gegen ihr deklariertes outputSchema
 
 `test:http` läuft überall, auch in der CI. Die beiden anderen brauchen eine gebaute Datenbank (`bun run setup`); ohne sie brechen sie ab, und das ist kein Fehler des Codes.
 
-`bun run test` fährt zwölf Bündel, eines je Werkzeug plus die Fälle, die zu keinem gehören. Jedes Bündel ist auch einzeln lauffähig, was beim Suchen hilft:
+`bun run test` fährt 15 Bündel aus 13 Dateien: eines je Werkzeug, dazu die Fälle, die zu keinem gehören. Jedes Bündel ist auch einzeln lauffähig, was beim Suchen hilft:
 
 ```bash
 bun run tests/golden/lookup.ts

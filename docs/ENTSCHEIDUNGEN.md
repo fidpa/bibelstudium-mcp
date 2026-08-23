@@ -1,3 +1,14 @@
+---
+type: explanation
+status: active
+last_updated: 2026-08-22
+related_docs:
+  - path: TYPESCRIPT.md
+    description: Code-Stil und Kommentarregeln, die aus diesen Entscheidungen folgen
+  - path: ../CONTRIBUTING.md
+    description: Welche Datei was tut
+---
+
 # Entscheidungen und Messungen
 
 Warum der Code so aussieht, wie er aussieht. Diese Datei nimmt auf, was eine
@@ -521,6 +532,18 @@ einmalige Differenz (43 statt 44 über sieben Tage) entstand allein daraus, dass
 zwischen Prozessstart und der Aufnahme des Ziels in die Überwachung drei Minuten
 lagen. Verloren gehen ausschließlich Aufrufe zwischen dem letzten Abruf der
 Zähler und einem Neustart.
+
+**Seit 0.6.22 sind auch die nicht mehr spurlos.** Der Prozess schreibt beim
+Beenden eine Schlussbilanz auf stderr, also ins Journal des Dienstes: dieselben
+Aggregate wie am Metrikport, dazu Version und Laufzeit. Sie ersetzt keine
+Persistenz und macht die Lücke nicht kleiner; sie hinterlässt einen Beleg, gegen
+den sich eine Lücke später einordnen lässt. Zwei Festlegungen dazu, beide
+gemessen: Sie läuft **nur im HTTP-Betrieb**, weil über stdio ein Desktop-Client
+stderr in eine Datei umleitet und die Zählstände dort dauerhaft stünden; und der
+Signalhandler beendet den Prozess ausdrücklich, weil ein registrierter Handler in
+Bun die Standardbeendigung ersetzt statt sie zu ergänzen. Ohne das liefe der
+Dienst nach `SIGTERM` weiter, bis `systemd` ihn nach Ablauf der Stoppfrist hart
+abschösse.
 
 **Verworfen:** eine extrapolationsfreie Auswertung über `last_over_time` minus
 `first_over_time`. Sie wäre exakt, aber `first_over_time` ist in der eingesetzten
@@ -1302,7 +1325,8 @@ die Zahl dort zur Laufzeit aus `package.json` zu holen.
 Der erste Entwurf schloss daraus, die Zahl müsse dort gepflegt werden, und wollte
 sie über ein Gate in `release.yml` an `package.json` binden. Das hätte die Regel
 „die Version lebt einzig in `package.json`" aufgeweicht, die an fünf Stellen
-steht, zwei davon öffentlich (`src/server.ts:108`, `release.yml:48`). Der Anlass
+steht, zwei davon öffentlich (am Kommentar zu `PACKAGE_VERSION` in
+`src/server.ts`, und in `release.yml:48`). Der Anlass
 dieser Regel ist der v0.3.0-Vorfall, dokumentiert am Kommentar zu
 `createServer()`.
 

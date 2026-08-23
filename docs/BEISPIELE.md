@@ -1,3 +1,14 @@
+---
+type: how-to
+status: active
+last_updated: 2026-08-22
+related_docs:
+  - path: ../README.md
+    description: Werkzeuge, Prompts und Ressourcen im Überblick
+  - path: FEHLERBEHEBUNG.md
+    description: Wenn ein Aufruf nicht das liefert, was er soll
+---
+
 # Beispiele: was die Werkzeuge zurückgeben
 
 Im Normalfall ruft man die Werkzeuge nicht selbst auf. Man stellt dem

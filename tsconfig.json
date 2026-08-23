@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
+    // Umgebung und aktuelle Sprachstufe
     "lib": ["ESNext"],
     "target": "ESNext",
     "types": ["bun"],
@@ -8,22 +8,32 @@
     "moduleDetection": "force",
     "allowJs": true,
 
-    // Bundler mode — Bun runs .ts directly, imports carry the .ts extension
+    // Bundler-Auflösung: Bun führt .ts direkt aus, Importe tragen deshalb die
+    // .ts-Endung.
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
-    // Best practices
+    // Bewährte Vorgaben
     "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    // Some stricter flags (disabled by default)
+    // Strengere Schalter, bewusst abgeschaltet
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // Ohne diese Zeile prüft tsc jede .ts im Baum, auch gitignorierte: Eine
+  // Wegwerfdatei unter tmp/ oder eine Arbeitskopie neben dem Projekt machte den
+  // Typecheck rot, ohne dass am Projekt etwas falsch wäre (gemessen 23.08.2026).
+  // Ein exclude braucht es nicht, es liegt kein vendoriertes Fremdgut im Baum.
+  //
+  // Gegen einen Symlink INNERHALB dieser drei Bäume schützt die Zeile nicht:
+  // tsc folgt ihm und prüft, was dahinter liegt (ebenfalls gemessen). Deshalb
+  // bleibt das Symlink-Verbot der Arbeitsanweisung bestehen.
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
 }

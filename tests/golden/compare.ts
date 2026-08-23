@@ -11,6 +11,7 @@
  * Einzeln lauffähig: `bun run tests/golden/compare.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
+import { MAX_BOOK_LENGTH } from "../../src/werkzeug-helfer.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
@@ -40,7 +41,7 @@ export const compareBuendel = buendel({
     // neutestamentliche Beispiele, weil es alttestamentliche Bücher ohnehin
     // abweist; ungedeckt war sie hier bis dahin trotzdem.
     cmpBuchFehlt: ["bible_compare", { chapter: 1, verse: 1 }],
-    cmpBuchZuLang: ["bible_compare", { book: "J".repeat(60), chapter: 1, verse: 1 }],
+    cmpBuchZuLang: ["bible_compare", { book: "J".repeat(MAX_BOOK_LENGTH + 10), chapter: 1, verse: 1 }],
     // `0` ist ein gesetzter Wert vom falschen Typ, kein fehlendes Feld. Kein
     // Test fuhr bis dahin einen falsy Nicht-String, und `!book` hätte hier still
     // die andere Meldung geliefert (gemessen 06.08.2026).

@@ -20,7 +20,7 @@
  *
  *   bun run test
  */
-import { fahre } from "./lib/buendel.ts";
+import { fahre, pruefeWerkzeugAbdeckung } from "./lib/buendel.ts";
 import { abschluss } from "./lib/zusicherungen.ts";
 
 import { serverInfoBuendel } from "./golden/server-info.ts";
@@ -64,6 +64,11 @@ await fahre([
   ohneDatenbankBuendel,
 ]);
 
+// Erst hier, nicht in `fahre()`: Nur an dieser Stelle steht fest, dass sämtliche
+// Bündel gelaufen sind. In einer einzeln gefahrenen Bündeldatei wäre die Frage
+// falsch gestellt und die Antwort immer „ungeprüft".
+pruefeWerkzeugAbdeckung();
+
 /**
  * Die Mindestzahl ist ein Wächter und keine Zusicherung. Fiele ein Bündel aus
  * der Liste oben, sänke die Summe, ohne dass eine einzige Prüfung fehlschlüge:
@@ -72,4 +77,4 @@ await fahre([
  * Sie hängt am geladenen Bestand: Ohne die Ausgabe mit Apparat entfallen die
  * Fußnotenfälle.
  */
-abschluss(917);
+abschluss(918);

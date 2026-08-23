@@ -1,3 +1,14 @@
+---
+type: reference
+status: active
+last_updated: 2026-08-07
+related_docs:
+  - path: ENTSCHEIDUNGEN.md
+    description: Warum der Server ist, wie er ist
+  - path: ../CONTRIBUTING.md
+    description: Aufbau des Quellbaums und Mitwirken
+---
+
 # TypeScript-Richtlinien: bibelstudium-mcp
 
 Code-Stil-Regeln für dieses Repository, zugeschnitten auf das, was hier
@@ -250,8 +261,11 @@ grep -rnE "^\s*(//|\*|/\*).*—" --include="*.ts" . | grep -v node_modules
 grep -rnE "^\s*(//|\*|/\*)" --include="*.ts" . | grep -v node_modules \
   | grep -P "\b(the|and|of|to|that|with|not|this|are|be|which|would|because)\b"
 
-# Datumslose Messaussagen: Treffer ohne Datum in der Nähe manuell ansehen
-grep -n "gemessen\|measured" src/server.ts
+# Datumslose Messaussagen: Treffer ohne Datum in der Nähe manuell ansehen.
+# Über src/ insgesamt, nicht über eine einzelne Datei: Mit dem Transport-Schnitt
+# vom 23.08.2026 sind fünf solcher Aussagen nach src/transport.ts gewandert, und
+# ein Befehl, der nur server.ts liest, hätte sie stillschweigend verloren.
+grep -rn "gemessen\|measured" --include="*.ts" src/
 ```
 
 ## Bewusst nicht übernommen

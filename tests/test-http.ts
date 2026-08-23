@@ -567,4 +567,96 @@ try {
   server3.stop();
 }
 
+// --- Schlussbilanz bei SIGTERM ----------------------------------------------
+
+/**
+ * Der Prozess schreibt beim Beenden eine Bilanzzeile und **endet dann auch**.
+ *
+ * Zwei Aussagen in einem Fall, und die zweite ist die wichtigere. Ein
+ * registrierter Signalhandler ersetzt in Bun die Standardbeendigung: Ohne ein
+ * ausdrückliches `process.exit` liefe der Prozess nach `SIGTERM` weiter, und
+ * jeder folgende Lauf dieser Datei fände Port 8939 belegt. Der Ausfall zeigte
+ * sich dann nicht hier, sondern beim übernächsten Aufruf, und sähe aus wie ein
+ * fremder Prozess auf dem Port.
+ *
+ * Eigener Start statt `start()`: Dieser Fall braucht das vollständige stderr,
+ * während der gemeinsame Helfer es nach der Startzeile ins Leere laufen lässt,
+ * damit die Puffer nicht volllaufen. Eigener Port aus demselben Grund, aus dem
+ * es überhaupt 8939 statt 8931 ist.
+ */
+{
+  const BILANZ_PORT = 8942;
+  const proc = Bun.spawn(["bun", "run", SERVER], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      PATH: process.env["PATH"] ?? "",
+      HOME: process.env["HOME"] ?? "",
+      MCP_HTTP_PORT: String(BILANZ_PORT),
+    },
+  });
+  // Auf die Startzeile im stderr warten, nicht auf `/health` pollen. Der Grund
+  // ist derselbe wie bei `start()` oben, und er ist hier gemessen worden: Lag
+  // ein Prozess eines früheren Laufs auf diesem Port, antwortete **der** auf
+  // `/health`, der eigene Prozess starb still, und dieser Fall wurde grün,
+  // obwohl er nichts geprüft hatte (23.08.2026).
+  const leser = proc.stderr.getReader();
+  const decoder = new TextDecoder();
+  let ausgabe = "";
+  const frist = Date.now() + 20_000;
+  let bereit = false;
+  while (Date.now() < frist) {
+    const { value, done } = await leser.read();
+    if (done) break;
+    ausgabe += decoder.decode(value, { stream: true });
+    if (ausgabe.includes("running on")) {
+      bereit = true;
+      break;
+    }
+  }
+  check("Bilanz-Server ist gestartet", bereit, ausgabe.trim() || "(nichts auf stderr)");
+
+  // Den Rest erst nach dem Signal einsammeln: Der Strom endet mit dem Prozess.
+  const stderrGelesen = (async () => {
+    try {
+      while (true) {
+        const { value, done } = await leser.read();
+        if (done) break;
+        ausgabe += decoder.decode(value, { stream: true });
+      }
+    } catch {
+      // Prozess beendet, nichts weiter zu tun.
+    }
+    return ausgabe;
+  })();
+
+  // Ein echter Werkzeugaufruf, damit die Bilanz eine Zahl trägt und nicht nur
+  // ihre eigene Form beweist.
+  const antwort = await fetch(`http://127.0.0.1:${BILANZ_PORT}/mcp`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "bible_server_info", arguments: {} },
+    }),
+  });
+  await antwort.text();
+
+  proc.kill("SIGTERM");
+  const beendet = await Promise.race([
+    proc.exited.then(() => true),
+    Bun.sleep(8000).then(() => false),
+  ]);
+  check("nach SIGTERM endet der Prozess", beendet, "läuft nach 8 s noch");
+  if (!beendet) proc.kill("SIGKILL");
+
+  const gesamt = await stderrGelesen;
+  has("die Schlussbilanz steht auf stderr", gesamt, "Schlussbilanz (Version ");
+  has("die Bilanz nennt den gezählten Aufruf", gesamt, "bible_server_info/ok=1");
+  lacks("die Bilanz nennt keine Argumente", gesamt, "arguments");
+}
+
 abschluss();

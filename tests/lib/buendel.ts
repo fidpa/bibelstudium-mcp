@@ -113,6 +113,18 @@ export function buendel<
  * `structuredContent` vergisst, ist ein harter Client-Fehler, kein fehlendes
  * Feld.
  */
+/**
+ * Welche Werkzeuge in diesem Prozess mindestens eine schemagültige Antwort
+ * geliefert haben, und welche überhaupt ein `outputSchema` ankündigen.
+ *
+ * Modulzustand statt Rückgabewert, damit die Signatur von `fahre()` bleibt: Die
+ * dreizehn Bündeldateien rufen sie selbst auf und ignorieren das Ergebnis.
+ * Ausgewertet wird beides einzig von `pruefeWerkzeugAbdeckung()` weiter unten,
+ * und die ruft allein der Aggregator.
+ */
+const geprueftJeWerkzeug = new Set<string>();
+const werkzeugeMitSchema = new Set<string>();
+
 function nachpruefen(
   b: Buendel,
   res: Record<string, ToolResult>,
@@ -139,6 +151,7 @@ function nachpruefen(
     );
     const fehler = schemaErrors(schema, r.structured);
     check(`${name} #${schluessel}: schemagültig`, fehler.length === 0, fehler.slice(0, 3).join("; "));
+    geprueftJeWerkzeug.add(name);
     geprueft++;
   }
   return geprueft;
@@ -193,6 +206,10 @@ export async function fahre(buendel: Buendel[]): Promise<Map<string, ToolResult>
     const schemaOf = new Map<string, Json | undefined>(
       lauf.tools.map((t) => [String(t.name), isRecord(t.outputSchema) ? t.outputSchema : undefined])
     );
+    // Über alle Umgebungen vereinigt, nicht je Gruppe: Ohne Datenbank ist die
+    // Werkzeugliste eine andere, und `bible_setup` steht nur dort. Für die
+    // Abdeckungsfrage zählt, was der Server überhaupt je ankündigt.
+    for (const [name, schema] of schemaOf) if (schema !== undefined) werkzeugeMitSchema.add(name);
     const ctx: Ctx = {
       tools: lauf.tools,
       toolList: lauf.tools,
@@ -260,4 +277,34 @@ export async function fahre(buendel: Buendel[]): Promise<Map<string, ToolResult>
     check("mindestens ein Fall schemageprüft", geprueftGesamt > 0, `geprüft: ${geprueftGesamt}`);
   }
   return alleErgebnisse;
+}
+
+/**
+ * Jedes Werkzeug, das ein `outputSchema` ankündigt, ist auch mindestens einmal
+ * dagegen geprüft worden.
+ *
+ * **Nur der Aggregator ruft das auf, nie `fahre()`.** Jede Bündeldatei ist
+ * einzeln lauffähig und ruft `fahre()` mit genau ihrem eigenen Bündel; ein
+ * Abgleich über alle Werkzeuge machte dort sechs von sieben zu Fehlern. Erst der
+ * Aggregator weiß, dass sämtliche Bündel gelaufen sind, und nur dort ist die
+ * Frage überhaupt zu stellen.
+ *
+ * Die Lücke, gegen die das steht: Ein neu registriertes Werkzeug, das kein
+ * Bündel aufruft, bekommt in `nachpruefen()` nie eine Antwort zu sehen. Die
+ * Zusicherungssumme stiege trotzdem, und `uebergreifend` meldete allenfalls eine
+ * Zahl, die nicht mehr stimmt, nicht aber „ungeprüft".
+ *
+ * `bible_setup` kündigt bewusst kein Schema an und steht deshalb gar nicht erst
+ * in der Grundmenge. Bekäme es eines, meldete dieser Wächter es als ungeprüft,
+ * und das wäre richtig: Es erscheint nur ohne Datenbank, und dieses Bündel läuft
+ * unter `ohneNachpruefung`, sieht also nie eine Antwort. Gemessen am 23.08.2026
+ * durch einen Einbau, der ihm ein leeres Schema gab.
+ */
+export function pruefeWerkzeugAbdeckung(): void {
+  const fehlend = [...werkzeugeMitSchema].filter((name) => !geprueftJeWerkzeug.has(name)).sort();
+  check(
+    "jedes Werkzeug mit outputSchema wurde mindestens einmal dagegen geprüft",
+    fehlend.length === 0,
+    `ungeprüft: ${fehlend.join(", ")}`
+  );
 }

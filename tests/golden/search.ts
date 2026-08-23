@@ -16,13 +16,14 @@
 import { buendel, fahre } from "../lib/buendel.ts";
 import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import { BUCH_ZU_LANG } from "../lib/meldungen.ts";
+import { MAX_BOOK_LENGTH, MAX_QUERY_LENGTH } from "../../src/werkzeug-helfer.ts";
 
 // Drei Bedingungen an `query`, drei Meldungen. Gefaltet meldete auch ein zu
 // langer Ausdruck "is required", obwohl er gesetzt und eine Zeichenkette war.
-const QUERY_ZU_LANG = "a".repeat(101);
+const QUERY_ZU_LANG = "a".repeat(MAX_QUERY_LENGTH + 1);
 import { isRecord, schemaErrors } from "../schema-validator.ts";
 
-const OVERLONG_NAME = "J".repeat(60);
+const OVERLONG_NAME = "J".repeat(MAX_BOOK_LENGTH + 10);
 
 export const searchBuendel = buendel({
   name: "search",
@@ -56,10 +57,10 @@ export const searchBuendel = buendel({
     // Die beiden Längengrenzen an der Grenze selbst. Geprüft war bisher nur ein
     // Wert dahinter (60 bzw. 101), und ein Wechsel auf `>=` wiese gültige
     // Eingabe ab, ohne dass ein Lauf rot würde.
-    searchBuch50: ["bible_search", { query: "Gnade", book: "J".repeat(50) }],
-    searchBuch51: ["bible_search", { query: "Gnade", book: "J".repeat(51) }],
-    searchQuery100: ["bible_search", { query: "a".repeat(100) }],
-    searchQuery101: ["bible_search", { query: "a".repeat(101) }],
+    searchBuchGrenze: ["bible_search", { query: "Gnade", book: "J".repeat(MAX_BOOK_LENGTH) }],
+    searchBuchUeberGrenze: ["bible_search", { query: "Gnade", book: "J".repeat(MAX_BOOK_LENGTH + 1) }],
+    searchQueryGrenze: ["bible_search", { query: "a".repeat(MAX_QUERY_LENGTH) }],
+    searchQueryUeberGrenze: ["bible_search", { query: "a".repeat(MAX_QUERY_LENGTH + 1) }],
     // `limit` wird auf 50 geklemmt. Der Hinweis darf dann nicht mehr zum
     // Erhöhen auffordern: Am 06.08.2026 tat er es am laufenden Dienst
     // (`limit: 1000`, fünfzig Treffer, „limit erhöhen"), und das schickt den
@@ -74,7 +75,7 @@ export const searchBuendel = buendel({
       searchQueryZahl, searchQueryZuLang, searchQueryFehlt,
       klammerSucheGrenze, klammerSucheMb,
       searchPhrase, searchOhneWort, searchOhneTreffer,
-      searchBuch50, searchBuch51, searchQuery100, searchQuery101,
+      searchBuchGrenze, searchBuchUeberGrenze, searchQueryGrenze, searchQueryUeberGrenze,
       searchLimitUeber, searchLimitUnter,
     } = res;
 
@@ -86,17 +87,31 @@ export const searchBuendel = buendel({
     has("limit=5: Erhöhen bleibt der Ausweg", hint(searchLimitUnter.json), "limit erhöhen");
     eq("limit=5: fünf Treffer gelistet", (searchLimitUnter.json?.verse as unknown[] ?? []).length, 5);
 
-    // 50 Zeichen kommen durch die Längenprüfung und scheitern erst an der
-    // Buchauflösung; 51 werden von der Länge abgewiesen. Die Meldungen sind
-    // verschieden, und genau das ist die Aussage: Eine Länge, die als „kein
-    // Buchname" gemeldet wird, schickt den Aufrufer auf die falsche Suche.
-    has("book mit 50 Zeichen: Grenze noch gültig", searchBuch50.text, "ist kein Buch dieser Bibel-Datenbank");
-    eq("book mit 51 Zeichen: Grenze überschritten", searchBuch51.text, BUCH_ZU_LANG);
-    // 100 Zeichen werden gesucht (und finden nichts), 101 abgewiesen.
-    has("query mit 100 Zeichen: Grenze noch gültig", searchQuery100.text, "Keine Treffer für");
+    // Ein Buchname genau an MAX_BOOK_LENGTH kommt durch die Längenprüfung und
+    // scheitert erst an der Buchauflösung; eins darüber wird von der Länge
+    // abgewiesen. Die Meldungen sind verschieden, und genau das ist die
+    // Aussage: Eine Länge, die als „kein Buchname" gemeldet wird, schickt den
+    // Aufrufer auf die falsche Suche.
+    has(
+      `book mit ${MAX_BOOK_LENGTH} Zeichen: Grenze noch gültig`,
+      searchBuchGrenze.text,
+      "ist kein Buch dieser Bibel-Datenbank"
+    );
     eq(
-      "query mit 101 Zeichen: Grenze überschritten",
-      searchQuery101.text,
+      `book mit ${MAX_BOOK_LENGTH + 1} Zeichen: Grenze überschritten`,
+      searchBuchUeberGrenze.text,
+      BUCH_ZU_LANG
+    );
+    // Eine Anfrage an MAX_QUERY_LENGTH wird gesucht (und findet nichts), eins
+    // darüber abgewiesen.
+    has(
+      `query mit ${MAX_QUERY_LENGTH} Zeichen: Grenze noch gültig`,
+      searchQueryGrenze.text,
+      "Keine Treffer für"
+    );
+    eq(
+      `query mit ${MAX_QUERY_LENGTH + 1} Zeichen: Grenze überschritten`,
+      searchQueryUeberGrenze.text,
       "Error: 'query' must be at most 100 characters"
     );
 

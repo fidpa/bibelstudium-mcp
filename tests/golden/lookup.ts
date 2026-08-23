@@ -20,16 +20,25 @@ import {
 } from "../lib/meldungen.ts";
 import { NO_ERROR } from "../lib/mcp-client.ts";
 import { stmtAlias } from "../../src/db.ts";
-import { BUCH_KUERZEL_LISTE } from "../../src/werkzeug-helfer.ts";
+import {
+  BUCH_KUERZEL_LISTE,
+  MAX_BOOK_LENGTH,
+  MAX_CHAPTER,
+  MAX_VERSE,
+  MAX_VERSE_PARTS,
+} from "../../src/werkzeug-helfer.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 
-// Eingabe genau an und knapp jenseits der abgeleiteten Grenzen von `verses`
-// (MAX_VERSE_PARTS = 30 Segmente, MAX_VERSE = 200, also 30 × "176-176" plus 29
-// Kommata = 239 Zeichen). Hier gebaut statt hineinkopiert, damit die Länge
-// sichtbar bleibt.
-const VERSES_MAX_VALID = Array(30).fill("100-176").join(","); // 239 Zeichen, sämtlich gültig
-const VERSES_TOO_LONG = `${VERSES_MAX_VALID},1`; // 241 Zeichen
-const VERSES_TOO_MANY = Array.from({ length: 35 }, (_, i) => String(i + 1)).join(",");
+// Eingabe genau an und knapp jenseits der abgeleiteten Grenzen von `verses`:
+// MAX_VERSE_PARTS Segmente der Form "100-176", durch Kommata getrennt, ergibt
+// genau MAX_VERSES_LENGTH Zeichen. Aus den Konstanten gebaut statt als Zahl
+// hingeschrieben, damit ein Anheben der Grenze den Fall mitnimmt statt ihn
+// gegen das Gedächtnis dieser Datei zu prüfen.
+const VERSES_MAX_VALID = Array(MAX_VERSE_PARTS).fill("100-176").join(",");
+const VERSES_TOO_LONG = `${VERSES_MAX_VALID},1`;
+const VERSES_TOO_MANY = Array.from({ length: MAX_VERSE_PARTS + 5 }, (_, i) =>
+  String(i + 1)
+).join(",");
 
 export const lookupBuendel = buendel({
   name: "lookup",
@@ -94,22 +103,23 @@ export const lookupBuendel = buendel({
     // Die Länge war hier ungedeckt, obwohl sie seit dem 06.08.2026 mit den beiden
     // anderen Buchprüfungen in `requireBookName` liegt: Ein Einbau, der
     // MAX_BOOK_LENGTH aufhob, blieb in diesem Bündel grün (gemessen).
-    buchZuLang: ["bible_lookup", { book: "J".repeat(60), chapter: 3 }],
+    buchZuLang: ["bible_lookup", { book: "J".repeat(MAX_BOOK_LENGTH + 10), chapter: 3 }],
     // Die nachsichtige Wandlung, absichtlich so gebaut: Sprachmodelle schicken
     // regelmäßig "3", wo das Schema eine Zahl vorsieht, und eine Zahl, wo es
     // eine Zeichenkette vorsieht. Bis zum 06.08.2026 schickte kein einziger
     // Aufruf der Suite einen solchen Wert; ein Rückbau auf eine strenge
     // Typprüfung hätte reale Clients gebrochen und wäre grün geblieben.
     lookupStrings: ["bible_lookup", { book: "Joh", chapter: "3", verses: 16 }],
-    // Die Grenze selbst, nicht weit dahinter: 150 ist gültig und scheitert erst
-    // am Bestand, 151 wird abgewiesen. Geprüft wurde bisher nur 999, was einen
-    // Wechsel auf `>=` nicht bemerkt hätte.
-    kapitelGrenze: ["bible_lookup", { book: "Joh", chapter: 150, verses: "1" }],
-    kapitelUeberGrenze: ["bible_lookup", { book: "Joh", chapter: 151, verses: "1" }],
-    // Dasselbe für MAX_VERSE: 200 besteht die Wertprüfung, 201 nicht. Geprüft
-    // war bisher nur "1-500", was ein `>=` nicht bemerkt hätte.
-    versGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: "200" }],
-    versUeberGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: "201" }],
+    // Die Grenze selbst, nicht weit dahinter: MAX_CHAPTER ist gültig und
+    // scheitert erst am Bestand, eins darüber wird abgewiesen. Geprüft wurde
+    // bisher nur 999, was einen Wechsel auf `>=` nicht bemerkt hätte.
+    kapitelGrenze: ["bible_lookup", { book: "Joh", chapter: MAX_CHAPTER, verses: "1" }],
+    kapitelUeberGrenze: ["bible_lookup", { book: "Joh", chapter: MAX_CHAPTER + 1, verses: "1" }],
+    // Dasselbe für MAX_VERSE: der Wert selbst besteht die Wertprüfung, eins
+    // darüber nicht. Geprüft war bisher nur "1-500", was ein `>=` nicht
+    // bemerkt hätte.
+    versGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: String(MAX_VERSE) }],
+    versUeberGrenze: ["bible_lookup", { book: "Ps", chapter: 119, verses: String(MAX_VERSE + 1) }],
     // `translation` erreicht `requireTranslation` über den Werkzeugkanal. Geprüft
     // war bisher allein der Ressourcenweg, der die Meldung als JSON-RPC-Fehler
     // führt statt als `isError`-Ergebnis: zwei verschiedene Kanäle.
@@ -165,12 +175,12 @@ export const lookupBuendel = buendel({
     // von der Wertprüfung abgewiesen. Die beiden Meldungen müssen deshalb
     // auseinandergehen.
     eq(
-      "verses=200: Grenze noch gültig",
+      `verses=${MAX_VERSE}: Grenze noch gültig`,
       versGrenze.text,
       "No verses found for Ps 119,200. Check chapter and verse numbers."
     );
     eq(
-      "verses=201: Grenze überschritten",
+      `verses=${MAX_VERSE + 1}: Grenze überschritten`,
       versUeberGrenze.text,
       "Error: every verse number in 'verses' must be between 1 and 200"
     );
@@ -190,11 +200,11 @@ export const lookupBuendel = buendel({
     // Die Meldung gibt die Eingabe wieder ("Joh"), nicht den aufgelösten Namen:
     // Der Aufrufer soll seine eigene Angabe wiedererkennen.
     eq(
-      "chapter=150: Grenze noch gültig",
+      `chapter=${MAX_CHAPTER}: Grenze noch gültig`,
       kapitelGrenze.text,
       "No verses found for Joh 150,1. Check chapter and verse numbers."
     );
-    eq("chapter=151: Grenze überschritten", kapitelUeberGrenze.text, KAPITEL_AUSSERHALB);
+    eq(`chapter=${MAX_CHAPTER + 1}: Grenze überschritten`, kapitelUeberGrenze.text, KAPITEL_AUSSERHALB);
 
     eq("unbekannte Übersetzung: isError", lookupUnbekannteAusgabe.isError, true);
     eq("unbekannte Übersetzung: kein JSON-RPC-Fehler", lookupUnbekannteAusgabe.code, NO_ERROR);
@@ -266,11 +276,11 @@ export const lookupBuendel = buendel({
       // Antwort wird kürzer, nichts sagt es, und sie sieht trotzdem vollständig aus.
       // "1,2,…,35" auf Ps 119 kam wortlos als 1-30 zurück (26.07.2026).
       eq(
-        "35 Segmente: abgewiesen statt gekürzt",
+        `${MAX_VERSE_PARTS + 5} Segmente: abgewiesen statt gekürzt`,
         versesTooMany.text,
         VERSLISTE_ZU_LANG
       );
-      eq("35 Segmente: isError", versesTooMany.isError, true);
+      eq(`${MAX_VERSE_PARTS + 5} Segmente: isError`, versesTooMany.isError, true);
       // Gleiche Bedeutung, zwei Wege: Der Schnellpfad für eine schlichte Spanne
       // übersprang die Grenze ganz, der Weg über parseVerses ließ das Segment fallen.
       // Beide müssen jetzt melden.

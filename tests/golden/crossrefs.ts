@@ -8,6 +8,7 @@
  * Einzeln lauffähig: `bun run tests/golden/crossrefs.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
+import { MAX_BOOK_LENGTH } from "../../src/werkzeug-helfer.ts";
 import { check, eq, has, hint, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
@@ -15,7 +16,7 @@ import {
   VERSE_AUSSERHALB,
 } from "../lib/meldungen.ts";
 
-const OVERLONG_NAME = "J".repeat(60);
+const OVERLONG_NAME = "J".repeat(MAX_BOOK_LENGTH + 10);
 
 export const crossrefsBuendel = buendel({
   name: "crossrefs",

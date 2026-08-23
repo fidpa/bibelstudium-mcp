@@ -14,12 +14,13 @@
  * Einzeln lauffähig: `bun run tests/golden/concordance.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
+import { MAX_LEMMA_LENGTH } from "../../src/werkzeug-helfer.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 
 export const concordanceBuendel = buendel({
   name: "concordance",
   calls: {
-    concordanceLongLemma: ["bible_concordance", { lemma: "α".repeat(60) }],
+    concordanceLongLemma: ["bible_concordance", { lemma: "α".repeat(MAX_LEMMA_LENGTH + 10) }],
     // Alles aufgelistet: kein Kürzungshinweis.
     concordVollstaendig: ["bible_concordance", { strong: "G26", limit: 200 }],
     // Das Gegenstück dazu, und der wichtigere Fall: Wo gekürzt wird, MUSS es

@@ -42,6 +42,21 @@ jobs:
             exit 1
           fi
 
+      - name: The two client-instruction files stay byte-identical
+        run: |
+          set -euo pipefail
+          # The .txt is what a user copies into their client, the .md is what
+          # GitHub renders. Nothing else reads either file, so a divergence
+          # would be invisible: readers would discuss one text while users
+          # copy another. Byte equality is the whole contract, which is why
+          # neither file carries front matter.
+          if ! cmp -s docs/anweisungen/claude-desktop.md docs/anweisungen/claude-desktop.txt; then
+            echo "::error::claude-desktop.md and .txt have drifted apart:"
+            diff docs/anweisungen/claude-desktop.md docs/anweisungen/claude-desktop.txt || true
+            exit 1
+          fi
+          echo "both files identical: $(wc -c < docs/anweisungen/claude-desktop.txt) bytes"
+
   typecheck:
     name: TypeScript (tsc --noEmit, strict)
     runs-on: ubuntu-latest

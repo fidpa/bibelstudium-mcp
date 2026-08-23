@@ -277,7 +277,8 @@ Die Bezeugungsnotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und 
 TypeScript auf Bun, eine einzige Laufzeit-Abhängigkeit (das MCP-SDK), kein
 Build-Schritt. Die Daten liegen in einer SQLite-Datei, die nur lesend geöffnet
 wird; alles unter `scripts/` läuft ausschließlich beim einmaligen Datenaufbau
-und nie im Serverbetrieb. Welche Datei was tut, steht in
+und nie im Serverbetrieb. Der HTTP-Transport liegt in einer eigenen Datei und
+weiß von den Werkzeugen nichts. Welche Datei was tut, steht in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Designentscheidungen
@@ -300,6 +301,7 @@ Ein Endpunkt darf davon abweichen, ohne den Code zu ändern: `BIBLE_DEFAULT_TRAN
 
 | Dokument | Inhalt |
 |----------|--------|
+| [docs/README.md](docs/README.md) | Index über die Dokumentation: welcher Zweig wofür da ist, was `status:` bedeutet, wo Frontmatter steht und wo nicht |
 | [docs/anweisungen/claude-desktop.txt](docs/anweisungen/claude-desktop.txt) | Fertiger Text für *Einstellungen › Anweisungen für Claude* in Claude Desktop; er schärft Zitiertreue, Zahlenangaben und den Umgang mit den Hinweisen des Servers |
 | [docs/anweisungen/README.md](docs/anweisungen/README.md) | Wozu die Client-Anweisungen dienen, wohin sie gehören, und warum sie knapp bleiben müssen, denn sie werden in jeder Sitzung geladen, auch ohne biblische Frage |
 | [docs/BEISPIELE.md](docs/BEISPIELE.md) | Wie die Antworten aussehen: Grundtext, Textkritik, Verstext, und ein Weg, den Server ohne MCP-Client auszuprobieren |

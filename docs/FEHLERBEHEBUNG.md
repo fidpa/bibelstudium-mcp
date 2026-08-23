@@ -1,3 +1,14 @@
+---
+type: how-to
+status: active
+last_updated: 2026-08-22
+related_docs:
+  - path: ../README.md
+    description: Einrichtung, Voraussetzungen, Schnellstart
+  - path: BEISPIELE.md
+    description: Aufrufe, die zeigen, wie die Werkzeuge gemeint sind
+---
+
 # Fehlerbehebung
 
 Alle Fehlerbilder unten sind reproduziert, nicht vermutet. Die Meldungen des

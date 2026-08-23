@@ -6,6 +6,35 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.22] - 2026-08-23
+
+### Hinzugefügt
+
+- **Schlussbilanz beim Beenden.** Der Dienst schreibt bei `SIGTERM` und `SIGINT`
+  eine Zeile mit Zählerständen, Version und Laufzeit ins Journal; bisher verwarf
+  jeder Neustart die Zahlen spurlos. Nur im HTTP-Betrieb, weil über stdio ein
+  Desktop-Client stderr in eine Datei umleitet.
+- **Ein Wächter über die Testabdeckung:** `bun run test` meldet namentlich, wenn
+  ein Werkzeug mit `outputSchema` in keinem Bündel aufgerufen wird.
+- **`docs/README.md`** als Index über die Dokumentation, samt der Bedeutung von
+  `status:`. Die Dateien unter `docs/` tragen dafür Frontmatter.
+
+### Geändert
+
+- **Der HTTP-Transport liegt in `src/transport.ts`.** `src/server.ts` fällt damit
+  von 2789 auf 2270 Zeilen. Am Protokoll ändert sich nichts: `tools/list` ist vor
+  und nach dem Schnitt byteweise gleich.
+- `tsconfig.json` prüft nur noch `src/`, `tests/` und `scripts/`. Eine
+  gitignorierte Datei daneben machte den Typecheck bisher rot.
+- Die Grenzfälle in den Golden-Tests nehmen ihre Eingabewerte aus den
+  `MAX_*`-Konstanten statt aus abgeschriebenen Zahlen.
+
+### Hinweis für den Betrieb
+
+Vor dem Ausrollen ist die Datenschutzerklärung um die Bilanzzeile zu erweitern:
+Ihre Aufzählung der protokollierten Betriebsereignisse ist abschließend
+formuliert.
+
 ## [0.6.21] - 2026-08-22
 
 ### Hinzugefügt

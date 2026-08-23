@@ -1,3 +1,14 @@
+---
+type: reference
+status: active
+last_updated: 2026-08-07
+related_docs:
+  - path: ../README.md
+    description: Welche Ausgaben geladen sind und wie sie ausgewählt werden
+  - path: ../THIRD_PARTY_LICENSES.md
+    description: Lizenzen der Textquellen
+---
+
 # Weitere Übersetzungen: geprüfte Optionen
 
 Recherchestand **26.07.2026**. Alle Angaben unten sind an den Quellen selbst

@@ -10,6 +10,21 @@
  *
  * Der Wortlaut steht also einmal da, die Zusicherung darüber aber bei ihrem
  * Werkzeug.
+ *
+ * **Die Zahlen stehen hier absichtlich als Literal und werden nicht aus
+ * `werkzeug-helfer.ts` importiert.** Das ist kein Versehen und keine
+ * Doppelpflege, sondern der Zweck dieser Datei: Im Produktivcode gibt es keine
+ * zweite Textkopie mehr, weil auch die Ressourcen-Segmentprüfer in `server.ts`
+ * dieselben Konstanten importieren. Diese Datei hält damit die einzige
+ * unabhängige Fassung. Würde sie die Konstante einsetzen, prüfte die Zusicherung
+ * nur noch, *welche* Meldung gewählt wurde, nicht mehr, *wie sie lautet*, und
+ * eine verschobene Grenze liefe stillschweigend durch die Suite. Die Eingabewerte
+ * in den Bündeln sind der umgekehrte Fall: Sie kommen seit dem 23.08.2026 aus den
+ * Konstanten, damit ein Grenzfall die Grenze prüft und nicht die Zahl 150.
+ *
+ * Praktisch heißt das: Wer eine Grenze anhebt, macht diese Datei rot. Das ist
+ * gewollt, denn diese Texte gehen an den Aufrufer und sind öffentliche
+ * Schnittstelle.
  */
 
 export const VERSE_AUSSERHALB = "Error: 'verse' must be an integer between 1 and 200";
