@@ -59,6 +59,7 @@ jobs:
         run: bun run typecheck
 
       - name: Extract release notes from CHANGELOG
+        id: changelog
         run: |
           # Everything between this version's heading and the next one. An empty
           # result means the CHANGELOG was not finalised, which would otherwise
@@ -74,6 +75,22 @@ jobs:
             exit 1
           fi
           cat /tmp/release-notes.md
+
+          # The title comes from the same line as the notes, so the two cannot
+          # drift apart: the headline sits behind the date in the section
+          # heading. Without one the release keeps the bare tag name.
+          HEADLINE=$(awk -v v="## [$VERSION]" '
+            index($0, v) == 1 {
+              if (match($0, /- [0-9]{4}-[0-9]{2}-[0-9]{2}: /)) {
+                print substr($0, RSTART + RLENGTH); exit
+              }
+            }
+          ' CHANGELOG.md)
+          if [ -n "$HEADLINE" ]; then
+            echo "title=${GITHUB_REF_NAME}: ${HEADLINE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build bundles (linux-x64, darwin-arm64)
         run: |
@@ -93,7 +110,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+            --title "${{ steps.changelog.outputs.title }}" \
             --notes-file /tmp/release-notes.md \
             --verify-tag \
             --draft \

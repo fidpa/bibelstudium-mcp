@@ -6,12 +6,38 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
-## [0.6.22] - 2026-08-23
+## [0.6.23] - 2026-08-27: Die Release-Titel sagen, was die Fassung bringt
+
+### Geändert
+
+- **Jede Abschnittsüberschrift trägt hinter dem Datum eine Schlagzeile.**
+  `release.yml` liest sie von dort und setzt daraus den Release-Titel; bisher
+  stand auf jeder der 36 Release-Seiten allein die Versionsnummer. Titel und
+  Notes stammen damit aus derselben Zeile und können nicht auseinanderlaufen.
+  Die Titel der bereits veröffentlichten Fassungen sind nachgezogen.
+
+### Behoben
+
+- **Vier gemessene Zahlen sind richtiggestellt**, alle gegen den Baum des Tags
+  geprüft, den der jeweilige Abschnitt beschreibt. In 0.6.22 fällt
+  `src/server.ts` auf 2299 Zeilen, nicht auf 2270. In 0.6.12 geht `README.md`
+  von 356 auf 307 Zeilen, nicht von 364 auf 313. In 0.6.14 wächst der
+  Anweisungstext von 2316 auf 2481 Zeichen, nicht von 2287 auf 2450.
+- **Die Schlussbilanz aus 0.6.22 geht auf stderr**, nicht ins Journal. Sie
+  entsteht aus `console.error`; unter systemd landet sie im Journal, beim Start
+  von Hand und über stdio nicht.
+- Zwei Pfeile im Fließtext des Abschnitts zu 0.6.8 durch „auf“ ersetzt.
+
+Am Verhalten des Servers ändert sich nichts. Die Abschnitte selbst bleiben, wie
+sie standen: geändert sind allein die vier Zahlen, die beiden Pfeile und die
+neuen Schlagzeilen.
+
+## [0.6.22] - 2026-08-23: Der Dienst hinterlässt beim Beenden seine Zählerstände
 
 ### Hinzugefügt
 
 - **Schlussbilanz beim Beenden.** Der Dienst schreibt bei `SIGTERM` und `SIGINT`
-  eine Zeile mit Zählerständen, Version und Laufzeit ins Journal; bisher verwarf
+  eine Zeile mit Zählerständen, Version und Laufzeit auf stderr; bisher verwarf
   jeder Neustart die Zahlen spurlos. Nur im HTTP-Betrieb, weil über stdio ein
   Desktop-Client stderr in eine Datei umleitet.
 - **Ein Wächter über die Testabdeckung:** `bun run test` meldet namentlich, wenn
@@ -22,7 +48,7 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Geändert
 
 - **Der HTTP-Transport liegt in `src/transport.ts`.** `src/server.ts` fällt damit
-  von 2789 auf 2270 Zeilen. Am Protokoll ändert sich nichts: `tools/list` ist vor
+  von 2789 auf 2299 Zeilen. Am Protokoll ändert sich nichts: `tools/list` ist vor
   und nach dem Schnitt byteweise gleich.
 - `tsconfig.json` prüft nur noch `src/`, `tests/` und `scripts/`. Eine
   gitignorierte Datei daneben machte den Typecheck bisher rot.
@@ -35,7 +61,7 @@ Vor dem Ausrollen ist die Datenschutzerklärung um die Bilanzzeile zu erweitern:
 Ihre Aufzählung der protokollierten Betriebsereignisse ist abschließend
 formuliert.
 
-## [0.6.21] - 2026-08-22
+## [0.6.21] - 2026-08-22: bible_crossrefs nennt die Parallelstellen einer Perikope
 
 ### Hinzugefügt
 
@@ -66,7 +92,7 @@ formuliert.
   Antwort mit einem AT-Mitglied einen Vorbehalt im `hinweis`; `zaehlung_abweichend`
   markiert die betroffenen Stellen, sofern der Grundtext geladen ist.
 
-## [0.6.20] - 2026-08-22
+## [0.6.20] - 2026-08-22: Die Deployments des gehosteten Dienstes stehen auf GitHub
 
 ### Hinzugefügt
 
@@ -81,7 +107,7 @@ formuliert.
   Ausgelöst wird er von Hand (`workflow_dispatch`) nach einem Rollout. Er
   braucht kein Secret; `deployments: write` genügt.
 
-## [0.6.19] - 2026-08-22
+## [0.6.19] - 2026-08-22: Die Herkunftsprüfsummen werden gegen Sollwerte gestellt
 
 ### Hinzugefügt
 
@@ -105,7 +131,7 @@ formuliert.
   Prüfsummen, `docs/FEHLERBEHEBUNG.md` beschreibt vier Fehlerbilder der Prüfung,
   `docs/ENTSCHEIDUNGEN.md` begründet den beidseitigen Abgleich.
 
-## [0.6.18] - 2026-08-20
+## [0.6.18] - 2026-08-20: Die Metriken sagen, seit wann ihre Zähler laufen
 
 ### Hinzugefügt
 
@@ -125,7 +151,7 @@ formuliert.
   die Aufrufe zwischen dem letzten Abruf der Zähler und dem Neustart, also
   höchstens ein Abholintervall.
 
-## [0.6.17] - 2026-08-18
+## [0.6.17] - 2026-08-18: Aufrufzahlen über einen eigenen Metrikport
 
 ### Ergänzt
 
@@ -151,7 +177,7 @@ formuliert.
 - Die Client-Anweisungen unter `docs/anweisungen/` tragen eine Kopfzeile, die den
   Konnektor und das Namensmuster der Werkzeuge benennt.
 
-## [0.6.16] - 2026-08-17
+## [0.6.16] - 2026-08-17: Der Server ist über die offizielle MCP-Registry findbar
 
 ### Ergänzt
 
@@ -177,7 +203,7 @@ formuliert.
 - Die Bun-Untergrenze 1.2.0 aus `README.md` ist jetzt gemessen statt abgeleitet:
   864 Golden-Zusicherungen, 57 über HTTP, 593 Schema-Prüfungen, alle grün.
 
-## [0.6.15] - 2026-08-07
+## [0.6.15] - 2026-08-07: bible_concordance sagt, wenn ein texttyp nicht greift
 
 ### Geändert
 
@@ -204,7 +230,7 @@ formuliert.
   aufgelöst, ohne eine Aussage zu ändern. Neuer Abschnitt in
   `docs/ENTSCHEIDUNGEN.md` zur gepinnten Bun-Fassung.
 
-## [0.6.14] - 2026-08-06
+## [0.6.14] - 2026-08-06: Die Stellenangabe in der Form, in der man sie zitiert
 
 ### Ergänzt
 
@@ -224,11 +250,11 @@ formuliert.
 
 ### Geändert (Dokumentation)
 
-- **Der Anweisungstext nennt `kurzref` als Zitierform**, von 2287 auf 2450
+- **Der Anweisungstext nennt `kurzref` als Zitierform**, von 2316 auf 2481
   Zeichen. `tools/list` wächst mit den neuen Feldbeschreibungen von 20 181 auf
   21 017 Zeichen (gemessen über einen stdio-Client an `JSON.stringify(result)`).
 
-## [0.6.13] - 2026-08-06
+## [0.6.13] - 2026-08-06: bible_server_info nennt die Bedingungen je Ausgabe
 
 ### Ergänzt
 
@@ -256,7 +282,7 @@ formuliert.
 - **`kjv_woerter` ist als Wiedergabe der King James gekennzeichnet**, nicht als
   Bedeutungsangabe. Der `hinweis` der Konkordanz trägt jetzt mehrere Sätze.
 
-## [0.6.12] - 2026-08-06
+## [0.6.12] - 2026-08-06: Ein Endpunkt führt seine eigene Voreinstellung
 
 ### Ergänzt
 
@@ -273,7 +299,7 @@ formuliert.
 
 ### Geändert (Dokumentation)
 
-- **`README.md` gestrafft**, von 364 auf 313 Zeilen. Die Beispielausgaben stehen
+- **`README.md` gestrafft**, von 356 auf 307 Zeilen. Die Beispielausgaben stehen
   jetzt in `docs/BEISPIELE.md`, die Dateitabelle in `CONTRIBUTING.md`, vier
   Absätze mit Protokoll-Interna in `docs/ENTSCHEIDUNGEN.md` und im Code. Die
   Übersetzungstabelle führt die Schlachter 2000 voran, mit einer Spalte, die
@@ -285,7 +311,7 @@ formuliert.
   wird in jeder Sitzung geladen. Die Pflegeregeln dazu stehen neu in
   `docs/anweisungen/README.md`.
 
-## [0.6.11] - 2026-08-06
+## [0.6.11] - 2026-08-06: Gekürzte Antworten und abweichende Verszählungen werden benannt
 
 ### Ergänzt
 
@@ -319,7 +345,7 @@ formuliert.
   nicht mitzitieren, abweichende Verszählung nicht als Übersetzungsvergleich
   lesen), `README.md` und `docs/ENTSCHEIDUNGEN.md` nachgezogen.
 
-## [0.6.10] - 2026-08-06
+## [0.6.10] - 2026-08-06: Vier verschwiegene Kürzungen werden gemeldet
 
 ### Ergänzt
 
@@ -344,7 +370,7 @@ formuliert.
 - **`bible_search` fordert nicht mehr zum Erhöhen von `limit` auf**, wenn `limit`
   bereits auf der Obergrenze 50 liegt.
 
-## [0.6.9] - 2026-08-06
+## [0.6.9] - 2026-08-06: Die Lizenzangabe zur Schlachter 2000 nennt die Bedingung statt des Vertrags
 
 ### Geändert
 
@@ -359,7 +385,7 @@ formuliert.
 - Die Ausgabe ist über den gehosteten Dienst verfügbar. Eine selbst aufgebaute
   Datenbank führt sie weiterhin nicht, `bible_setup` lädt sie nicht.
 
-## [0.6.8] - 2026-08-06
+## [0.6.8] - 2026-08-06: Die Schlachter 2000 ist dokumentiert, die Testsuite gehärtet
 
 ### Ergänzt
 
@@ -373,8 +399,8 @@ formuliert.
   überall enthalten. Beide Ausgaben geben höchstens 20 Verse je Abruf im
   Wortlaut aus; im README stand diese Grenze bisher nur für die 1951er.
 
-- **113 Zusicherungen in den Golden-Tests, Messlatte 510 → 623**, dazu zehn im
-  HTTP-Test (47 → 57). Sie schließen gemessene Lücken: der datenlose Zustand
+- **113 Zusicherungen in den Golden-Tests, Messlatte 510 auf 623**, dazu zehn im
+  HTTP-Test (47 auf 57). Sie schließen gemessene Lücken: der datenlose Zustand
   hatte keine Zusicherung über `tools/list`, `bible_server_info` oder einen
   unbekannten Werkzeugnamen; die nachsichtige Wandlung von `chapter: "3"` war
   ungedeckt, ebenso die AT-Abweisung von `bible_compare`, fünf Abweisungen von
@@ -394,7 +420,7 @@ formuliert.
 
 - `lacks()` normalisiert wie `has()` nach NFC.
 
-## [0.6.7] - 2026-08-06
+## [0.6.7] - 2026-08-06: Die drei Buchprüfungen liegen in einem Helfer
 
 ### Geändert
 
@@ -417,7 +443,7 @@ formuliert.
   Buchname war nur in einem Werkzeug geprüft, die „is required"-Meldung nur in
   einem und dort nur als Teilstring, ein falsy Nicht-String in keinem.
 
-## [0.6.6] - 2026-08-05
+## [0.6.6] - 2026-08-05: Der Laufzeitcode liegt unter src/
 
 ### Geändert
 
@@ -437,7 +463,7 @@ formuliert.
   Repository-Wurzel; der Pfad wird an einer einzigen Stelle bestimmt und ist
   mitgezogen.
 
-## [0.6.5] - 2026-08-05
+## [0.6.5] - 2026-08-05: Fehlermeldungen nennen die tatsächlich verletzte Bedingung
 
 ### Behoben
 
@@ -456,7 +482,7 @@ formuliert.
   dessen eigene Beispiele trägt. Gültige Aufrufe verhalten sich unverändert; wer
   Fehlertexte auswertet, prüfe die drei neuen Wortlaute.
 
-## [0.6.4] - 2026-08-05
+## [0.6.4] - 2026-08-05: Jedes Werkzeug hat seine eigene Datei
 
 ### Geändert
 
@@ -480,7 +506,7 @@ formuliert.
   die Absicherung dafür fehlte bisher ganz und ist nachgeholt. Die Messlatte in
   `bun run test` steigt von 475 auf 478.
 
-## [0.6.3] - 2026-08-05
+## [0.6.3] - 2026-08-05: Zwei gemeldete Testlücken sind geschlossen
 
 ### Hinzugefügt
 
@@ -498,7 +524,7 @@ formuliert.
   blieben, werden jetzt rot. Die Messlatte in `bun run test` steigt von 466 auf
   475. Am Serververhalten ändert sich nichts.
 
-## [0.6.2] - 2026-08-05
+## [0.6.2] - 2026-08-05: Die Datenschicht hat server.ts verlassen
 
 ### Geändert
 
@@ -521,7 +547,7 @@ formuliert.
 - Die Architekturtabelle im README führt `db.ts` und `editions.ts`; die
   Herleitung des Schnitts steht in `docs/ENTSCHEIDUNGEN.md`.
 
-## [0.6.1] - 2026-08-05
+## [0.6.1] - 2026-08-05: Ein Testbündel je Werkzeug
 
 ### Geändert
 
@@ -543,7 +569,7 @@ formuliert.
   Stellen, geprüft war nur eine; ein Hinweis aus allen Treffern statt aus den
   ausgelieferten Versen wäre unbemerkt geblieben.
 
-## [0.6.0] - 2026-08-05
+## [0.6.0] - 2026-08-05: text ist kein Pflichtfeld mehr, wo die Wortlaut-Grenze greift
 
 ### Geändert (nicht abwärtskompatibel)
 
@@ -555,7 +581,7 @@ formuliert.
 - Bedingtes Feld **`gekuerzt`** an `bible_lookup`, `bible_crossrefs` und `bible_search` mit `verse_max`, `im_wortlaut` und `ohne_wortlaut`.
 - **`verse_max`** je Ausgabe in `bible://uebersetzungen`; `null` heißt: keine Grenze.
 
-## [0.5.16] - 2026-08-05
+## [0.5.16] - 2026-08-05: Fußnoten der Ausgabe und die Schlachter 2000
 
 ### Hinzugefügt
 
@@ -569,7 +595,7 @@ formuliert.
 
 - **`bible_lookup`, `bible_crossrefs` und `bible_search` nennen in ihren Fehlermeldungen nur noch geladene Übersetzungen** und verweisen nicht mehr auf `bun run download`, wo es diesen Weg nicht gibt.
 
-## [0.5.15] - 2026-08-03
+## [0.5.15] - 2026-08-03: Die Origin-Prüfung gilt für alle Pfade
 
 ### Behoben
 
@@ -583,7 +609,7 @@ formuliert.
 
 - **`bun run test:http`** (`tests/test-http.ts`), 47 Zusicherungen über den HTTP-Transport: Statuscodes je Methode, die Werte der `Allow`-Kopfzeilen, Origin in beiden Richtungen, Vorabanfrage, Zustandsauskunft, unbekannte Pfade. Braucht **keine** Datenbank, anders als `bun run test`.
 
-## [0.5.14] - 2026-08-03
+## [0.5.14] - 2026-08-03: GET /mcp beendet die Wiederverbindungsschleife
 
 ### Behoben
 
@@ -593,7 +619,7 @@ formuliert.
 
   **Für Clients ändert sich nichts an den Werkzeugen.** Der GET-Kanal ist laut Spezifikation eine Kann-Bestimmung; dieser Server sendet ohnehin keine server-initiierten Nachrichten, und der SDK-Client behandelt 405 ausdrücklich als erwarteten Fall und arbeitet mit POST weiter. Betroffen ist allein der HTTP-Modus, stdio ist unberührt.
 
-## [0.5.13] - 2026-08-03
+## [0.5.13] - 2026-08-03: Die Codekommentare sind deutsch
 
 ### Geändert (Dokumentation)
 
@@ -603,7 +629,7 @@ formuliert.
 
   Beim Umstellen wurde redigiert, nicht nur übersetzt: Kommentare, die nur den Code nacherzählten, sind kürzer, und Codekommentare fallen jetzt unter die Em-Dash-Regel dieses Repositories (kein `—` mehr in einem Kommentar). Zwei Zahlen sind dabei richtiggestellt worden, die von „sechs Werkzeugen" sprachen, wo es sieben sind. Wer `git blame` benutzt, setzt einmalig `git config blame.ignoreRevsFile .git-blame-ignore-revs`, siehe `CONTRIBUTING.md`.
 
-## [0.5.12] - 2026-08-02
+## [0.5.12] - 2026-08-02: Der Preis der Fehlercode-Umstellung ist gemessen
 
 ### Geändert (Dokumentation)
 
@@ -611,7 +637,7 @@ formuliert.
 
   Betroffen sind allein die Ressourcen und allein dieser Client: Prompts geben ihre Meldung weiterhin im Wortlaut aus, Werkzeuge liefern ihre Fehler ohnehin als Ergebnis mit `isError`. Wer den vollen Text braucht, stellt dieselbe Frage über `bible_lookup`. Für Claude Desktop und claude.ai ist es nicht gemessen. Am Code ändert sich nichts, der Fehlercode bleibt `-32602`; die drei Auswege stehen in `docs/ENTSCHEIDUNGEN.md`, die Nutzersicht in `docs/FEHLERBEHEBUNG.md`.
 
-## [0.5.11] - 2026-08-02
+## [0.5.11] - 2026-08-02: Fehler des Aufrufers melden -32602 statt -32603
 
 ### Behoben
 
@@ -624,7 +650,7 @@ formuliert.
 - `docs/TYPESCRIPT.md`: sieben Konventionen für Codekommentare, darunter Sprache (Deutsch, außer Bezeichnern und den englischen Tool-Beschreibungen), Länge und Abgrenzung zu `docs/ENTSCHEIDUNGEN.md`. Der Bestand ist noch überwiegend englisch, die Umstellung steht aus.
 - `docs/ENTSCHEIDUNGEN.md`: Begründung der Fehlercodes samt Messung, warum dafür nicht `McpError` verwendet wird, und warum `DELETE` weiter mit 200 antwortet.
 
-## [0.5.10] - 2026-08-02
+## [0.5.10] - 2026-08-02: Die Prompts tragen deutsche Anzeigenamen
 
 ### Hinzugefügt
 
@@ -634,7 +660,7 @@ formuliert.
 
 - `docs/FEHLERBEHEBUNG.md` erklärt, warum sich eine Ressource nicht anhängen lässt. Enthält der Servername Leerzeichen, setzt die Vervollständigung in Claude Code ein Anführungszeichen, das die dokumentierte Form nicht kennt, und der Inhalt kommt nicht an; ein lokaler Eintrag desselben Endpunkts unter kurzem Namen behebt es. Die URI-Vorlagen sind über `@` gar nicht erreichbar, wohl aber über `resources/read`. Beides gemessen am 02.08.2026 in Claude Code, für Claude Desktop und claude.ai nicht.
 
-## [0.5.9] - 2026-08-02
+## [0.5.9] - 2026-08-02: Ressourcen als dritte MCP-Primitive
 
 ### Hinzugefügt
 
@@ -648,7 +674,7 @@ formuliert.
 
 - **`bible_server_info` nennt die Ressourcen und Vorlagen.** Ob ein Client `resources/templates/list` überhaupt abruft, ist nicht belegt; diese Auskunft ist der Kanal, der das Modell nachweislich erreicht. Kosten: 359 Zeichen in der Antwort, 202 in `tools/list`. Aus denselben Konstanten wie die Listen, deshalb können beide nicht auseinanderlaufen.
 
-## [0.5.8] - 2026-08-02
+## [0.5.8] - 2026-08-02: Die Lesewerkzeuge liefern ihr Ergebnis auch strukturiert
 
 ### Hinzugefügt
 
@@ -662,7 +688,7 @@ formuliert.
 
 - Die Werkzeugtabelle in `README.md` führte `bible_server_info` nicht auf, und zwei Stellen sprachen weiter von „sechs Werkzeugen".
 
-## [0.5.7] - 2026-08-02
+## [0.5.7] - 2026-08-02: Die Prompts nennen den geladenen Bestand statt einer festen Liste
 
 ### Geändert
 
@@ -674,7 +700,7 @@ formuliert.
 - Ein fehlendes Pflichtargument erzeugte einen Prompt mit einer Lücke im Text und meldete Erfolg. `prompts/get` weist ihn jetzt unter Nennung des Feldes zurück, begrenzt Argumente auf 100 Zeichen und faltet Zeilenumbrüche.
 - Das MCPB-Manifest nannte die Prompt-Argumente `wort` und `stelle`; sie heißen `word` und `reference`.
 
-## [0.5.6] - 2026-07-29
+## [0.5.6] - 2026-07-29: Der HTTP-Modus vermerkt die Protokollfassung seiner Aufrufer
 
 ### Hinzugefügt
 
@@ -690,7 +716,7 @@ formuliert.
 
 - Neu: `docs/ENTSCHEIDUNGEN.md` für Begründungen und Messungen, die an keiner einzelnen Codestelle stehen. Erste Einträge: das Protokoll-Log und der Befund, dass dieser Server Clients beider Ären als alten Server erkennbar bleibt, weil das 1.x-SDK mit dem Fehlercode -32000 antwortet und nicht mit dem modernen -32022.
 
-## [0.5.5] - 2026-07-26
+## [0.5.5] - 2026-07-26: bible_lookup kürzt Verslisten nicht mehr stillschweigend
 
 ### Behoben
 
@@ -705,7 +731,7 @@ formuliert.
 - `AGENTS.md` ist entfallen; die Verweise in `README.md` und `docs/TYPESCRIPT.md` sind ersetzt, das Beispiel für den stdio-Aufruf steht jetzt im README.
 - Neu: `docs/UEBERSETZUNGEN.md` mit der geprüften Lizenzlage möglicher weiterer Übersetzungen. Der Server führt weiter dieselben vier.
 
-## [0.5.4] - 2026-07-26
+## [0.5.4] - 2026-07-26: Die Urtext-Editionen erscheinen mit Namen statt nur mit Kürzel
 
 ### Geändert
 
@@ -720,7 +746,7 @@ formuliert.
 
 Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringify(result)` der `tools/list` gemessen: 7201 Zeichen für alle sieben Werkzeuge, davon 361 für `bible_server_info`. Die abweichenden Zahlen im Abschnitt zu 0.5.2 ließen sich nicht mehr nachvollziehen und bleiben dort unverändert stehen.
 
-## [0.5.3] - 2026-07-26
+## [0.5.3] - 2026-07-26: Ein Tag baut die Bundles und legt die Release an
 
 ### Geändert (Infrastruktur)
 
@@ -730,7 +756,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
   Diese Fassung ist inhaltlich identisch mit 0.5.2.
 
-## [0.5.2] - 2026-07-26
+## [0.5.2] - 2026-07-26: bible_server_info meldet Fassung und Bestand
 
 ### Hinzugefügt
 
@@ -746,7 +772,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
 - Die Menge-Übersetzung heißt **„Menge 1939"**, damit alle vier Übersetzungen ihre Ausgabe im Namen tragen. Code `MB` und alle Aliase bleiben, `menge1939` kommt hinzu.
 
-## [0.5.1] - 2026-07-26
+## [0.5.1] - 2026-07-26: Kein Em-Dash mehr im deutschen Text
 
 ### Geändert (Typografie)
 
@@ -758,7 +784,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
 - Die H1 der README lautet **Bibelstudium MCP** statt `bibelstudium-mcp`. Der Paketname bleibt.
 
-## [0.5.0] - 2026-07-26
+## [0.5.0] - 2026-07-26: Zahlen, die bisher geschätzt wurden, stehen im Ergebnis
 
 ### Hinzugefügt (Zahlen, die bisher geschätzt wurden)
 
@@ -773,7 +799,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
 - Der Regressionstest liegt in `tests/` statt in `scripts/`, denn `scripts/` ist der Datenaufbau. Aufgerufen unverändert über `bun run test`.
 
-## [0.4.0] - 2026-07-25
+## [0.4.0] - 2026-07-25: Jede Antwort nennt ihre Quellen
 
 ### Hinzugefügt (Namensnennung)
 
@@ -802,7 +828,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 - `server.ts --setup` sagt jetzt, dass es eine vorhandene Datenbank ersetzt.
 - **Der Server meldete `0.2.2`, während Paket und Release auf `0.3.0` standen.** Die Version kommt jetzt per JSON-Import aus `package.json`, geprüft unter `bun run` und im kompilierten Binary.
 
-## [0.3.0] - 2026-07-25
+## [0.3.0] - 2026-07-25: Einrichtung ohne Terminal
 
 ### Hinzugefügt (Einrichtung ohne Terminal)
 
@@ -835,7 +861,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
 - `BIBLE_DB_PATH` überschreibt den Datenbankpfad; ein gesetzter, aber leerer Wert zählt als nicht gesetzt. Nötig wurde die Variable durch das Bundle: Im kompilierten Binary zeigt `import.meta.path` in Buns virtuelles Dateisystem, sodass der Server dort nicht startete. Kompilierte Läufe suchen jetzt neben dem Binary, erkannt am nicht existierenden Verzeichnis statt an einem fest verdrahteten Bun-Pfad.
 
-## [0.2.2] - 2026-07-25
+## [0.2.2] - 2026-07-25: HTTP-Transport und Werkzeug-Annotationen
 
 ### Hinzugefügt
 
@@ -849,14 +875,14 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 
 - `bible_original`, `bible_crossrefs` und `bible_compare` wiesen Werte außerhalb des gültigen Bereichs mit „`'verse' must be a positive integer`" zurück, einer Bedingung, die die Eingabe erfüllt; verletzt war die Obergrenze. Sechs Meldungen in drei Handlern nennen jetzt die tatsächliche Grenze. Grenzen und Meldungstexte liegen dafür in gemeinsamen Konstanten (`MAX_CHAPTER`, `MAX_VERSE`, `chapterOutOfRange`, `verseOutOfRange`).
 
-## [0.2.1] - 2026-07-25
+## [0.2.1] - 2026-07-25: Der Datenaufbau liegt unter scripts/
 
 ### Geändert
 
 - Repository-Wurzel aufgeräumt: Die neun Datenaufbau-Skripte und ihre Helfer liegen unter `scripts/`, im Root bleiben `server.ts` und `translations.ts`. Der Schnitt folgt der Laufzeitgrenze. An den Kommandos ändert sich nichts.
 - Dokumentation und Fehlermeldungen nennen die `package.json`-Aliase statt der Dateipfade; der Pfad ist damit nicht mehr Teil der Schnittstelle.
 
-## [0.2.0] - 2026-07-25
+## [0.2.0] - 2026-07-25: Textkritischer Abgleich statt bloßer Bezeugung
 
 ### Hinzugefügt
 
@@ -881,7 +907,7 @@ Die Zeichenzahlen dieser Fassung sind über einen stdio-Client an `JSON.stringif
 - `download.ts` normalisiert Buchnamen ohne Leerzeichen vor der Klammer (`2. Mose(Exodus)`). Buchnamen erscheinen in jeder Konkordanz-, Such- und Querverweisausgabe.
 - Griechische Formen wurden samt Koronis `᾽` verglichen, sodass `ἀλλ᾽` nie auf das gespeicherte `αλλ` traf. Reine Elisionsunterschiede lösen jetzt keine Widerspruchsmeldung mehr aus.
 
-## [0.1.0] - 2026-07-23
+## [0.1.0] - 2026-07-23: Erste öffentliche Version
 
 ### Hinzugefügt
 
