@@ -6,6 +6,36 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.24] - 2026-08-29: Das README nennt alle sieben Umgebungsvariablen und sagt, was ungetestet ist
+
+### Geändert (Dokumentation)
+
+- **Die Betriebstabelle im README war unvollständig.** Sie führte vier
+  Umgebungsvariablen, der Code kennt sieben: `MCP_HTTP_ALLOWED_ORIGINS`
+  (`src/transport.ts`) fehlte ganz, `MCP_HTTP_HOST` und `MCP_METRICS_HOST`
+  standen nur als Nebensatz in fremden Zeilen. Jetzt sieben Zeilen, jede mit
+  ihrem Wert ohne Angabe.
+- **Die Lizenzspalte der Übersetzungstabelle gab bei `SLT` die `attribution`
+  statt der `license` aus `src/translations.ts` wieder**, bei `SCH` fehlte
+  `ebible.org`. Beide Spalten stimmen jetzt mit dem überein, was unter `quellen`
+  in jeder Antwort steht.
+- **Zwei Zahlen stehen mit ihrer Messbedingung da**, die 26 Sekunden für den
+  Datenaufbau (acht Schritte, vor den Parallelstellen) und die 11 % Abweichung
+  zwischen TAGNT-Notiz und Editionstext (über 400 zufällig gezogene NT-Verse).
+  Die unbelegten „rund 30 Sekunden" sind entfallen, und die acht
+  Bezeugungs-Editionen sind einmal vollständig aufgezählt statt zweimal
+  verschieden.
+- **Neu: was der Server nicht ist und was worauf geprüft wurde.** Ein Abschnitt
+  „Wofür der Server nicht gedacht ist" und eine Plattformtabelle in drei Stufen:
+  Linux geprüft in der CI, macOS geprüft auf der Entwicklungsmaschine, Windows
+  ungetestet.
+- **HTTP-Transport, Umgebungsvariablen und Metrikport standen unter der
+  Überschrift „Claude Desktop"** und haben jetzt einen eigenen Abschnitt
+  „Betrieb".
+
+Am Verhalten des Servers ändert sich nichts. Maßstab war
+`README_QUALITY_STANDARDS.md` aus dem Workbench-Regelwerk.
+
 ## [0.6.23] - 2026-08-27: Die Release-Titel sagen, was die Fassung bringt
 
 ### Geändert
