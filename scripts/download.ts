@@ -25,6 +25,8 @@
 
 import { BOOK_ALIASES } from "./aliases.ts";
 import { DB_PATH } from "../src/db-path.ts";
+import { holeJson } from "./hole.ts";
+import { alsSkript, berichteGroesse } from "./lauf.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 import { ensureVersesSchema, rebuildVersesFts } from "./schema.ts";
@@ -74,38 +76,12 @@ function normalizeBookName(name: string): string {
  * Der Rohtext geht in die Herkunftsprüfsumme, damit sie über die tatsächlich
  * empfangenen Bytes läuft und nicht über eine erneute Serialisierung davon.
  */
-async function fetchJsonWithSource<T>(
-  url: string,
-  retries = 3
-): Promise<{ readonly data: T; readonly raw: string }> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`API error ${response.status}: ${url}`);
-      }
-      // Lesen und Parsen innerhalb des try: So werden Parse-Fehler (abgeschnittene
-      // Antwort, HTML-Fehlerseite) wie Netzwerkfehler wiederholt, statt
-      // unbehandelt zu entkommen.
-      const raw = await response.text();
-      return { data: JSON.parse(raw) as T, raw };
-    } catch (error) {
-      if (attempt === retries - 1) throw error;
-      const backoff = Math.pow(2, attempt) * 1000;
-      console.warn(`  Retry ${attempt + 1}/${retries} after ${backoff}ms: ${error}`);
-      await sleep(backoff);
-    }
-  }
-
-  throw new Error(`Failed after ${retries} attempts: ${url}`);
+function fetchJsonWithSource<T>(url: string): Promise<{ readonly data: T; readonly raw: string }> {
+  return holeJson<T>(url, { meldeWiederholung: true });
 }
 
-async function fetchJson<T>(path: string, retries = 3): Promise<T> {
-  return (await fetchJsonWithSource<T>(`${API_BASE}${path}`, retries)).data;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+async function fetchJson<T>(path: string): Promise<T> {
+  return (await fetchJsonWithSource<T>(`${API_BASE}${path}`)).data;
 }
 
 /** Holt und prüft die Bücherliste einer Übersetzung (nur der protestantische Kanon). */
@@ -319,17 +295,10 @@ export async function main(selection?: string): Promise<void> {
     await downloadTranslation(code);
   }
 
-  const { statSync } = await import("fs");
-  const sizeMB = (statSync(DB_PATH).size / 1024 / 1024).toFixed(1);
-  console.log(`\nDatabase size: ${sizeMB} MB`);
+  berichteGroesse(DB_PATH);
 }
 
 // Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
 // Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
 // starten.
-if (import.meta.main) {
-  main().catch((error) => {
-    console.error("Download failed:", error);
-    process.exit(1);
-  });
-}
+if (import.meta.main) alsSkript(main, "Download failed:");

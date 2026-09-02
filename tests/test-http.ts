@@ -670,6 +670,43 @@ try {
 // dabei nichts verliert, zeigt ein kopfloses `initialize` mit einer noch nicht
 // gesehenen alten Revision nach 51 kopflosen Anfragen: Die Zeile muss weiter
 // erscheinen. Eigener Prozess mit vollem stderr, `start()` verwirft es.
+// Die Host-Weißliste ist ein Opt-in und wird gegen den Wert geprüft, den der
+// Client tatsächlich schickt (`127.0.0.1:<port>`): erlaubt heißt 200 oder 503
+// (keine Datenbank), fremd heißt 421 ohne CORS-Freigabe. Zwei Prozesse, weil
+// eine Liste je Prozess gilt; eigener Port, der Hauptserver läuft noch.
+console.log("Host-Weisliste");
+{
+  const HOST_PORT = 8944;
+  const fremd = await start({ MCP_HTTP_PORT: String(HOST_PORT), MCP_HTTP_ALLOWED_HOSTS: `localhost:${HOST_PORT}` });
+  try {
+    const health = await fetch(`http://127.0.0.1:${HOST_PORT}/health`);
+    eq("fremder Host auf /health: 421", health.status, 421);
+    eq("fremder Host: keine CORS-Freigabe", health.headers.get("access-control-allow-origin"), null);
+    const mcp = await fetch(`http://127.0.0.1:${HOST_PORT}/mcp`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    eq("fremder Host auf /mcp: 421", mcp.status, 421);
+  } finally {
+    fremd.stop();
+  }
+  await Bun.sleep(300);
+  const erlaubt = await start({ MCP_HTTP_PORT: String(HOST_PORT), MCP_HTTP_ALLOWED_HOSTS: `127.0.0.1:${HOST_PORT}` });
+  try {
+    const health = await fetch(`http://127.0.0.1:${HOST_PORT}/health`);
+    check("erlaubter Host: /health antwortet 200 oder 503, nicht 421", health.status === 200 || health.status === 503, String(health.status));
+    const mcp = await fetch(`http://127.0.0.1:${HOST_PORT}/mcp`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    eq("erlaubter Host auf /mcp: 200", mcp.status, 200);
+  } finally {
+    erlaubt.stop();
+  }
+}
+
 console.log("Protokoll-Telemetrie ohne Kopfzeile");
 {
   const TELEMETRIE_PORT = 8943;
@@ -723,4 +760,4 @@ console.log("Protokoll-Telemetrie ohne Kopfzeile");
 // Mindestzahl wie in test-golden.ts: Fällt ein Block dieser Datei weg, sinkt die
 // Summe, ohne dass eine Prüfung rot würde. Gemessen 02.09.2026, beim Ergänzen
 // mitziehen.
-abschluss(96);
+abschluss(101);

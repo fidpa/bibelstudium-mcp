@@ -287,6 +287,24 @@ die Abweisung deshalb als CORS-Fehler in der Konsole, nicht als lesbare 403:
 Eine fremde Seite kann so nicht mehr unterscheiden, ob hier ein Server abweist
 oder gar keiner läuft. `curl -i` zeigt die 403 unverändert.
 
+### Anfragen kommen mit `421 Misdirected Request` zurück
+
+`MCP_HTTP_ALLOWED_HOSTS` ist gesetzt, und der `Host`-Kopf der Anfrage steht
+nicht in der Liste. Der Vergleich ist exakt (Kleinbuchstaben, mit Port): Wer
+den Server unter `127.0.0.1:8931` anspricht, braucht genau diesen Eintrag,
+wer über einen Tunnel oder Proxy kommt, dessen Hostnamen. Beide zusammen:
+
+```bash
+MCP_HTTP_ALLOWED_HOSTS=mcp.example.org,127.0.0.1:8931 MCP_HTTP_PORT=8931 bun run src/server.ts
+```
+
+Die Prüfung ist ein Opt-in (seit 0.6.27) und ergänzt die Origin-Prüfung: Ein
+gleichursprüngliches `GET` nach einer DNS-Umbindung trägt keinen `Origin`, wohl
+aber den fremden `Host`. Ohne die Variable gibt es keinen Abgleich. Die 421
+trägt keine CORS-Kopfzeilen und schreibt keine Logzeile; ein Dienst, der nach
+dem Setzen der Variable auf jede Anfrage 421 antwortet, hat den lokalen oder
+den öffentlichen Wert nicht in der Liste.
+
 ### `/health` antwortet mit `405 Method Not Allowed`
 
 Seit 0.5.15 nimmt die Zustandsauskunft nur `GET` und `HEAD` an, dazu `OPTIONS`

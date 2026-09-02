@@ -1,5 +1,5 @@
 {
-  "erfasst_am": "2026-08-22",
+  "erfasst_am": "2026-09-02",
   "hinweis": "Sollwerte für die provenance-Zeilen in data/bible.db. Jede Zeile ist eine fortlaufende SHA-256 über alle Nutzlasten einer Quelle, in der Reihenfolge des Abrufs. Prüfen mit 'bun run pruefe:quellen'. Weicht etwas ab, hat sich eine Gegenstelle geändert: erst nachsehen was, dann übernehmen.",
   "nicht_geprueft": [
     {
@@ -24,7 +24,7 @@
       "script": "download-crossrefs.ts",
       "source": "https://a.openbible.info/data/cross-references.zip",
       "files": 1,
-      "sha256": "9beb9c3eac58c9709f9a53861e9d42317d7b98da74e827c5e7090719294ed831"
+      "sha256": "aafb5bbad45f9b70e9ad67aef393c1987e61950f266d62aba8823f222b6558bf"
     },
     {
       "script": "download-heb.ts",

@@ -31,6 +31,8 @@
 
 import { ensureOriginalWordsSchema } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
+import { holeText, sleep } from "./hole.ts";
+import { alsSkript, berichteGroesse } from "./lauf.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
@@ -51,23 +53,7 @@ const BOOKS: ReadonlyArray<readonly [string, number]> = [
   ["Hag", 37], ["Zech", 38], ["Mal", 39],
 ];
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function fetchText(url: string, retries = 3): Promise<string> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-      return await res.text();
-    } catch (err) {
-      if (attempt === retries - 1) throw err;
-      await sleep(Math.pow(2, attempt) * 1000);
-    }
-  }
-  throw new Error(`Failed: ${url}`);
-}
+const fetchText = (url: string): Promise<string> => holeText(url);
 
 const VERSE_RE = /<verse osisID="([^"]+)">([\s\S]*?)<\/verse>/g;
 const NOTE_RE = /<note[\s\S]*?<\/note>/g;
@@ -173,17 +159,10 @@ export async function main(): Promise<void> {
     throw err;
   }
 
-  const { statSync } = await import("fs");
-  const sizeMB = (statSync(DB_PATH).size / 1024 / 1024).toFixed(1);
-  console.log(`Database size now: ${sizeMB} MB`);
+  berichteGroesse(DB_PATH);
 }
 
 // Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
 // Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
 // starten.
-if (import.meta.main) {
-  main().catch((error) => {
-    console.error("Download failed:", error);
-    process.exit(1);
-  });
-}
+if (import.meta.main) alsSkript(main, "Download failed:");

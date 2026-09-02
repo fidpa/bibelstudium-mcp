@@ -199,7 +199,7 @@ MCP_HTTP_PORT=8931 bun run src/server.ts # /mcp und /health, gebunden an 127.0.0
 
 Die Bindung an `127.0.0.1` ist Absicht. Für den Zugriff von außen gehören TLS und ein Zugriffsschutz davor, denn der Server bringt beides nicht mit.
 
-Sieben Umgebungsvariablen steuern den Betrieb, alle optional:
+Acht Umgebungsvariablen steuern den Betrieb, alle optional:
 
 | Variable | Wirkung | Ohne Angabe |
 |----------|---------|-------------|
@@ -208,6 +208,7 @@ Sieben Umgebungsvariablen steuern den Betrieb, alle optional:
 | `MCP_HTTP_PORT` | Gesetzt schaltet den HTTP-Transport frei | stdio |
 | `MCP_HTTP_HOST` | Adresse, an die der HTTP-Transport bindet | `127.0.0.1` |
 | `MCP_HTTP_ALLOWED_ORIGINS` | Kommaliste zusätzlich erlaubter `Origin`-Werte für den HTTP-Transport. Nötig, wenn ein Browser-Client wie claude.ai sonst in ein `403` läuft (siehe [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md)) | leer, es gelten nur die eingebauten Regeln |
+| `MCP_HTTP_ALLOWED_HOSTS` | Kommaliste erlaubter `Host`-Werte, mit Port, so wie der Client sie schickt (`127.0.0.1:8931`). Gesetzt, bekommt jede Anfrage mit anderem `Host` ein `421`; das schließt DNS-Rebinding auch für `GET /health`. Hinter einem Tunnel oder Proxy gehören der öffentliche Hostname **und** die lokale Adresse hinein (siehe [docs/FEHLERBEHEBUNG.md](docs/FEHLERBEHEBUNG.md)) | leer, kein Abgleich |
 | `MCP_METRICS_PORT` | Gesetzt öffnet einen zweiten Port mit `/metrics` für Prometheus | kein Metrik-Port |
 | `MCP_METRICS_HOST` | Adresse, an die der Metrik-Port bindet | `127.0.0.1` |
 

@@ -306,6 +306,19 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
     .split(",")
     .map((o) => o.trim())
     .filter((o) => o !== "");
+  // Erlaubte `Host`-Werte, und zwar als Opt-in: Ungesetzt gibt es keinen
+  // Abgleich. Eine strenge Vorgabe (nur 127.0.0.1:PORT) bräche den gehosteten
+  // Dienst, denn cloudflared spricht 127.0.0.1:8931 mit dem öffentlichen
+  // Hostnamen als `Host` an (kein `httpHostHeader` in seiner Konfiguration,
+  // gemessen 02.09.2026); eine Vorgabe mit dem öffentlichen Namen bräche jeden
+  // lokalen Aufruf. Gesetzt schließt der Abgleich das Loch, das die
+  // Origin-Prüfung offenlässt: Ein gleichursprüngliches GET nach einer
+  // DNS-Umbindung trägt keinen Origin, wohl aber den fremden Host. Vergleich
+  // exakt und in Kleinbuchstaben, mit Port, wie der Client ihn schickt.
+  const allowedHosts = (process.env["MCP_HTTP_ALLOWED_HOSTS"] ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => h !== "");
 
   Bun.serve({
     port,
@@ -341,6 +354,16 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
       // eine fremde Seite missbrauchen könnte. Ihr Wert liegt beim lokalen
       // Betrieb, den MCP_HTTP_PORT jederzeit erlaubt, und dort war ausgerechnet
       // der Pfad ungeschützt, den ein Fremder zuerst probiert.
+      // 421 Misdirected Request (RFC 9110, 15.5.20): Die Anfrage war an einen
+      // Host gerichtet, den dieser Server nicht bedient. Ohne CORS-Kopfzeilen und
+      // ohne Logzeile, aus denselben Gründen wie die 403 darunter.
+      if (allowedHosts.length > 0) {
+        const host = (request.headers.get("host") ?? "").trim().toLowerCase();
+        if (!allowedHosts.includes(host)) {
+          return new Response("Misdirected request", { status: 421 });
+        }
+      }
+
       const origin = request.headers.get("origin");
       if (origin !== null && !allowedOrigins.includes(origin)) {
         // Keine CORS-Kopfzeilen, auch kein `access-control-allow-origin`: Mit

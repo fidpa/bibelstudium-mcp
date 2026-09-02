@@ -25,6 +25,8 @@ import { dirname, resolve } from "path";
 import { unlinkSync, writeFileSync } from "fs";
 import { ensureCrossRefsSchema } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
+import { holeBytes } from "./hole.ts";
+import { alsSkript, berichteGroesse } from "./lauf.ts";
 import { openAtomicDb } from "./atomic-db.ts";
 import { createSourceDigest, writeProvenance } from "./provenance.ts";
 
@@ -65,19 +67,7 @@ function parseRef(ref: string): Ref | null {
   return { book, chapter, verse };
 }
 
-async function fetchZip(url: string, retries = 3): Promise<ArrayBuffer> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-      return await res.arrayBuffer();
-    } catch (err) {
-      if (attempt === retries - 1) throw err;
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
-    }
-  }
-  throw new Error(`Failed: ${url}`);
-}
+const fetchZip = (url: string): Promise<ArrayBuffer> => holeBytes(url);
 
 /**
  * Scheitert vor dem Download, wenn `unzip` fehlt. Schlanke Linux-Abbilder
@@ -174,17 +164,10 @@ export async function main(): Promise<void> {
     throw err;
   }
 
-  const { statSync } = await import("fs");
-  const sizeMB = (statSync(DB_PATH).size / 1024 / 1024).toFixed(1);
-  console.log(`Database size now: ${sizeMB} MB`);
+  berichteGroesse(DB_PATH);
 }
 
 // Nur bei direktem Aufruf ausführen. setup.ts importiert main(), damit der
 // Server die Datenbank selbst aufbauen kann; ein Import darf keinen Download
 // starten.
-if (import.meta.main) {
-  main().catch((error) => {
-    console.error("Download failed:", error);
-    process.exit(1);
-  });
-}
+if (import.meta.main) alsSkript(main, "Download failed:");

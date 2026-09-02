@@ -39,6 +39,7 @@ Platzhalter.
 - [Protokollversionen werden protokolliert, statt auf ein Datum zu warten](#protokollversionen-werden-protokolliert-statt-auf-ein-datum-zu-warten)
 - [Für Clients beider Ären bleiben wir als alter Server erkennbar](#für-clients-beider-ären-bleiben-wir-als-alter-server-erkennbar)
 - [Die Zähler liegen auf einem eigenen Port, und sie zählen Namen statt Anfragen](#die-zähler-liegen-auf-einem-eigenen-port-und-sie-zählen-namen-statt-anfragen)
+- [Die Host-Prüfung ist ein Opt-in, weil jede Vorgabe eine der beiden Seiten bräche](#die-host-prüfung-ist-ein-opt-in-weil-jede-vorgabe-eine-der-beiden-seiten-bräche)
 
 **[Was die Werkzeuge ausliefern](#was-die-werkzeuge-ausliefern)**
 - [Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist](#ausgabeschemata-von-hand-und-warum-required-die-teuerste-zeile-ist)
@@ -464,6 +465,35 @@ reservierten Bereich `-32020` bis `-32099` erzeugen. Das erklärte den Server
 zum modernen Server, und der Client hörte auf zurückzufallen.
 
 ---
+
+## Die Host-Prüfung ist ein Opt-in, weil jede Vorgabe eine der beiden Seiten bräche
+
+*Gemessen 02.09.2026 an der Konfiguration in CT 104 und an den eigenen Proben.*
+
+Die Origin-Prüfung schließt das Loch für DNS-Rebinding nur für `POST`: Browser
+setzen dort auch gleichursprünglich einen `Origin`. Ein gleichursprüngliches
+`GET /health` nach einer DNS-Umbindung trägt keinen, wohl aber den fremden
+`Host`. Bis zum 02.09.2026 behauptete ein Kommentar in `transport.ts`, die
+Origin-Prüfung schließe das Loch ganz; das SDK bringt `allowedHosts` mit,
+ungenutzt.
+
+Eine Vorgabe gibt es nicht, weil beide denkbaren falsch wären. `127.0.0.1:PORT`
+bräche den gehosteten Dienst: cloudflared spricht `127.0.0.1:8931` mit dem
+öffentlichen Hostnamen als `Host` an (`config.yml` setzt kein `httpHostHeader`).
+Der öffentliche Name bräche jeden lokalen Aufruf, also `/health` aus dem
+Container, die Proben von `/lxc-deploy` und jeden Klon, der `MCP_HTTP_PORT`
+setzt. Deshalb `MCP_HTTP_ALLOWED_HOSTS` als Kommaliste, ungesetzt kein Abgleich,
+und im Betrieb beide Werte.
+
+Die 421 trägt keine CORS-Kopfzeilen und keine Logzeile, wie die 403: Eine
+fremde Seite soll Abweisung und „kein Server" nicht unterscheiden können, und
+die Datenschutzerklärung zählt die Logereignisse abschließend auf. Der Preis
+ist, dass ein falscher Wert den Dienst stumm sterben lässt; die Gegenprobe ist
+Schritt 8 von `/lxc-deploy`, der die Version über den öffentlichen Weg misst.
+
+**Verworfen: `enableDnsRebindingProtection` des SDK.** Es prüft im Transport,
+also nach Pfad- und Methodenweiche; die Prüfung hier steht vor allem anderen,
+wie die Origin-Prüfung seit dem 03.08.2026, und gilt damit auch für `/health`.
 
 # Was die Werkzeuge ausliefern
 

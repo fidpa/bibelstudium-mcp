@@ -6,7 +6,40 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
-## [0.6.26] - 2026-09-02: Die Abweisung fremder Herkunft verrät den Server nicht mehr
+## [0.6.27] - 2026-09-02: Eine Host-Weißliste für den HTTP-Transport, und die Downloads haben eine Zeitgrenze
+
+### Hinzugefügt
+
+- **`MCP_HTTP_ALLOWED_HOSTS`:** Kommaliste erlaubter `Host`-Werte (mit Port,
+  wie der Client sie schickt). Gesetzt, antwortet jede Anfrage mit anderem
+  `Host` mit `421`, ohne CORS-Kopfzeilen und ohne Logzeile; das schließt
+  DNS-Rebinding auch für `GET /health`, wo die Origin-Prüfung nicht greift.
+  Ungesetzt bleibt alles wie bisher. Hinter einem Tunnel gehören öffentlicher
+  Hostname **und** lokale Adresse in die Liste (`docs/FEHLERBEHEBUNG.md`).
+
+### Geändert
+
+- **Downloads:** Alle neun Download-Skripte holen über `scripts/hole.ts`, mit
+  Wiederholung und einer Zeitgrenze von 60 s je Versuch; bis dahin hatte keine
+  der neun Kopien der Schleife eine, und eine schweigende Gegenstelle hing
+  `bible_setup` unbegrenzt. Größenmeldung und Skriptstart liegen in
+  `scripts/lauf.ts`.
+
+### Geändert (Daten)
+
+- **OpenBible.info hat die Querverweise am 31.08.2026 neu bewertet:** dieselben
+  344 781 Verweise, 13 255 davon mit anderen `votes`. `quellen-pruefsummen.json`
+  trägt die neue Prüfsumme; eine Datenbank vom Stand davor bleibt gültig und
+  meldet in `pruefe:quellen` eine Abweichung, bis `bun run download:crossrefs`
+  gelaufen ist.
+
+### Geändert (Dokumentation)
+
+- Die Überschrift des Abschnitts 0.6.26 ist umformuliert („verrät" wurde
+  „erkennt … an seiner Abweisung"); der Inhalt ist unverändert. Titel und Notes
+  der GitHub-Release trugen die neue Fassung bereits.
+
+## [0.6.26] - 2026-09-02: Eine fremde Webseite erkennt den Server nicht mehr an seiner Abweisung
 
 ### Geändert
 
