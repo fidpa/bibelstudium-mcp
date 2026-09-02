@@ -10,7 +10,7 @@
  */
 import { buendel, fahre } from "../lib/buendel.ts";
 import { MAX_BOOK_LENGTH } from "../../src/werkzeug-helfer.ts";
-import { check, eq, has, abschluss, type Json } from "../lib/zusicherungen.ts";
+import { check, eq, has, lacks, abschluss, type Json } from "../lib/zusicherungen.ts";
 import {
   BUCH_KEINE_ZEICHENKETTE,
   BUCH_ZU_LANG,
@@ -63,8 +63,41 @@ export const originalBuendel = buendel({
       "bible_original",
       { book: "Joh", chapter: 3, verse: 16, texttyp: "quatsch" },
     ],
+    // Robinson-Funktionsmarker, bis zum 02.09.2026 verworfen: der Komparativ an
+    // μείζων (A-NSM-C), die Negation an οὐ (PRT-N), und das Possessivpronomen
+    // ἐμόν (S-1SNSN), dessen Deklination hinter dem zweistelligen Besitzerblock
+    // ganz wegfiel. Dieselbe Stelle in sblgnt (----NSMC) nannte den Komparativ
+    // schon immer; beide Dekoder müssen dasselbe Wort liefern.
+    origKomparativ: ["bible_original", { book: "Mt", chapter: 18, verse: 1 }],
+    origKomparativSblgnt: ["bible_original", { book: "Mt", chapter: 18, verse: 1, texttyp: "sblgnt" }],
+    origNegation: ["bible_original", { book: "Mt", chapter: 5, verse: 14 }],
+    origPossessiv: ["bible_original", { book: "Joh", chapter: 4, verse: 34 }],
+    // Ein unbekannter `texttyp` am AT-Buch: angenommen (das Ergebnis hängt nicht
+    // an ihm), aber der Satz sagt „unbekannt"; bis zum 02.09.2026 hieß es „gilt
+    // nur fürs NT" über einen Wert, der nirgends gilt.
+    origAtTexttypUnbekannt: ["bible_original", { book: "Psalter", chapter: 23, verse: 1, texttyp: "quatsch" }],
+    // Unbekanntes Buch: die Nachbarwerkzeuge prüften es, dieses bis zum 02.09.2026 nicht.
+    origBuchUnbekannt: ["bible_original", { book: "Hesekiel-Zusatz", chapter: 1, verse: 1 }],
   },
   pruefe({ res }) {
+    {
+      const r = res.origAtTexttypUnbekannt;
+      eq("Ps 23,1 mit unbekanntem texttyp: kein Fehler", r.isError, false);
+      eq("Ps 23,1 mit unbekanntem texttyp: WLC", r.json?.texttyp, "wlc");
+      has("Ps 23,1 mit unbekanntem texttyp: Satz sagt „unbekannt\"", String(r.json?.hinweis ?? ""), 'Der Texttyp "quatsch" ist unbekannt');
+      lacks("Ps 23,1 mit unbekanntem texttyp: nicht „gilt nur fürs NT\"", String(r.json?.hinweis ?? ""), "gilt nur fürs NT");
+      has("bible_original unbekanntes Buch: nennt das nächstliegende", res.origBuchUnbekannt.text, '"Hesekiel"');
+    }
+    {
+      const morph = (r: typeof res.origKomparativ, wort: string): string => {
+        const w = ((r.json?.woerter ?? []) as Array<Record<string, unknown>>).find((e) => Object.values(e).includes(wort));
+        return String(w?.["morphologie"] ?? "");
+      };
+      has("Mt 18,1 byzantine: μειζων trägt den Komparativ", morph(res.origKomparativ, "μειζων"), "Komparativ");
+      has("Mt 18,1 sblgnt: μείζων trägt denselben Komparativ", morph(res.origKomparativSblgnt, "μείζων"), "Komparativ");
+      has("Mt 5,14 byzantine: οὐ trägt die Negation", morph(res.origNegation, "ου"), "Negation");
+      has("Joh 4,34 byzantine: ἐμόν trägt Kasus und Besitzer", morph(res.origPossessiv, "εμον"), "Singular (Besitzer) Nominativ Singular neutrum");
+    }
     const {
       origVerse999,
       origChap999,

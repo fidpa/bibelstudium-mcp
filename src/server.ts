@@ -88,6 +88,7 @@ import {
   type TranslationCode,
 } from "./translations.ts";
 import {
+  type LimitGrenzen,
   MAX_BOOK_LENGTH,
   MAX_CHAPTER,
   MAX_VERSE,
@@ -106,18 +107,20 @@ import {
   rpcError,
   toInt,
   verseOutOfRange,
+  reversedVerseRange,
   unparsableVersePart,
   versesNotParsable,
+  versesReversedRange,
   versesOutOfBounds,
   versesTooLong,
   versesTooManyParts,
 } from "./werkzeug-helfer.ts";
 import { handleCompare } from "./handlers/compare.ts";
-import { handleConcordance } from "./handlers/concordance.ts";
-import { handleCrossrefs } from "./handlers/crossrefs.ts";
+import { CONCORDANCE_LIMIT, handleConcordance } from "./handlers/concordance.ts";
+import { XREF_LIMIT, handleCrossrefs } from "./handlers/crossrefs.ts";
 import { handleLookup } from "./handlers/lookup.ts";
 import { handleOriginal } from "./handlers/original.ts";
-import { handleSearch } from "./handlers/search.ts";
+import { SEARCH_LIMIT, handleSearch } from "./handlers/search.ts";
 
 /** Die eine Versionsangabe, aus der auch das MCPB-Manifest gebaut wird. */
 const PACKAGE_VERSION: string = packageJson.version;
@@ -187,6 +190,29 @@ const GEKUERZT_SCHEMA = {
     fussnoten_entfallen: { type: "integer" },
   },
   required: ["verse_max", "im_wortlaut", "ohne_wortlaut"],
+};
+
+/** Die Gestalt von `gekuerzt` in bible_crossrefs allein: dieselben Zahlen wie
+ *  oben, dazu drei zu den Parallelstellen, weil deren Teilbudget greifen kann,
+ *  ohne dass das Hauptbudget es merkt (`verse-budget.ts`). Als eigenes Schema
+ *  und nicht im geteilten, damit lookup und search nicht drei Felder
+ *  versprechen, die sie nie tragen. Die drei gingen vom 22.08. bis zum
+ *  02.09.2026 undeklariert hinaus, golden-getestet und trotzdem unbemerkt,
+ *  weil der Prüfer nur deklarierte Schlüssel ansah; seither meldet er jedes
+ *  nicht deklarierte Feld. */
+const CROSSREFS_GEKUERZT_SCHEMA = {
+  ...GEKUERZT_SCHEMA,
+  properties: {
+    ...GEKUERZT_SCHEMA.properties,
+    parallelen_max: {
+      type: "integer",
+      description:
+        "Only when the parallel passages hit their own, smaller budget; the " +
+        "share of verse_max they may use at most.",
+    },
+    parallelen_gezeigt: { type: "integer" },
+    parallelen_entfallen: { type: "integer" },
+  },
 };
 
 /** Bedingt, drei Felder:
@@ -436,7 +462,7 @@ const CROSSREFS_OUTPUT = {
     },
     lesehinweis: { type: "string" },
     hinweis: { type: "string" },
-    gekuerzt: GEKUERZT_SCHEMA,
+    gekuerzt: CROSSREFS_GEKUERZT_SCHEMA,
     quellen: QUELLEN_SCHEMA,
   },
   required: ["reference", "kurzref", "gesamt", "verweise", "quellen"],
@@ -788,6 +814,21 @@ function translationArg(zweck: string) {
   };
 }
 
+/**
+ * Das `limit`-Argument eines Werkzeugs, aus dessen `LimitGrenzen` erzeugt.
+ * Dasselbe Muster wie `translationArg()`: Beschreibung, `default` und die
+ * Klemmung im Handler lesen zwei Zahlen aus einer Quelle. Kein `maximum:` im
+ * Schema, mit Absicht: Ein Client, der es durchsetzte, wiese `limit: 1000` ab,
+ * statt die Klemmung samt Hinweis zu bekommen.
+ */
+function limitArg(zweck: string, grenzen: LimitGrenzen, nachsatz = "") {
+  return {
+    type: "number" as const,
+    description: `${zweck} (default ${grenzen.vorgabe}, max ${grenzen.max})${nachsatz}`,
+    default: grenzen.vorgabe,
+  };
+}
+
 // bible_setup ist das eine Werkzeug, das schreibt: Es lädt die Bibeldaten und
 // ersetzt die Datenbankdatei. readOnlyHint und openWorldHint sind für es deshalb
 // beide falsch, und destructiveHint wird bedeutsam. Es ergänzt ausschließlich
@@ -942,11 +983,7 @@ const handleListTools = async () => ({
           },
           chapter: { type: "number", description: "Chapter number" },
           verse: { type: "number", description: "Single verse number" },
-          limit: {
-            type: "number",
-            description: "Maximum number of references to return (default 10, max 30)",
-            default: 10,
-          },
+          limit: limitArg("Maximum number of references to return", XREF_LIMIT),
           translation: translationArg("Translation for the quoted target texts:"),
         },
         required: ["book", "chapter", "verse"],
@@ -982,11 +1019,7 @@ const handleListTools = async () => ({
               'NT text edition: "byzantine" (default), "sblgnt", or "tr". Ignored for Hebrew.',
             default: "byzantine",
           },
-          limit: {
-            type: "number",
-            description: "Maximum occurrences to list (default 50, max 200); counts are always exact",
-            default: 50,
-          },
+          limit: limitArg("Maximum occurrences to list", CONCORDANCE_LIMIT, "; counts are always exact"),
         },
         required: [],
       },
@@ -1012,11 +1045,7 @@ const handleListTools = async () => ({
             type: "string",
             description: 'Optional: restrict to one book (German name, e.g. "Psalmen", "Röm")',
           },
-          limit: {
-            type: "number",
-            description: "Maximum verses to return (default 10, max 50); the total count is always exact",
-            default: 10,
-          },
+          limit: limitArg("Maximum verses to return", SEARCH_LIMIT, "; the total count is always exact"),
           translation: translationArg("Translation to search:"),
         },
         required: ["query"],
@@ -1529,6 +1558,9 @@ function segmentVerses(segment: string): string {
   // während das Werkzeug es abweist.
   if (segment !== "" && unparsableVersePart(segment) !== null) {
     throw rpcError(ErrorCode.InvalidParams, versesNotParsable);
+  }
+  if (segment !== "" && reversedVerseRange(segment) !== null) {
+    throw rpcError(ErrorCode.InvalidParams, versesReversedRange);
   }
   return segment;
 }

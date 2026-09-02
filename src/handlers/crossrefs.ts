@@ -18,7 +18,7 @@
  */
 
 import {
-  stmtKapitelLaengen,
+  stmtKapitelLaenge,
   stmtParallelGroups,
   stmtParallelMembers,
   stmtVerse,
@@ -54,11 +54,18 @@ import {
   stripHtml,
   toInt,
   verseOutOfRange,
+  type LimitGrenzen,
+  clampLimit,
 } from "../werkzeug-helfer.ts";
 
 /** Obergrenze für `limit`. Ein größerer Wert wird darauf geklemmt; wie viele
  *  Verweise es wirklich gibt, sagt `gesamt`. */
-const MAX_XREF_LIMIT = 30;
+export const XREF_LIMIT: LimitGrenzen = { vorgabe: 10, max: 30 };
+
+/** Wie viele Verse eines mehrversigen Verweisziels höchstens im Wortlaut
+ *  geliefert werden; darüber steht der Marker „[bis V. n]" und
+ *  `abschnitt_gekuerzt`. Bis zum 02.09.2026 eine nackte 4 im Schleifenrumpf. */
+const MAX_VERWEIS_VERSE = 4;
 
 /**
  * Wie viele Verse der Wortlaut-Grenze die Parallelstellen höchstens verbrauchen
@@ -98,10 +105,8 @@ function zaehlungWeichtAb(
   if (bookId > 39 || stmtWlcKapitelLaenge === null) return null;
   const hebr = stmtWlcKapitelLaenge.get(bookId, chapter)?.n ?? null;
   if (hebr === null) return null;
-  const eigene = stmtKapitelLaengen
-    .all(bookId, chapter)
-    .find((l) => l.translation === translation)?.n;
-  if (eigene === undefined) return null;
+  const eigene = stmtKapitelLaenge.get(translation, bookId, chapter)?.n ?? null;
+  if (eigene === null) return null;
   return hebr !== eigene;
 }
 
@@ -252,7 +257,7 @@ export function handleCrossrefs(args: {
   if (verse === null || verse < 1 || verse > MAX_VERSE) {
     return errorResult(verseOutOfRange);
   }
-  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), MAX_XREF_LIMIT);
+  const limit = clampLimit(args.limit, XREF_LIMIT);
   const budget = verseBudget(translation);
 
   const bookId = resolveBook(book);
@@ -315,9 +320,9 @@ export function handleCrossrefs(args: {
     let abschnittGekuerzt: { verse_gezeigt: number; verse_gesamt?: number } | null = null;
     if (sameChapter) {
       const span = r.to_verse_end - r.to_verse + 1;
-      const CAP = 4;
       const verses = stmtVerseRange.all(
-        translation, r.to_book, r.to_chapter, r.to_verse, Math.min(r.to_verse_end, r.to_verse + CAP - 1)
+        translation, r.to_book, r.to_chapter, r.to_verse,
+        Math.min(r.to_verse_end, r.to_verse + MAX_VERWEIS_VERSE - 1)
       );
       // Findet sich kein Vers, fehlt das Feld, statt leer dazustehen. Ein leerer
       // String war nie eine Aussage: Er sagte weder, dass es den Vers in dieser
@@ -327,13 +332,17 @@ export function handleCrossrefs(args: {
         text = verses
           .map((v) => (span > 1 ? `${v.verse} ${stripHtml(v.text)}` : stripHtml(v.text)))
           .join(" ");
-        if (span > CAP) text += markerBisVers(r.to_verse_end);
+        if (span > MAX_VERWEIS_VERSE) text += markerBisVers(r.to_verse_end);
         if (span > 1) einzeln = verses.map((v) => ({ nr: v.verse, text: stripHtml(v.text) }));
         // `verse_einzeln` trug den Rest nicht und sagte es nicht. Der
         // `lesehinweis` fordert zugleich, daraus vollständig zu zitieren: Wer
         // dem folgte, gab „Sprüche 8,22-30" aus und lieferte 22-25 (gemessen am
         // 06.08.2026, und schon beim Vorgabelimit erreichbar).
-        if (span > CAP) {
+        // Gemessen an den gelieferten Versen, nicht an der Grenze: Führt die
+        // Ausgabe die Spanne nur teilweise (andere Zählung; Daniel 4,34-35 in
+        // Menge liefert einen Vers), reichte `stelle` bis zum 02.09.2026 weiter
+        // als der Text, ohne dass das Feld stand.
+        if (verses.length < span) {
           abschnittGekuerzt = { verse_gezeigt: verses.length, verse_gesamt: span };
         }
       }
@@ -375,9 +384,9 @@ export function handleCrossrefs(args: {
   const hinweise = [
     gesamt > verweise.length
       ? `Nur die ${verweise.length} bestbewerteten von ${gesamt} Verweisen gelistet` +
-        (verweise.length < MAX_XREF_LIMIT
+        (verweise.length < XREF_LIMIT.max
           ? " (limit erhöhen)."
-          : `; mehr als ${MAX_XREF_LIMIT} gibt dieses Werkzeug je Abruf nicht aus.`)
+          : `; mehr als ${XREF_LIMIT.max} gibt dieses Werkzeug je Abruf nicht aus.`)
       : null,
     verseMaxHinweis(budget, {
       art: "verweise",

@@ -47,6 +47,11 @@ export const ressourcenBuendel = buendel({
     // unlesbares Segment ebenso abweisen wie bible_lookup. Täte sie es nicht,
     // hinge das Verhalten daran, durch welche Tür der Aufrufer kommt.
     resVersUnlesbar: "bible://vers/LUT/Johannes/3/16,abc",
+    // Dieselbe Tür für die umgekehrte Spanne: Werkzeug und Vorlage prüfen beide.
+    resVersUmgekehrt: "bible://vers/LUT/Johannes/3/10-5",
+    // Über MAX_URI_LENGTH (abgeleitet, rund 1330 Zeichen): abgewiesen vor jeder
+    // Segmentprüfung.
+    resUriZuLang: `bible://kapitel/LUT/${"J".repeat(1400)}`,
     resUebersetzungUnbekannt: "bible://kapitel/XYZ/Psalter/23",
     resEditionFalschesTestament: "bible://grundtext/wlc/Johannes/3/16",
     // Zwei Bedingungen zugleich verletzt: Die Meldung muss die nennen, die auch
@@ -54,6 +59,10 @@ export const ressourcenBuendel = buendel({
     resZweiVerletzt: "bible://kapitel/LUT/Hesekiel-Zusatz/999",
   },
   pruefe({ ressourcen }, ctx) {
+    has("umgekehrte Spanne: dieselbe Meldung wie das Werkzeug", ressourcen.resVersUmgekehrt!.error, "the first number must not be greater than the second");
+    eq("umgekehrte Spanne: als InvalidParams", ressourcen.resVersUmgekehrt!.code, INVALID_PARAMS);
+    has("überlange URI: nennt die Grenze", ressourcen.resUriZuLang!.error, "Die URI darf höchstens");
+    eq("überlange URI: als InvalidParams", ressourcen.resUriZuLang!.code, INVALID_PARAMS);
     const {
       resBuecher, resUebersetzungen, resEditionen, resQuellen, resKapitel,
       resVersBereich, resVersEinzeln, resKapitelPunkt, resKapitelUmlaut,

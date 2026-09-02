@@ -167,7 +167,13 @@ export function teilBudget(eltern: VerseBudget, hoechstens: number): VerseBudget
     nimm(anzahl) {
       const frei = Math.min(grenze - imWortlaut, (eltern.verseMax ?? 0) - eltern.imWortlaut);
       const bewilligt = Math.max(Math.min(anzahl, frei), 0);
-      if (bewilligt > 0) eltern.nimmGanz(bewilligt);
+      // Rein defensiv, kein Fall herstellbar (kein Aufrufer ruft `nimm` auf einem
+      // Teilbudget): Lehnt das Elternbudget ab, obwohl `frei` es zuließ, dürfen
+      // die Verse nicht hier als geliefert und dort als entfallen stehen.
+      if (bewilligt > 0 && !eltern.nimmGanz(bewilligt)) {
+        ohneWortlaut += anzahl;
+        return 0;
+      }
       imWortlaut += bewilligt;
       ohneWortlaut += anzahl - bewilligt;
       return bewilligt;

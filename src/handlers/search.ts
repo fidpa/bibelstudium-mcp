@@ -13,13 +13,13 @@
 
 import {
   HIT_OPEN,
+  HTTP_MODE,
   OCCURRENCE_SCAN_LIMIT,
+  ftsBereich,
+  hasFtsTable,
   stmtSearch,
   stmtSearchAll,
-  stmtSearchAllBook,
-  stmtSearchBook,
   stmtSearchCount,
-  stmtSearchCountBook,
 } from "../db.ts";
 import { quellen, translationQuelle } from "../editions.ts";
 import { TRANSLATIONS } from "../translations.ts";
@@ -30,6 +30,8 @@ import {
   bookNotFound,
   bookTooLong,
   bracketHints,
+  type LimitGrenzen,
+  clampLimit,
   errorResult,
   getBookDisplayName,
   jsonResult,
@@ -49,7 +51,7 @@ import {
  * nichts ändert. Die Zahl steht deshalb einmal hier und wird nicht erneut
  * hingeschrieben.
  */
-const MAX_SEARCH_LIMIT = 50;
+export const SEARCH_LIMIT: LimitGrenzen = { vorgabe: 10, max: 50 };
 
 /**
  * Formt freie Eingabe in einen unbedenklichen FTS5-MATCH-Ausdruck um.
@@ -85,9 +87,20 @@ export function handleSearch(args: {
   limit?: unknown;
   translation?: unknown;
 }) {
-  if (!stmtSearch || !stmtSearchBook || !stmtSearchCount || !stmtSearchCountBook) {
+  if (!hasFtsTable) {
     return errorResult(
       "Volltext-Index nicht gebaut. Bitte 'bun run build:fts' ausführen."
+    );
+  }
+  if (!stmtSearch || !stmtSearchCount || !stmtSearchAll) {
+    // Tabelle da, aber nicht in den rowid-Blöcken, die db.ts voraussetzt. Über
+    // stdio kann der Aufrufer neu bauen; über HTTP ist er ein Fremder.
+    return errorResult(
+      HTTP_MODE
+        ? "Die Volltextsuche ist auf diesem Endpunkt derzeit gesperrt: Der Index liegt nicht in " +
+            "der erwarteten Form vor. Das lässt sich nur serverseitig beheben; ein erneuter Aufruf hilft nicht."
+        : "Der Volltextindex liegt nicht in Blöcken je Übersetzung und Buch, wie dieser Server sie " +
+            "erwartet. Bitte 'bun run build:fts' ausführen."
     );
   }
   const resolved = requireTranslation(args.translation);
@@ -115,7 +128,7 @@ export function handleSearch(args: {
   if (match === null) {
     return errorResult("Error: 'query' enthält kein durchsuchbares Wort.");
   }
-  const limit = Math.min(Math.max(toInt(args.limit) ?? 10, 1), MAX_SEARCH_LIMIT);
+  const limit = clampLimit(args.limit, SEARCH_LIMIT);
   const budget = verseBudget(translation);
 
   let bookId: number | null = null;
@@ -132,11 +145,11 @@ export function handleSearch(args: {
     }
   }
 
-  const total =
-    bookId === null
-      ? stmtSearchCount.get(match, translation)!.n
-      : stmtSearchCountBook.get(match, translation, bookId)!.n;
-  if (total === 0) {
+  // Der rowid-Block der Übersetzung, bei `book` der des Buches darin; null
+  // heißt, diese Ausgabe führt das Buch nicht, also null Treffer.
+  const bereich = ftsBereich(translation, bookId);
+  const total = bereich === null ? 0 : stmtSearchCount.get(match, bereich.von, bereich.bis)!.n;
+  if (bereich === null || total === 0) {
     return errorResult(
       `Keine Treffer für "${query}"${bookId !== null ? ` in ${getBookDisplayName(bookId)}` : ""} ` +
         `(${TRANSLATIONS[translation].name}). ` +
@@ -144,10 +157,7 @@ export function handleSearch(args: {
         'nutzen (z. B. "lieb*").'
     );
   }
-  const rows =
-    bookId === null
-      ? stmtSearch.all(match, translation, limit)
-      : stmtSearchBook.all(match, translation, bookId, limit);
+  const rows = stmtSearch.all(match, bereich.von, bereich.bis, limit);
 
   // `treffer` zählt Verse, nicht Wortvorkommen: Ein Vers kann mehrfach passen
   // (1Joh 2,15 trägt drei Formen von „lieb*"). Konsumenten lesen „Treffer" als
@@ -156,12 +166,7 @@ export function handleSearch(args: {
   // Hervorhebungsmarker über alle passenden Verse gezählt, damit die zweite Zahl
   // dasteht, statt abgeleitet zu werden.
   const scanSkipped = total > OCCURRENCE_SCAN_LIMIT;
-  const scan =
-    !scanSkipped && stmtSearchAll && stmtSearchAllBook
-      ? bookId === null
-        ? stmtSearchAll.all(match, translation, OCCURRENCE_SCAN_LIMIT)
-        : stmtSearchAllBook.all(match, translation, bookId, OCCURRENCE_SCAN_LIMIT)
-      : null;
+  const scan = !scanSkipped ? stmtSearchAll.all(match, bereich.von, bereich.bis, OCCURRENCE_SCAN_LIMIT) : null;
   const hits = (text: string) => text.split(HIT_OPEN).length - 1;
   const vorkommen = scan === null ? null : scan.reduce((sum, r) => sum + hits(r.text), 0);
 
@@ -234,8 +239,8 @@ export function handleSearch(args: {
     // Der Ausweg muss einer sein, den der Aufrufer gehen kann. Steht `limit`
     // schon auf der Obergrenze, ist Erhöhen keiner mehr.
     const ausweg =
-      rows.length >= MAX_SEARCH_LIMIT
-        ? `mehr als ${MAX_SEARCH_LIMIT} listet dieses Werkzeug je Abruf nicht; auf ein Buch einschränken oder den Suchausdruck verengen`
+      rows.length >= SEARCH_LIMIT.max
+        ? `mehr als ${SEARCH_LIMIT.max} listet dieses Werkzeug je Abruf nicht; auf ein Buch einschränken oder den Suchausdruck verengen`
         : "limit erhöhen oder auf ein Buch einschränken";
     hinweise.push(
       `Nur die ersten ${rows.length} von ${total} Treffern gelistet (${ausweg}).`

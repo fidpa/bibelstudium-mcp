@@ -137,6 +137,37 @@ export async function callNamed<
   };
 }
 
+/** Wartet höchstens `ms` auf `p`; danach "frist". Der Timer wird geräumt, sonst
+ *  hielte jeder Lesevorgang einen zweiminütigen Timer offen. */
+function mitFrist<T>(p: Promise<T>, ms: number): Promise<T | "frist"> {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => res("frist"), Math.max(ms, 0));
+    p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+  });
+}
+
+/** Liest stderr mit und behält die letzten 20 Zeilen; endet mit dem Strom. */
+function sammleStderr(strom: ReadableStream<Uint8Array>): Promise<string[]> {
+  return (async () => {
+    const zeilen: string[] = [];
+    const r = strom.getReader();
+    const d = new TextDecoder();
+    let rest = "";
+    for (;;) {
+      const chunk = await mitFrist(r.read(), 2_000);
+      if (chunk === "frist" || chunk.done) break;
+      rest += d.decode(chunk.value, { stream: true });
+      const teile = rest.split("\n");
+      rest = teile.pop() ?? "";
+      for (const z of teile) {
+        zeilen.push(z);
+        if (zeilen.length > 20) zeilen.shift();
+      }
+    }
+    return zeilen;
+  })();
+}
+
 export async function callTools(
   calls: ReadonlyArray<Aufruf>,
   prompts: ReadonlyArray<Aufruf> = [],
@@ -150,9 +181,13 @@ export async function callTools(
   const proc = Bun.spawn(["bun", "run", SERVER], {
     stdin: "pipe",
     stdout: "pipe",
-    stderr: "ignore",
+    // Nicht "ignore": Scheitert der Start, ist die Meldung des Servers die
+    // einzige Diagnose, und bis zum 02.09.2026 kam stattdessen nur „antwortete
+    // auf 0 von N Anfragen". Die letzten Zeilen gehen in die Ausnahme unten.
+    stderr: "pipe",
     env: { ...process.env, ...env },
   });
+  const stderrZeilen = sammleStderr(proc.stderr);
   const w = proc.stdin;
   const send = (m: unknown) => w.write(JSON.stringify(m) + "\n");
 
@@ -201,25 +236,43 @@ export async function callTools(
   const reader = proc.stdout.getReader();
   const deadline = Date.now() + 120_000;
   let buf = "";
-  while (seen.size < expected && Date.now() < deadline) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      if (!line.trim()) continue;
-      const msg = JSON.parse(line) as Json & { id?: number };
-      if (typeof msg.id === "number" && msg.id >= 1) seen.set(msg.id, msg);
+  // try/finally: Ein Wurf aus der Schleife (unlesbare Zeile) ließ den
+  // Serverprozess sonst liegen. Die Frist gilt je Lesevorgang, nicht nur
+  // zwischen zweien: Ein Server, der nach dem Handshake schweigt, blockierte
+  // `reader.read()` unbegrenzt (beides 02.09.2026).
+  try {
+    while (seen.size < expected) {
+      const chunk = await mitFrist(reader.read(), deadline - Date.now());
+      if (chunk === "frist") break;
+      const { value, done } = chunk;
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        let msg: Json & { id?: number };
+        try {
+          msg = JSON.parse(line) as Json & { id?: number };
+        } catch {
+          throw new Error(
+            `Keine JSON-RPC-Zeile auf stdout (ein console.log im Servercode?): ${line.slice(0, 200)}`
+          );
+        }
+        if (typeof msg.id === "number" && msg.id >= 1) seen.set(msg.id, msg);
+      }
     }
+  } finally {
+    proc.kill();
   }
-  proc.kill();
 
   if (seen.size < expected) {
+    const schwanz = (await stderrZeilen).join("\n");
     throw new Error(
       `Server antwortete nur auf ${seen.size} von ${expected} Anfragen. ` +
-        `Läuft 'bun install', und existiert data/bible.db?`
+        `Läuft 'bun install', und existiert data/bible.db?` +
+        (schwanz ? `\nstderr des Servers (letzte Zeilen):\n${schwanz}` : "")
     );
   }
 

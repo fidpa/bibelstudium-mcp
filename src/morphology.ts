@@ -49,8 +49,12 @@ const DEGREE: Record<string, string> = { C: "Komparativ", S: "Superlativ" };
 export function decodeParse(parse: string): string {
   const p = parse.padEnd(8, "-");
   const parts: string[] = [];
+  // Ein Zeichen, das die Tabelle nicht kennt, geht als `?<Zeichen>` hinaus statt
+  // zu verschwinden (gegen den Bestand vom 02.09.2026 kein Treffer; zeigt einen
+  // künftigen Quellenstand an).
   const push = (map: Record<string, string>, ch: string | undefined) => {
-    if (ch && ch !== "-" && map[ch]) parts.push(map[ch]!);
+    if (!ch || ch === "-") return;
+    parts.push(map[ch] ?? `?${ch}`);
   };
   push(PERSON, p[0]);
   push(TENSE, p[1]);
@@ -77,8 +81,26 @@ const ROB_POS: Record<string, string> = {
   X: "Indefinitpronomen", Q: "Korrelativ-/Interrog.-Pron.", F: "Reflexivpronomen",
   S: "Possessivpronomen", ADV: "Adverb", CONJ: "Konjunktion", COND: "Konditional",
   PRT: "Partikel", PREP: "Präposition", INJ: "Interjektion", ARAM: "aramäisch",
-  HEB: "hebräisch", "N-PRI": "Eigenname (indekl.)", "A-NUI": "Zahlwort (indekl.)",
+  HEB: "hebräisch",
 };
+// Angehängte Funktionsmarker, das letzte Segment eines Codes: "A-NSM-C",
+// "PRT-N", "V-RAI-3S-ATT". Bis zum 02.09.2026 wurden sie verworfen, und die
+// Ausgabe sah vollständig aus: 4499 Nicht-Verben und 117 Verben allein in
+// byzantine trugen einen (gemessen), während der MorphGNT-Dekoder dieselbe
+// Steigerung nannte (Mt 18,1 μείζων).
+const ROB_SUFFIX: Record<string, string> = {
+  N: "Negation", I: "Interrogativ", C: "Komparativ", S: "Superlativ",
+  K: "Krasis", ATT: "attische Form", ABB: "Abkürzung",
+};
+// Indeklinabel-Marker an Stelle des Deklinationsblocks ("N-PRI", "A-NUI").
+const ROB_INDEKL: Record<string, string> = {
+  PRI: "Eigenname (indekl.)", NUI: "Zahlwort (indekl.)",
+  OI: "indeklinabel", LI: "Buchstabe (indekl.)",
+};
+// Nur diese Wortarten tragen einen Deklinationsblock; bei den übrigen ist das
+// erste Segment hinter der Wortart bereits ein Funktionsmarker ("PRT-N"), kein
+// Kasus.
+const DECLINABLE = new Set(["N", "A", "T", "P", "R", "C", "D", "K", "I", "X", "Q", "F", "S"]);
 const ROB_TENSE: Record<string, string> = {
   P: "Präsens", I: "Imperfekt", F: "Futur", A: "Aorist",
   R: "Perfekt", L: "Plusquamperfekt", X: "Perfekt",
@@ -96,19 +118,28 @@ const ROB_MOOD: Record<string, string> = {
   O: "Optativ", N: "Infinitiv", P: "Partizip",
 };
 
-/** Löst einen Robinson-Morphologiecode (byzantinische Edition) in lesbares Deutsch auf. */
+/**
+ * Löst einen Robinson-Morphologiecode (byzantine, tr) in lesbares Deutsch auf.
+ *
+ * Jedes Segment wird verbraucht oder gemeldet: Ein Segment, das keine Tabelle
+ * kennt, geht als `?<Segment>` in die Ausgabe, statt zu verschwinden. Gegen den
+ * Bestand vom 02.09.2026 (1055 Codes in byzantine, 1066 in tr) entsteht kein
+ * solcher Eintrag; er zeigt einen künftigen Quellenstand an.
+ */
 export function decodeRobinson(code: string): string {
   const raw = code.trim();
   if (!raw) return "—";
   const parts = raw.split("-");
   const head = parts[0]!;
   const out: string[] = [];
+  const rest = parts.slice(1);
+  const unbekannt = (seg: string): void => { out.push(`?${seg}`); };
 
   // Verb: V-<Tempus+Genus+Modus>-<Person+Numerus> oder V-<tgm>-<Kasus+Numerus+Genus>
-  // beim Partizip
+  // beim Partizip; der Infinitiv hat keinen Anhang. Danach höchstens ein Marker.
   if (head === "V") {
     out.push("Verb");
-    const tvm = parts[1] ?? "";
+    const tvm = rest.shift() ?? "";
     // Das Tempus hat ein oder zwei Zeichen ("2A"), dann folgt das Genus verbi (1),
     // dann der Modus (1)
     let i = 0;
@@ -119,36 +150,47 @@ export function decodeRobinson(code: string): string {
     if (ROB_TENSE[tense]) out.push(ROB_TENSE[tense]!);
     if (ROB_VOICE[voice]) out.push(ROB_VOICE[voice]!);
     if (ROB_MOOD[mood]) out.push(ROB_MOOD[mood]!);
-    const tail = parts[2] ?? "";
-    if (mood === "P") {
-      // Partizip: Kasus, Numerus, Genus
-      if (GCASE[tail[0] ?? ""]) out.push(GCASE[tail[0]!]!);
-      if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
-      if (GENDER[tail[2] ?? ""]) out.push(GENDER[tail[2]!]!);
-    } else if (tail) {
-      // finite Form: Person und Numerus
-      if (PERSON[tail[0] ?? ""]) out.push(PERSON[tail[0]!]!);
-      if (GNUMBER[tail[1] ?? ""]) out.push(GNUMBER[tail[1]!]!);
+    for (const seg of rest) {
+      if (ROB_SUFFIX[seg]) { out.push(ROB_SUFFIX[seg]!); continue; }
+      if (mood === "P") {
+        // Partizip: Kasus, Numerus, Genus
+        if (GCASE[seg[0] ?? ""]) out.push(GCASE[seg[0]!]!);
+        if (GNUMBER[seg[1] ?? ""]) out.push(GNUMBER[seg[1]!]!);
+        if (GENDER[seg[2] ?? ""]) out.push(GENDER[seg[2]!]!);
+      } else if (mood !== "N") {
+        // finite Form: Person und Numerus
+        if (PERSON[seg[0] ?? ""]) out.push(PERSON[seg[0]!]!);
+        if (GNUMBER[seg[1] ?? ""]) out.push(GNUMBER[seg[1]!]!);
+      } else {
+        unbekannt(seg);
+      }
     }
     return out.join(" ");
   }
 
-  // Nicht-Verb: POS, dann ein optionaler Block aus Kasus, Numerus und Genus (etwa
-  // N-APN, T-GSM, A-NPM). Nur deklinierbare Wortarten tragen ein solches Suffix;
-  // bei Partikeln, Konjunktionen und dergleichen ist ein angehängtes "-N"/"-I" ein
-  // Funktionsmarker (Negation, Interrogativ) und keine Deklination, darf also
-  // nicht als Kasus gelesen werden.
   out.push(ROB_POS[head] ?? head);
-  const DECLINABLE = new Set(["N", "A", "T", "P", "R", "C", "D", "K", "I", "X", "Q", "F", "S"]);
-  const decl = parts[1] ?? "";
-  if (DECLINABLE.has(head) && decl && decl !== "PRI" && decl !== "NUI") {
-    // Personalpronomen mit vorangestellter Personenziffer, etwa P-1DS, P-2AP
-    let d = decl;
-    if (/^[123]/.test(d)) { if (PERSON[d[0]!]) out.push(PERSON[d[0]!]!); d = d.slice(1); }
-    if (GCASE[d[0] ?? ""]) out.push(GCASE[d[0]!]!);
-    if (GNUMBER[d[1] ?? ""]) out.push(GNUMBER[d[1]!]!);
-    if (GENDER[d[2] ?? ""]) out.push(GENDER[d[2]!]!);
-  }
+  rest.forEach((seg, idx) => {
+    if (idx === 0 && DECLINABLE.has(head) && !ROB_SUFFIX[seg]) {
+      if (ROB_INDEKL[seg]) { out.push(ROB_INDEKL[seg]!); return; }
+      // Deklinationsblock: Kasus, Numerus, Genus; Personalpronomen mit
+      // vorangestellter Personenziffer (P-1DS), Possessivpronomen mit Person und
+      // Numerus des Besitzers davor (S-1SNSM). Der zweistellige Besitzerblock
+      // wurde bis zum 02.09.2026 einstellig gelesen, und Kasus, Numerus, Genus
+      // fielen bei allen 123 Possessivpronomen der byzantinischen Edition weg.
+      let d = seg;
+      if (/^[123]/.test(d)) {
+        if (PERSON[d[0]!]) out.push(PERSON[d[0]!]!);
+        d = d.slice(1);
+        if (head === "S" && GNUMBER[d[0] ?? ""]) { out.push(`${GNUMBER[d[0]!]!} (Besitzer)`); d = d.slice(1); }
+      }
+      if (GCASE[d[0] ?? ""]) out.push(GCASE[d[0]!]!);
+      if (GNUMBER[d[1] ?? ""]) out.push(GNUMBER[d[1]!]!);
+      if (GENDER[d[2] ?? ""]) out.push(GENDER[d[2]!]!);
+      return;
+    }
+    if (ROB_SUFFIX[seg]) { out.push(ROB_SUFFIX[seg]!); return; }
+    unbekannt(seg);
+  });
   return out.join(" ") || "—";
 }
 
@@ -199,8 +241,8 @@ function hebFeatures(str: string, order: Array<Record<string, string>>): string[
   for (let i = 0; i < order.length && i < str.length; i++) {
     const ch = str[i]!;
     if (ch === "x") continue;
-    const label = order[i]![ch];
-    if (label) out.push(label);
+    // Unbekanntes Zeichen als `?<Zeichen>` statt spurlos (siehe decodeParse).
+    out.push(order[i]![ch] ?? `?${ch}`);
   }
   return out;
 }
@@ -236,7 +278,7 @@ function decodeHebMorpheme(code: string, aramaic: boolean): string {
     case "V": {
       const stem = (aramaic ? ARC_STEM : HEB_STEM)[rest[0] ?? ""] ?? rest[0] ?? "";
       const conjCh = rest[1] ?? "";
-      const conj = HEB_CONJ[conjCh] ?? "";
+      const conj = conjCh === "" ? "" : (HEB_CONJ[conjCh] ?? `?${conjCh}`);
       const feats = rest.slice(2);
       let tail: string[];
       if (conjCh === "r" || conjCh === "s") {

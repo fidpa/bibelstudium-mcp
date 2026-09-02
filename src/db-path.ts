@@ -65,7 +65,12 @@ function isUnresolvedPlaceholder(value: string): boolean {
 export const DB_PATH = ((): string => {
   const configured = process.env["BIBLE_DB_PATH"]?.trim();
   if (configured !== undefined && configured !== "" && !isUnresolvedPlaceholder(configured)) {
-    return configured;
+    // Absolut machen wie die beiden Zweige darunter: Ein relativer Wert zeigte
+    // sonst je nach Startverzeichnis woandershin, und das unterscheidet sich
+    // zwischen `bun run src/server.ts` und einem vom Client gestarteten Binary.
+    // Ein führendes `~/` kommt aus Konfigurationsdateien ohne Shell dazwischen
+    // und erzeugte sonst ein Verzeichnis namens `~` (beides 02.09.2026).
+    return resolve(configured.startsWith("~/") ? resolve(homedir(), configured.slice(2)) : configured);
   }
   if (!existsSync(MODULE_DIR)) return resolve(userDataDir(), "bible.db");
   return resolve(MODULE_DIR, "..", "data/bible.db");

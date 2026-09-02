@@ -68,8 +68,51 @@ export const searchBuendel = buendel({
     // unterhalb der Grenze ist das Erhöhen der richtige Ausweg.
     searchLimitUeber: ["bible_search", { query: "Gnade", limit: 1000 }],
     searchLimitUnter: ["bible_search", { query: "Gnade", limit: 5 }],
+    // Seit dem 02.09.2026 filtert die Suche über rowid-Blöcke je Übersetzung und
+    // Buch und sortiert nach rowid. Drei Pins ohne Zeitmessung: die Reihenfolge
+    // (Melchisedek in Luther: 1 Mose 14,18, Hebräer 7,1, Hebräer 7,10), und die
+    // beiden Grenzen des Luther-Blocks mit einem Wort, das der Nachbarvers
+    // jenseits der Grenze ebenfalls trägt (rowid 31072 ist Elberfelder Offb 22,21
+    // mit „Gnade", rowid 62175 Menge 1Mo 1,1 mit „Anfang"; gemessen 02.09.2026).
+    searchMelchisedek: ["bible_search", { query: "Melchisedek" }],
+    searchBlockUnten: ["bible_search", { query: "Gnade", book: "1. Mose", limit: 50 }],
+    searchBlockOben: ["bible_search", { query: "Anfang", book: "Offenbarung", limit: 50 }],
+    searchUebersetzungUnbekannt: ["bible_search", { query: "Gnade", translation: "XYZ" }],
+    searchBuchZahl: ["bible_search", { query: "Gnade", book: 123 }],
   },
   pruefe({ res }, ctx) {
+    {
+      const stellen = (r: typeof res.searchMelchisedek) =>
+        ((r.json?.verse ?? []) as Array<Record<string, unknown>>).map((v) => String(v["stelle"]));
+      eq("Melchisedek (LUT): Reihenfolge nach Buch, Kapitel, Vers", JSON.stringify(stellen(res.searchMelchisedek)), JSON.stringify(["1 Mose 14,18", "Hebräer 7,1", "Hebräer 7,10"]));
+      eq("Gnade in 1. Mose (LUT): 19 Treffer", res.searchBlockUnten.json?.treffer, 19);
+      check("Gnade in 1. Mose (LUT): kein Treffer jenseits der unteren Blockgrenze", stellen(res.searchBlockUnten).length > 0 && stellen(res.searchBlockUnten).every((s) => s.startsWith("1 Mose ")), stellen(res.searchBlockUnten).join(", "));
+      eq("Anfang in Offenbarung (LUT): 6 Treffer", res.searchBlockOben.json?.treffer, 6);
+      check("Anfang in Offenbarung (LUT): kein Treffer jenseits der oberen Blockgrenze", stellen(res.searchBlockOben).length > 0 && stellen(res.searchBlockOben).every((s) => s.startsWith("Offenbarung ")), stellen(res.searchBlockOben).join(", "));
+      // Ein vertauschter Block wäre an dieser Zahl unverwechselbar: ELB 197,
+      // MB 292, SCH 338, SLT 373 (gemessen 02.09.2026).
+      eq("Gnade (LUT), ganze Bibel: 244 Treffer", res.searchLimitUeber.json?.treffer, 244);
+      has("bible_search translation=XYZ: abgewiesen", res.searchUebersetzungUnbekannt.text, 'Unknown translation "XYZ"');
+      eq("bible_search book=123: nennt den Typ", res.searchBuchZahl.text, "Error: 'book' must be a German book name.");
+      // `verteilung` gruppiert nach Buch ohne `book` und nach Kapitel mit; der
+      // Schlüssel war bis zum 02.09.2026 von keiner Zusicherung beim Namen genannt.
+      const vert = (r: typeof res.searchPhrase) => ((r.json?.verteilung ?? []) as Array<Record<string, unknown>>);
+      check("Phrase ohne book: verteilung je Buch", vert(res.searchPhrase).length > 1 && vert(res.searchPhrase).every((e) => "buch" in e && !("kapitel" in e)), JSON.stringify(vert(res.searchPhrase)[0]));
+      check("lieb* in 1Joh: verteilung je Kapitel", vert(res.searchLieb).length > 1 && vert(res.searchLieb).every((e) => "kapitel" in e && !("buch" in e)), JSON.stringify(vert(res.searchLieb)[0]));
+    }
+    // Schema gegen Verhalten: `default` und `max` aus der Beschreibung des
+    // `limit`-Arguments müssen mit dem übereinstimmen, was der Handler tut.
+    // Beide kommen seit dem 02.09.2026 aus einer Konstante; diese Zusicherung
+    // hält fest, dass niemand wieder eine nackte Zahl daneben schreibt.
+    {
+      const tool = ctx.tools.find((t) => t["name"] === "bible_search") ?? {};
+      const props = ((tool["inputSchema"] as Record<string, unknown> | undefined)?.["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+      const m = /\(default (\d+), max (\d+)\)/.exec(String(props["limit"]?.["description"] ?? ""));
+      check("bible_search: limit-Beschreibung nennt default und max", m !== null, String(props["limit"]?.["description"]));
+      eq("bible_search: default im Schema gleich der Beschreibung", props["limit"]?.["default"], Number(m?.[1]));
+      eq("bible_search: max der Beschreibung gleich der Klemmung", (res.searchLimitUeber.json?.verse as unknown[] ?? []).length, Number(m?.[2]));
+    }
+
     const {
       searchLieb, searchLongBook, searchOverLimit,
       searchQueryZahl, searchQueryZuLang, searchQueryFehlt,
@@ -122,6 +165,7 @@ export const searchBuendel = buendel({
     eq("Phrasensuche: Treffer", searchPhrase.json?.treffer, 16);
     check(
       "Phrasensuche: jeder Treffer trägt die Phrase",
+      ((searchPhrase.json?.verse ?? []) as Array<{ text?: string }>).length > 0 &&
       ((searchPhrase.json?.verse ?? []) as Array<{ text?: string }>).every((v) =>
         (v.text ?? "").includes("Gnade")
       )

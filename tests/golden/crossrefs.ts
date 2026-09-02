@@ -14,6 +14,7 @@ import {
   BUCH_KEINE_ZEICHENKETTE,
   BUCH_ZU_LANG,
   VERSE_AUSSERHALB,
+  KAPITEL_AUSSERHALB,
 } from "../lib/meldungen.ts";
 
 const OVERLONG_NAME = "J".repeat(MAX_BOOK_LENGTH + 10);
@@ -54,6 +55,22 @@ export const crossrefsBuendel = buendel({
     // am Maximum hilft es nicht mehr, und ungekürzt darf kein Satz dastehen.
     xrefGesamtVorgabe: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1 }],
     xrefGesamtMax: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 1, limit: 100 }],
+    // Ein Verweisziel, das die Ausgabe nur teilweise führt: Daniel 4,34-35 hat in
+    // Menge einen Vers (andere Zählung). Bis zum 02.09.2026 hing
+    // `abschnitt_gekuerzt` allein an der Vier-Vers-Grenze, und `stelle` reichte
+    // weiter als der gelieferte Text, ohne dass das Feld stand.
+    xrefTeilSpanne: ["bible_crossrefs", { book: "1. Chronik", chapter: 29, verse: 11, translation: "MB", limit: 3 }],
+    // Mt 19,4 liegt in einer Parallelgruppe mit 1 Mose 1,27 und 5,2; beide
+    // Kapitel zählen in WLC und allen fünf Ausgaben gleich (31 bzw. 32, gemessen
+    // 02.09.2026). Kein Mitglied darf `zaehlung_abweichend` tragen, der Vorbehalt
+    // im Hinweis steht trotzdem, weil das AT berührt ist.
+    xrefParallelenGleicheZaehlung: ["bible_crossrefs", { book: "Matthäus", chapter: 19, verse: 4, limit: 1 }],
+    // Drei Eingabepfade, die die Nachbarwerkzeuge prüfen und dieses bis zum
+    // 02.09.2026 nicht: Kapitel jenseits der Grenze, unbekanntes Buch, unbekannte
+    // Übersetzung über den Werkzeugkanal.
+    xrefKapitel999: ["bible_crossrefs", { book: "Joh", chapter: 999, verse: 1 }],
+    xrefBuchUnbekannt: ["bible_crossrefs", { book: "Hesekiel-Zusatz", chapter: 1, verse: 1 }],
+    xrefUebersetzungUnbekannt: ["bible_crossrefs", { book: "Joh", chapter: 3, verse: 16, translation: "XYZ" }],
     xrefGesamtVoll: ["bible_crossrefs", { book: "Psalm", chapter: 2, verse: 7, limit: 30 }],
     // Die Parallelstellen aus der UBS-Datenbank. Markus 2,12 ist der Fall, der
     // den Zugewinn trägt: Die zehn bestbewerteten Verweise nennen weder Lukas
@@ -82,7 +99,33 @@ export const crossrefsBuendel = buendel({
       { book: "Hesekiel", chapter: 12, verse: 1, translation: "SLT", limit: 30 },
     ],
   },
-  pruefe({ res }) {
+  pruefe({ res }, ctx) {
+    {
+      const daniel = ((res.xrefTeilSpanne.json?.verweise ?? []) as Array<Json>).find((v) => v["stelle"] === "Daniel 4,34-35");
+      check("1Chr 29,11 (MB): Verweis auf Daniel 4,34-35 gelistet", daniel !== undefined);
+      eq("Daniel 4,34-35 (MB): ein Vers geliefert", ((daniel?.["verse_einzeln"] ?? []) as unknown[]).length, 1);
+      eq("Daniel 4,34-35 (MB): abschnitt_gekuerzt nennt 1 von 2", JSON.stringify(daniel?.["abschnitt_gekuerzt"]), JSON.stringify({ verse_gezeigt: 1, verse_gesamt: 2 }));
+      const par = JSON.stringify(res.xrefParallelenGleicheZaehlung.json?.parallelen ?? null);
+      check("Mt 19,4: Parallelen mit 1 Mose 1,27 geliefert", par.includes("1 Mose 1,27"), par.slice(0, 200));
+      lacks("Mt 19,4: gleiche Zählung, kein Mitglied als abweichend markiert", par, "zaehlung_abweichend");
+      has("Mt 19,4: der Vorbehalt steht trotzdem", String(res.xrefParallelenGleicheZaehlung.json?.hinweis ?? ""), "hebräischen Bibel");
+      eq("bible_crossrefs chapter=999: Text", res.xrefKapitel999.text, KAPITEL_AUSSERHALB);
+      has("bible_crossrefs unbekanntes Buch: nennt das nächstliegende", res.xrefBuchUnbekannt.text, '"Hesekiel"');
+      has("bible_crossrefs translation=XYZ: abgewiesen", res.xrefUebersetzungUnbekannt.text, 'Unknown translation "XYZ"');
+    }
+    // Schema gegen Verhalten: `default` und `max` aus der Beschreibung des
+    // `limit`-Arguments müssen mit dem übereinstimmen, was der Handler tut.
+    // Beide kommen seit dem 02.09.2026 aus einer Konstante; diese Zusicherung
+    // hält fest, dass niemand wieder eine nackte Zahl daneben schreibt.
+    {
+      const tool = ctx.tools.find((t) => t["name"] === "bible_crossrefs") ?? {};
+      const props = ((tool["inputSchema"] as Record<string, unknown> | undefined)?.["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+      const m = /\(default (\d+), max (\d+)\)/.exec(String(props["limit"]?.["description"] ?? ""));
+      check("bible_crossrefs: limit-Beschreibung nennt default und max", m !== null, String(props["limit"]?.["description"]));
+      eq("bible_crossrefs: default im Schema gleich der Beschreibung", props["limit"]?.["default"], Number(m?.[1]));
+      eq("bible_crossrefs: max der Beschreibung gleich der Klemmung", (res.xrefGesamtMax.json?.verweise as unknown[] ?? []).length, Number(m?.[2]));
+    }
+
     const { xrefVerse999, xrefJoh146, xrefLongBook, xrefBuchZahl, xrefBuchFehlt } = res;
     const { xrefLangeSpanne, xrefUeberKapitel, xrefKeine } = res;
     const { xrefKlammerEcht, xrefKlammerKeine } = res;
@@ -265,7 +308,10 @@ export const crossrefsBuendel = buendel({
     // Die Zusage gilt über beide Teile zusammen: Ein zweites volles Budget
     // machte aus „höchstens 20 Verse je Abruf" stillschweigend 40.
     check("Hes 12,1 (SLT): Wortlaut insgesamt unter der Grenze",
-      (gekuerztSlt?.im_wortlaut ?? 0) <= (gekuerztSlt?.verse_max ?? 0));
+      // Gemessen 02.09.2026 statt konstruktiv wahr (TESTING.md 3.2): Die acht
+      // Verse im Wortlaut sind genau die Parallelstellen, kein Verweis trägt Text.
+      gekuerztSlt?.im_wortlaut === 8 && gekuerztSlt?.parallelen_gezeigt === 8 && gekuerztSlt?.ohne_wortlaut === 0,
+      JSON.stringify(gekuerztSlt));
   },
 });
 

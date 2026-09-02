@@ -33,7 +33,7 @@ import {
   stmtAlias,
   stmtBookByName,
   stmtBookName,
-  stmtKapitelLaengen,
+  kapitelLaengen,
   stmtOriginal,
   stmtVerse,
   stmtVerseNotes,
@@ -126,9 +126,28 @@ export function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, "");
 }
 
+/**
+ * Vorgabe und Obergrenze eines `limit`-Arguments, je Werkzeug eine Konstante in
+ * dessen Datei. Beschreibung und `default` im `inputSchema` (`limitArg()` in
+ * server.ts) und die Klemmung im Handler lesen dieselben zwei Zahlen: Bis zum
+ * 02.09.2026 standen sie dreimal da, und die Konkordanz klemmte auf eine nackte
+ * 200, ohne es zu sagen.
+ */
+export interface LimitGrenzen {
+  readonly vorgabe: number;
+  readonly max: number;
+}
+
+/** Klemmt `limit` auf [1, max]; fehlend oder unlesbar ergibt die Vorgabe. */
+export function clampLimit(raw: unknown, grenzen: LimitGrenzen): number {
+  return Math.min(Math.max(toInt(raw) ?? grenzen.vorgabe, 1), grenzen.max);
+}
+
 // Wörter in eckigen Klammern gehören zum Wortlaut der Ausgabe und sind nichts,
-// was dieser Server ergänzt hätte: Menge setzt erklärende Einschübe so (137
-// Verse), Schlachter 2000 ebenfalls (1925 Verse, gemessen 05.08.2026); Luther,
+// was dieser Server ergänzt hätte: Menge setzt erklärende Einschübe so (148
+// Verse, davon 11 mit einer öffnenden Klammer ohne schließende im selben Vers,
+// etwa Johannes 5,3; gemessen 02.09.2026, bis dahin trafen nur die 137
+// geschlossenen), Schlachter 2000 ebenfalls (1925 Verse, gemessen 05.08.2026); Luther,
 // Schlachter 1951 und Elberfelder verwenden keine, und keine der geführten
 // Ausgaben trägt Fußnotenziffern im Verstext, es gibt hier also kein
 // numerisches Gegenstück zu unterscheiden. Der Apparat der Schlachter 2000 ist
@@ -139,7 +158,7 @@ export function stripHtml(text: string): string {
 // gewöhnlicher Text. Bewusst kein Beispielwort im Hinweis: Ein konkretes
 // Beispiel wurde schon einmal als Etikett aufgegriffen und auf einen
 // unpassenden Fall gesetzt (siehe den Hinweis von bible_compare).
-const BRACKET_WORD_RE = /\[(?!\d+\])[^\]]+\]/;
+const BRACKET_WORD_RE = /\[(?!\d+\])[^\]]+\]|\[[^\]]*$/;
 const BRACKET_WORD_HINT =
   "Wörter in eckigen Klammern gehören zum Wortlaut der Übersetzung und sind " +
   "keine Einfügung dieses Servers. Beim Zitieren entfallen sie nicht: ohne die " +
@@ -481,6 +500,21 @@ export function unparsableVersePart(versesStr: string): string | null {
   }
   return null;
 }
+/** Eine Spanne, deren erste Zahl größer ist als die zweite. Eigene Bedingung,
+ *  eigene Meldung: „10-5" besteht die Formprüfung und die Wertprüfung, und
+ *  `parseVerses` ließ sie bis zum 02.09.2026 stillschweigend fallen. „10-5"
+ *  allein bekam dadurch „No verses found", „10-5,1" dagegen Vers 1 ohne jeden
+ *  Hinweis: dieselbe Eingabeklasse, zwei Antworten, entschieden durch ein
+ *  Komma (gemessen 02.09.2026). Werkzeug und Ressource prüfen beide hier. */
+export const versesReversedRange = `Error: in a range like "10-5" in 'verses' the first number must not be greater than the second`;
+/** Die erste umgekehrte Spanne; sonst null. Setzt die Formprüfung voraus. */
+export function reversedVerseRange(versesStr: string): string | null {
+  for (const teil of versesStr.split(",")) {
+    const m = /^(\d+)-(\d+)$/.exec(teil.trim());
+    if (m && parseInt(m[1]!, 10) > parseInt(m[2]!, 10)) return teil.trim();
+  }
+  return null;
+}
 
 /**
  * Prüft ein `book`-Argument in drei Schritten und gibt den geprüften Namen
@@ -713,7 +747,7 @@ function zaehlungHinweis(
   bookId: number,
   chapter: number
 ): string | null {
-  const laengen = stmtKapitelLaengen.all(bookId, chapter);
+  const laengen = kapitelLaengen(bookId, chapter);
   if (laengen.length < 2) return null;
   const eigene = laengen.find((l) => l.translation === code)?.n;
   if (eigene === undefined) return null;
@@ -721,7 +755,10 @@ function zaehlungHinweis(
   if (abweichend.length === 0) return null;
 
   const namen = abweichend
-    .map((l) => `${TRANSLATIONS[l.translation as TranslationCode].name} ${l.n}`)
+    // `?.name ?? l.translation`: Das Kürzel kommt aus der Datenbank, und ein
+    // Kürzel ohne Registry-Eintrag ist vorgesehen (siehe bible_server_info);
+    // ohne den Rückfall würfe die Zeile hier einen TypeError.
+    .map((l) => `${TRANSLATIONS[l.translation as TranslationCode]?.name ?? l.translation} ${l.n}`)
     .sort()
     .join(", ");
   return (
@@ -842,6 +879,50 @@ export function lookupPayload(
 }
 
 // --- Grundtext: Editionsrouting und Wortnutzlast ---------------------------
+/** Die erlaubten NT-Werte mit Erklärung, die eine Liste hinter der Abweisung. */
+const NT_TEXTTYP_ERLAUBT =
+  '"byzantine" (Mehrheitstext, Standard), "sblgnt" (kritisch), "tr" (Textus Receptus)';
+export const texttypUngueltigNt = (texttyp: unknown): string =>
+  `Error: Unbekannter oder fürs NT ungültiger texttyp "${String(texttyp)}". Erlaubt fürs NT: ${NT_TEXTTYP_ERLAUBT}.`;
+export const texttypNurNtHinweis = (texttyp: string): string =>
+  `Der Texttyp "${texttyp}" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.`;
+export const texttypUnbekanntAtHinweis = (texttyp: string): string =>
+  `Der Texttyp "${texttyp}" ist unbekannt; fürs AT wird ohnehin der hebräische WLC verwendet.`;
+
+/**
+ * Die Edition nach Testament, für bible_original und bible_concordance aus einer
+ * Hand: AT ist immer `wlc`, NT braucht einen gültigen `texttyp`. Der zweite
+ * Wert ist der fertige Satz über eine übergangene Angabe (nur im AT), sonst
+ * null; die Aufrufer unterscheiden sich allein darin, wo sie ihn hinstellen.
+ *
+ * Bis zum 02.09.2026 lag das Routing zweimal, mit zwei Wortlauten derselben
+ * Abweisung, und beide erklärten einen unbekannten Wert („quatsch") im AT mit
+ * „gilt nur fürs NT", wo derselbe Wert im NT abgewiesen wird. Angenommen wird
+ * er weiterhin (das AT-Ergebnis hängt nicht an ihm, Übergangenes steht im
+ * Ergebnis, siehe docs/ENTSCHEIDUNGEN.md), aber der Satz sagt jetzt, was ist.
+ * Die Ladeprüfung (`availableEditions`) bleibt bei den Aufrufern an ihrer
+ * Stelle; sie gehört zur Reihenfolge, die jedes Werkzeug zusagt.
+ */
+export function editionFuerTestament(
+  texttyp: unknown,
+  altesTestament: boolean
+): { edition: string; texttypHinweis: string | null } | { error: string } {
+  const wanted = resolveEdition(texttyp);
+  if (altesTestament) {
+    const leer = texttyp === undefined || texttyp === null || texttyp === "";
+    if (leer || wanted === "wlc") return { edition: "wlc", texttypHinweis: null };
+    return {
+      edition: "wlc",
+      texttypHinweis:
+        wanted === null
+          ? texttypUnbekanntAtHinweis(String(texttyp))
+          : texttypNurNtHinweis(String(texttyp)),
+    };
+  }
+  if (wanted === null || !NT_EDITIONS.has(wanted)) return { error: texttypUngueltigNt(texttyp) };
+  return { edition: wanted, texttypHinweis: null };
+}
+
 /**
  * Editionsrouting, Nachschlagen und Wortnutzlast eines Verses, geteilt vom
  * Werkzeug `bible_original` und der Ressource `bible://grundtext/…`.
@@ -868,28 +949,11 @@ export function originalPayload(
   }
 
   // Weiterleitung nach Testament: AT (1 bis 39) → hebräisches WLC; NT (40 bis 66)
-  // → griechischer Texttyp.
-  const isOT = bookId < 40;
-  let edition: string;
-  let hinweisZusatz = "";
-  if (isOT) {
-    edition = "wlc";
-    const wanted = resolveEdition(texttyp);
-    if (texttyp && wanted !== "wlc") {
-      hinweisZusatz =
-        ` (Der Texttyp "${String(texttyp)}" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.)`;
-    }
-  } else {
-    const wanted = resolveEdition(texttyp);
-    if (wanted === null || !NT_EDITIONS.has(wanted)) {
-      return {
-        error:
-          `Error: Unbekannter oder fürs NT ungültiger texttyp "${String(texttyp)}". ` +
-          `Erlaubt fürs NT: "byzantine" (Mehrheitstext, Standard), "sblgnt" (kritisch), "tr" (Textus Receptus).`,
-      };
-    }
-    edition = wanted;
-  }
+  // → griechischer Texttyp. Die Ladeprüfung bleibt darunter an ihrer Stelle.
+  const geroutet = editionFuerTestament(texttyp, bookId < 40);
+  if ("error" in geroutet) return { error: geroutet.error };
+  const { edition } = geroutet;
+  const hinweisZusatz = geroutet.texttypHinweis === null ? "" : ` (${geroutet.texttypHinweis})`;
 
   if (!availableEditions.has(edition)) {
     return {

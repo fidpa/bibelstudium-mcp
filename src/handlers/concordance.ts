@@ -16,20 +16,22 @@ import {
   stmtConcordStrong,
   stmtStrongDef,
 } from "../db.ts";
+import { DATASET_QUELLEN, EDITION_META, quellen } from "../editions.ts";
 import {
-  DATASET_QUELLEN,
-  EDITION_META,
-  NT_EDITIONS,
-  quellen,
-  resolveEdition,
-} from "../editions.ts";
-import {
+  type LimitGrenzen,
   MAX_LEMMA_LENGTH,
+  clampLimit,
+  editionFuerTestament,
   errorResult,
   getBookDisplayName,
   jsonResult,
-  toInt,
 } from "../werkzeug-helfer.ts";
+
+/** Vorgabe und Obergrenze von `limit`; `server.ts` liest Beschreibung und
+ *  `default` von hier. Bis zum 02.09.2026 klemmte der Handler auf eine nackte
+ *  200 und sagte an der Obergrenze nichts, während bible_search dort seit dem
+ *  06.08.2026 den Ausweg nennt. */
+export const CONCORDANCE_LIMIT: LimitGrenzen = { vorgabe: 50, max: 200 };
 
 // Lemmata mit kombinierenden Zeichen (hebräische Nikkud, griechische Akzente)
 // können sich zwischen den abgelegten Daten und der Eingabe eines Aufrufers in
@@ -81,7 +83,7 @@ export function handleConcordance(args: {
     }
     const s = args.strong.trim().toUpperCase();
     isHebrew = s[0] === "H";
-    strongDigits = String(parseInt(s.slice(1), 10)); // normalize leading zeros
+    strongDigits = String(parseInt(s.slice(1), 10)); // führende Nullen entfernen
     suche = s;
   } else if (args.lemma !== undefined && args.lemma !== null && args.lemma !== "") {
     if (typeof args.lemma !== "string") {
@@ -92,9 +94,9 @@ export function handleConcordance(args: {
     }
     const lemma = args.lemma.trim();
     if (/[֐-׿]/.test(lemma)) {
-      isHebrew = true; // Hebrew block
+      isHebrew = true; // hebräischer Unicode-Block
     } else if (/[Ͱ-Ͽἀ-῿]/.test(lemma)) {
-      isHebrew = false; // Greek + Greek Extended blocks
+      isHebrew = false; // griechischer Block samt Greek Extended
     } else {
       return errorResult(
         "Error: 'lemma' muss griechisch oder hebräisch geschrieben sein (wie von bible_original " +
@@ -107,30 +109,12 @@ export function handleConcordance(args: {
   }
 
   // Edition auflösen: Hebräisch → wlc; Griechisch → NT-Edition gemäß texttyp.
-  let edition: string;
-  // Bei einer hebräischen Angabe entscheidet die Angabe selbst, nicht `texttyp`:
-  // Fürs AT gibt es allein den WLC. Eine mitgegebene NT-Edition wird deshalb
-  // übergangen, und das gehört ins Ergebnis. `bible_original` sagt es im
-  // gleichgelagerten Fall seit je; hier fehlte der Satz bis zum 07.08.2026, und
-  // die Antwort sah aus, als hätte sie den gewünschten Texttyp durchsucht.
-  let texttypUebergangen: string | null = null;
-  if (isHebrew) {
-    edition = "wlc";
-    // Dieselbe Bedingung wie dort: Wer "wlc" schickt, hat recht und bekommt
-    // keinen Hinweis; ein unbekannter Wert löst auf null auf und bekommt ihn.
-    if (args.texttyp && resolveEdition(args.texttyp) !== "wlc") {
-      texttypUebergangen = String(args.texttyp);
-    }
-  } else {
-    const wanted = resolveEdition(args.texttyp);
-    if (wanted === null || !NT_EDITIONS.has(wanted)) {
-      return errorResult(
-        `Error: Unbekannter oder fürs NT ungültiger texttyp "${args.texttyp}". ` +
-          `Erlaubt: "byzantine" (Standard), "sblgnt", "tr".`
-      );
-    }
-    edition = wanted;
-  }
+  // Bei einer hebräischen Angabe entscheidet die Angabe selbst, nicht `texttyp`;
+  // eine mitgegebene NT-Edition wird übergangen, und der Satz darüber kommt aus
+  // demselben Helfer wie bei bible_original (seit dem 02.09.2026 wortgleich).
+  const geroutet = editionFuerTestament(args.texttyp, isHebrew);
+  if ("error" in geroutet) return errorResult(geroutet.error);
+  const { edition, texttypHinweis } = geroutet;
   if (!availableEditions.has(edition)) {
     return errorResult(
       `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}.`
@@ -152,7 +136,7 @@ export function handleConcordance(args: {
     );
   }
 
-  const limit = Math.min(Math.max(toInt(args.limit) ?? 50, 1), 200);
+  const limit = clampLimit(args.limit, CONCORDANCE_LIMIT);
   let rows =
     strongDigits !== null
       ? stmtConcordStrong.all(edition, strongDigits)
@@ -236,16 +220,18 @@ export function handleConcordance(args: {
   const hinweise: string[] = [];
   // Der Vorbehalt zuerst: Er sagt, worin überhaupt gesucht wurde, und schränkt
   // damit alles ein, was danach kommt.
-  if (texttypUebergangen !== null) {
-    hinweise.push(
-      `Der Texttyp "${texttypUebergangen}" gilt nur fürs NT; fürs AT wird der ` +
-        "hebräische WLC durchsucht."
-    );
+  if (texttypHinweis !== null) {
+    hinweise.push(texttypHinweis);
   }
   if (rows.length > limit) {
+    // Der Ausweg muss einer sein, den der Aufrufer gehen kann: Steht `limit`
+    // schon auf der Obergrenze, ist Erhöhen keiner mehr (wie in bible_search).
     hinweise.push(
-      `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +
-        "'buecher' zeigt die vollständige Verteilung."
+      limit >= CONCORDANCE_LIMIT.max
+        ? `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; mehr als ` +
+            `${CONCORDANCE_LIMIT.max} listet dieses Werkzeug je Abruf nicht, 'buecher' zeigt die vollständige Verteilung.`
+        : `Nur die ersten ${limit} von ${rows.length} Vorkommen gelistet; ` +
+            "'buecher' zeigt die vollständige Verteilung."
     );
   }
   // Die Lexikonfelder sind der einzige Teil dieses Servers, der nicht deutsch

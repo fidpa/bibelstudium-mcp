@@ -61,8 +61,45 @@ export const compareBuendel = buendel({
     // grün, und der Hinweis unterscheidet die beiden Lagen nach demselben
     // Merkmal.
     cmpSchreibvariante: ["bible_compare", { book: "Mt", chapter: 1, verse: 5 }],
+    // Drei Fälle für den Editionsabgleich, alle am 02.09.2026 gemessen. Mt 18,6:
+    // Die Notiz trennt zwei Lesarten mit „¦" (ἐπὶ: TR ¦ εἰς: SBL+Byz); bis dahin
+    // wurde nur an „;" getrennt, und die Antwort behauptete „byzantine liest
+    // hier περὶ, nicht ἐπὶ". Dazu liest TR „εἰς" an anderer Stelle des Verses,
+    // was ohne die Mehrformen-Regel den Satz „tr liest hier εἰς" erzeugte.
+    cmpTrenner: ["bible_compare", { book: "Mt", chapter: 18, verse: 6 }],
+    // Mk 4,8: Kopf ἓν, Lesart εἰς, und alle drei Editionen führen beide Formen im
+    // Vers. Kein Satz darf fallen, weil keiner entscheidbar ist.
+    cmpBeideFormen: ["bible_compare", { book: "Mk", chapter: 4, verse: 8 }],
+    // Mt 21,11: TR führt weder Ναζαρὲθ noch Ναζαρὲτ; bis dahin wurde der Kopf
+    // behauptet („tr liest hier Ναζαρὲθ").
+    cmpWederNoch: ["bible_compare", { book: "Mt", chapter: 21, verse: 11 }],
   },
   pruefe({ res }) {
+    {
+      const { cmpTrenner, cmpBeideFormen, cmpWederNoch } = res;
+      const abweichend = (r: typeof cmpTrenner) =>
+        ((((r.json?.bezeugung ?? {}) as Record<string, unknown>)["abweichend"] ?? []) as Array<Record<string, unknown>>);
+      const saetze = (r: typeof cmpTrenner) =>
+        abweichend(r).flatMap((e) => (Array.isArray(e["abgleich"]) ? (e["abgleich"] as string[]) : []));
+      const peri = abweichend(cmpTrenner).find((e) => e["wort"] === "περὶ");
+      const belege = (peri?.["in_dieser_db"] ?? {}) as Record<string, string[]>;
+      check(
+        'Mt 18,6: „εἰς" mit byzantine und sblgnt belegt',
+        (belege["εἰς"] ?? []).includes("byzantine") && (belege["εἰς"] ?? []).includes("sblgnt"),
+        JSON.stringify(belege)
+      );
+      check('Mt 18,6: kein Satz nennt byzantine mit „ἐπὶ"', !saetze(cmpTrenner).some((s) => s.startsWith("byzantine") && s.includes("ἐπὶ")), saetze(cmpTrenner).join(" | "));
+      check('Mt 18,6: kein Satz nennt tr mit „εἰς"', !saetze(cmpTrenner).some((s) => s.startsWith("tr") && s.includes("εἰς")), saetze(cmpTrenner).join(" | "));
+      check("Mt 18,6: keine Quellenkonflikte", !("quellenkonflikte" in (cmpTrenner.json ?? {})));
+      check("Mk 4,8: ἓν gegen εἰς überall doppelt, kein Satz", saetze(cmpBeideFormen).length === 0, saetze(cmpBeideFormen).join(" | "));
+      check("Mk 4,8: Bezeugung trotzdem besetzt", abweichend(cmpBeideFormen).length > 0);
+      check(
+        "Mt 21,11: tr führt weder Kopf noch Lesart, und der Satz sagt es",
+        saetze(cmpWederNoch).some((s) => s.startsWith('tr führt an dieser Stelle weder "Ναζαρὲθ" noch "Ναζαρὲτ"')),
+        saetze(cmpWederNoch).join(" | ")
+      );
+      lacks("Mt 21,11: kein Satz behauptet den Kopf für tr", saetze(cmpWederNoch).join(" | "), 'tr liest hier "Ναζαρὲθ"');
+    }
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;
     const { cmpSchreibvariante } = res;
@@ -147,6 +184,22 @@ export const compareBuendel = buendel({
     );
 
     has("Mk 14,46: warnung oben", String(mk1446.json?.warnung ?? ""), "widerspricht die TAGNT-Bezeugung");
+    // Die drei Felder, die aus dem Abgleich entstehen, beim Namen: Sie waren bis
+    // zum 02.09.2026 von keiner Zusicherung gedeckt, obwohl derselbe Aufruf sie
+    // fährt; ein Einbau, der sie aus dem Eintrag nahm, blieb grün.
+    {
+      const bez = (mk1446.json?.bezeugung ?? {}) as Record<string, unknown>;
+      const eintrag = ((bez["abweichend"] ?? []) as Array<Record<string, unknown>>).find((e) => "abgleich" in e);
+      check("Mk 14,46: ein Eintrag trägt 'abgleich'", eintrag !== undefined);
+      check("Mk 14,46: derselbe Eintrag trägt 'in_dieser_db'", typeof eintrag?.["in_dieser_db"] === "object" && eintrag?.["in_dieser_db"] !== null);
+      has("Mk 14,46: bezeugung.lesehinweis erklärt 'in_dieser_db'", String(bez["lesehinweis"] ?? ""), "'in_dieser_db' zeigt pro Form");
+      const commaBez = (comma.json?.bezeugung ?? {}) as Record<string, unknown>;
+      check("1Joh 5,7: ohne Notiz kein lesehinweis in bezeugung", !("lesehinweis" in commaBez));
+      // Joh 7,53 fehlt im SBLGNT: Der Paarvergleich meldet das als eigenen
+      // Zweig, der bis dahin in derselben Antwort mitlief, ungeprüft.
+      const ergebnisse = ((cmpOhneBezeugung.json?.vergleiche ?? []) as Array<Record<string, unknown>>).map((v) => String(v["ergebnis"] ?? ""));
+      check("Joh 7,53: sblgnt führt den Vers nicht, der Vergleich sagt es", ergebnisse.some((e) => e === 'Vers fehlt in Edition "sblgnt"'), ergebnisse.join(" | "));
+    }
     const qk = (mk1446.json?.quellenkonflikte ?? []) as string[];
     eq("Mk 14,46: ein Quellenkonflikt", qk.length, 1);
     has("Mk 14,46: nennt Editionslesart zuerst", qk[0] ?? "", 'byzantine liest hier "ἐπέβαλον"');

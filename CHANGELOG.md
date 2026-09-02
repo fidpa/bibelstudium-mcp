@@ -6,6 +6,33 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.25] - 2026-09-02: Der Editionsabgleich behauptet nichts mehr, was der Vers nicht hergibt
+
+### Behoben
+
+- **`bible_compare`:** Der Trenner `¦` zwischen zwei Lesarten einer TAGNT-Notiz
+  wurde nicht getrennt, und der Abgleich fragte nur nach Vorkommen im Vers;
+  beides erzeugte falsche Sätze in `quellenkonflikte`. Ein Satz fällt nur noch,
+  wenn die Edition genau eine Form der Notiz führt (693 statt 1141 Sätze).
+- **`bible_original`:** Robinson-Marker (Negation, Interrogativ, Komparativ,
+  Superlativ, Krasis, attische Form, indeklinabel) und die Deklination der
+  Possessivpronomen fehlten in der Morphologie von byzantine und tr.
+- **`bible_crossrefs`:** `abschnitt_gekuerzt` steht auch bei teilweise geführter
+  Zielspanne; die `parallelen_*`-Felder stehen im Ausgabeschema.
+- **`bible_lookup`:** Eine umgekehrte Spanne (`"10-5"`) bekommt eine eigene
+  Meldung statt still zu verschwinden; der Klammerhinweis greift auch bei `[`
+  ohne `]`. Ein unbekannter `texttyp` am AT heißt im Hinweis „unbekannt".
+  `BIBLE_DB_PATH` wird absolut aufgelöst.
+
+### Geändert
+
+- **Laufzeit, über stdio gemessen:** `bible_lookup` 8 auf 1 ms, `bible_search`
+  bei häufigen Wörtern 210 auf 4 ms, Start 0,4 auf 0,3 s. Die Suche filtert über
+  rowid-Blöcke und sperrt sich mit Reparaturbefehl, wenn der Index anders liegt.
+  Die Konkordanz nennt an der Obergrenze 200, dass sie eine ist.
+- **Tests:** 1059 Zusicherungen (vorher 918); der Schemaprüfer meldet nicht
+  deklarierte Felder, Breitenlauf und `test:http` haben einen Wächter.
+
 ## [0.6.24] - 2026-08-29: Das README nennt alle sieben Umgebungsvariablen und sagt, was ungetestet ist
 
 ### Geändert (Dokumentation)

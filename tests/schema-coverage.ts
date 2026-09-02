@@ -31,9 +31,10 @@
  * 136 Kapitel mit abweichender Verszahl, zwei Bücher mit abweichender
  * Kapitelzahl), und die Breite prüfte dann Fehlermeldungen statt Nutzlasten.
  *
- * Nicht Teil von `bun run test`: Die Prüfung braucht die gebaute Datenbank,
- * dauert rund eine Minute und ist von Hand auszuführen, nachdem ein Schema oder
- * eine Nutzlast angefasst wurde:
+ * Nicht Teil von `bun run test`: Die Prüfung braucht die gebaute Datenbank und
+ * ist von Hand auszuführen, nachdem ein Schema oder eine Nutzlast angefasst
+ * wurde (623 Aufrufe, 5,7 s, gemessen 02.09.2026; die frühere Angabe „rund
+ * eine Minute" stammte aus der Zeit vor der Umstellung auf einen Prozess):
  *
  *   bun run test:schemas
  *
@@ -46,7 +47,7 @@ import { DB_PATH } from "../src/db-path.ts";
 import { isRecord, schemaErrors, type Json } from "./schema-validator.ts";
 
 const SERVER = resolve(dirname(import.meta.dirname), "src/server.ts");
-const STRIDE = 700; // jeder n-te Luther-Vers: rund 45 Verse, rund 430 Aufrufe, rund eine Minute
+const STRIDE = 700; // jeder n-te Luther-Vers: rund 45 Verse, 623 Aufrufe (02.09.2026)
 
 const db = new Database(DB_PATH, { readonly: true });
 const books = new Map(
@@ -232,7 +233,7 @@ for (const translation of geladeneUebersetzungen) {
 
 // --- mit einem frischen Server über stdio sprechen --------------------------
 
-const proc = Bun.spawn(["bun", "run", SERVER], { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+const proc = Bun.spawn(["bun", "run", SERVER], { stdin: "pipe", stdout: "pipe", stderr: "inherit" });
 const send = (m: unknown) => proc.stdin.write(JSON.stringify(m) + "\n");
 send({
   jsonrpc: "2.0", id: 0, method: "initialize",
@@ -250,20 +251,37 @@ const dec = new TextDecoder();
 const reader = proc.stdout.getReader();
 const deadline = Date.now() + 600_000;
 let buf = "";
-while (seen.size < calls.length + 1 && Date.now() < deadline) {
-  const { value, done } = await reader.read();
-  if (done) break;
-  buf += dec.decode(value, { stream: true });
-  let nl: number;
-  while ((nl = buf.indexOf("\n")) >= 0) {
-    const line = buf.slice(0, nl);
-    buf = buf.slice(nl + 1);
-    if (!line.trim()) continue;
-    const msg = JSON.parse(line) as Json & { id?: number };
-    if (typeof msg.id === "number" && msg.id >= 1) seen.set(msg.id, msg);
+// Wie in tests/lib/mcp-client.ts: Frist je Lesevorgang, Prozess in jedem Fall
+// beenden, eine unlesbare Zeile mit ihrem Anfang melden (02.09.2026).
+try {
+  while (seen.size < calls.length + 1) {
+    const rest = deadline - Date.now();
+    if (rest <= 0) break;
+    const chunk = await Promise.race([
+      reader.read(),
+      new Promise<"frist">((res) => setTimeout(() => res("frist"), rest).unref()),
+    ]);
+    if (chunk === "frist") break;
+    const { value, done } = chunk;
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (!line.trim()) continue;
+      let msg: Json & { id?: number };
+      try {
+        msg = JSON.parse(line) as Json & { id?: number };
+      } catch {
+        throw new Error(`Keine JSON-RPC-Zeile auf stdout (ein console.log im Servercode?): ${line.slice(0, 200)}`);
+      }
+      if (typeof msg.id === "number" && msg.id >= 1) seen.set(msg.id, msg);
+    }
   }
+} finally {
+  proc.kill();
 }
-proc.kill();
 
 if (seen.size < calls.length + 1) {
   console.error(
@@ -278,6 +296,22 @@ if (seen.size < calls.length + 1) {
 const tools = ((seen.get(1) as { result?: { tools?: Json[] } }).result?.tools ?? []);
 const schemas = new Map<string, Json>();
 for (const t of tools) if (isRecord(t.outputSchema)) schemas.set(String(t.name), t.outputSchema);
+
+// Die handgepflegte Werkzeugliste des Bundle-Manifests gegen `tools/list`.
+// `bible_setup` ausgenommen: Das Manifest führt es immer, die Liste nur ohne
+// Datenbank und nur über stdio. Bis zum 02.09.2026 hielt nichts die beiden
+// Listen zusammen (gemessen: gleich, aber ungesichert).
+{
+  const manifest = JSON.parse(
+    await Bun.file(resolve(dirname(import.meta.dirname), "mcpb/manifest.json")).text()
+  ) as { tools?: Array<{ name: string }> };
+  const imManifest = (manifest.tools ?? []).map((t) => t.name).filter((n) => n !== "bible_setup").sort();
+  const gelistet = tools.map((t) => String(t.name)).filter((n) => n !== "bible_setup").sort();
+  if (imManifest.join(",") !== gelistet.join(",")) {
+    console.error(`FEHLER: mcpb/manifest.json führt [${imManifest.join(", ")}], tools/list [${gelistet.join(", ")}]`);
+    process.exit(1);
+  }
+}
 
 const befunde: string[] = [];
 const felder = new Map<string, Set<string>>();
@@ -342,6 +376,15 @@ for (const [name, gesehen] of [...felder].sort()) {
 if (befunde.length > 0) {
   console.log("\nBefunde:\n - " + befunde.join("\n - "));
   console.log(`\nFEHLER: ${fehlerhaft + ohneStruktur + ungleich} Antworten beanstandet`);
+  process.exit(1);
+}
+// Derselbe Wächter wie in `tests/lib/buendel.ts`: Antworten ohne `result`
+// (etwa ein JSON-RPC-Fehler auf jeden Aufruf) werden oben übersprungen, und
+// ohne diese Zeile endete der Lauf dann mit „OK: 0 Antworten" und Exit 0. Ein
+// grüner Lauf, der nichts geprüft hat, ist der teuerste Zustand einer Suite
+// (gemessen als Lücke am 02.09.2026).
+if (gueltig === 0) {
+  console.log("\nFEHLER: keine einzige Antwort schemageprüft (kein result in den Antworten?)");
   process.exit(1);
 }
 console.log(`\nOK: ${gueltig} Antworten entsprechen ihrem Schema`);

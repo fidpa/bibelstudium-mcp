@@ -20,6 +20,8 @@ export const promptsBuendel = buendel({
   calls: {},
   prompts: {
     wordStudy: ["word-study", { word: "Liebe" }],
+    // Das optionale zweite Argument, bis zum 02.09.2026 nie gesetzt.
+    wordStudyMitReferenz: ["word-study", { word: "Liebe", reference: "1. Johannes 4,8" }],
     wordStudyNoArg: ["word-study", {}],
     // Der Prompt, den es nicht gibt. Bis zum 06.08.2026 trug der Fall darunter
     // dieses Etikett, ohne den Zweig je zu betreten: `word-study` ohne Argument
@@ -33,6 +35,7 @@ export const promptsBuendel = buendel({
     const { wordStudy, wordStudyNoArg, variantCheck, variantTooLong, translationCompare, promptUnbekannt } =
       prompts;
 
+  has("word-study mit reference: die Stelle steht im Prompt", prompts.wordStudyMitReferenz!.text, "1. Johannes 4,8");
   const info = ctx.fremd("server-info.serverInfo").json ?? {};
   const codes = (info.uebersetzungen as Array<{ code: string }>).map((t) => t.code);
   const editions = (info.urtext_editionen as Array<{ code: string }>).map((e) => e.code);
@@ -83,7 +86,7 @@ export const promptsBuendel = buendel({
   const genannt = [...translationCompare!.text.matchAll(/"([A-Z]{2,4})"/g)].map((m) => m[1]!);
   check(
     "translation-compare nennt keine ungeladene Übersetzung",
-    genannt.every((c) => codes.includes(c)),
+    genannt.length > 0 && genannt.every((c) => codes.includes(c)),
     `genannt: ${genannt.join(", ")}; geladen: ${codes.join(", ")}`
   );
   for (const ed of ["byzantine", "tr", "sblgnt"]) {

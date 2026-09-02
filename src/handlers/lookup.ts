@@ -32,7 +32,9 @@ import {
   requireTranslation,
   resolveBook,
   toInt,
+  reversedVerseRange,
   unparsableVersePart,
+  versesReversedRange,
   versesNotAString,
   versesNotParsable,
   versesOutOfBounds,
@@ -92,6 +94,11 @@ export function handleLookup(rawArgs: unknown) {
   // fallen. Die leere Angabe bleibt zulässig, sie meint das ganze Kapitel.
   if (verses !== "" && unparsableVersePart(verses) !== null) {
     return errorResult(versesNotParsable);
+  }
+  // Eine umgekehrte Spanne („10-5") besteht Form und Wert und fiel in
+  // parseVerses still weg; ihre Meldung steht vor beiden Nachschlagepfaden.
+  if (verses !== "" && reversedVerseRange(verses) !== null) {
+    return errorResult(versesReversedRange);
   }
   // Vor beiden Nachschlagepfaden, denn sie waren einmal uneins: Der Schnellpfad
   // für eine schlichte Spanne prüfte MAX_VERSE gar nicht („1-500" wurde wie

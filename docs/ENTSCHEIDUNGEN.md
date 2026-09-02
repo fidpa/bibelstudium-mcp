@@ -48,6 +48,8 @@ Platzhalter.
 - [Eine Kürzung, die der Server selbst vornimmt, muss in der Antwort stehen](#eine-kürzung-die-der-server-selbst-vornimmt-muss-in-der-antwort-stehen)
 - [Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon](#die-voreinstellung-gehört-dem-endpunkt-die-konstante-gehört-jedem-klon)
 - [Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text](#dieselbe-stellenangabe-trifft-nicht-in-jeder-ausgabe-denselben-text)
+- [Der Editionsabgleich schweigt, wo eine Edition zwei Formen führt](#der-editionsabgleich-schweigt-wo-eine-edition-zwei-formen-führt)
+- [Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte](#die-volltextsuche-filtert-über-rowid-blöcke-nicht-über-eine-spalte)
 
 **[Fehlermeldungen und Argumentprüfung](#fehlermeldungen-und-argumentprüfung)**
 - [Eine Meldung nennt die verletzte Bedingung, nicht irgendeine](#eine-meldung-nennt-die-verletzte-bedingung-nicht-irgendeine)
@@ -1542,3 +1544,68 @@ Beim ersten Lauf trat prompt der Hausfehler auf: Hesekiel 12,1 mit der Schlachte
 2000 meldete im Feld `gekuerzt` 29 entfallene Stellen, und der `hinweis`
 schwieg, weil `verseMaxHinweis` nur das Hauptbudget ansah. Ein Teilbudget kann
 kürzen, ohne dass das Hauptbudget es merkt; die Meldung fragt seither beide.
+
+## Der Editionsabgleich schweigt, wo eine Edition zwei Formen führt
+
+*Gemessen 02.09.2026 über alle 6194 TAGNT-Notizen gegen die Editionstexte.*
+
+`crossCheckVariant` (`src/greek-diff.ts`) sagt, welche geladene Edition welche
+Form einer Variantennotiz tatsächlich liest. Die Prüfung ist positionsblind:
+Eine Wortposition liefert die Notiz nicht her, gefragt wird also, ob die Form
+irgendwo im Vers vorkommt. Bis zum 02.09.2026 fiel daraus ein Satz, sobald eine
+Edition die Lesart führte und die Notiz sie nicht nannte, und das war in zwei
+Lagen falsch. Erstens trennte der Code nur an „;", nicht am Trenner „¦"
+zwischen zwei Lesarten derselben Notiz (65 Notizen); Mt 18,6 wurde so zu einem
+Segment mit allen Zeugen und der ersten Form. Zweitens liest TR dort die Lesart
+„ἐπὶ" und daneben „εις εμε": Der Vers gibt nicht her, welche Form an der Stelle
+der Notiz steht. Von 1141 Sätzen betrafen rund ein Drittel Editionen, die beide
+Formen führen (Reviewer-Zählung 412, Mechanismus selbst belegt).
+
+Gewählt: Ein Satz fällt nur, wenn die Edition **genau eine** Form der Notiz
+(Kopf oder eine der Lesarten) im Vers führt. Führt sie mehrere, schweigt der
+Abgleich, und `in_dieser_db` zeigt beide. Führt sie keine (TR bei Mt 21,11 hat
+das Wort gar nicht), sagt der Satz „führt an dieser Stelle weder … noch …",
+statt den Kopf zu behaupten. Ergebnis 693 Sätze, davon 0 über eine Edition mit
+mehreren Formen und 0 über eine Form, die die Edition nicht führt (beides über
+alle Notizen gezählt, Skript außerhalb des Repos).
+
+**Verworfen: Wortposition aus der Notiz ableiten.** Die Notiz nennt die
+Position nicht, und ein Alignment der drei Editionen gegen den TAGNT-Kopf wäre
+ein eigenes Vorhaben; ein Schweigen, wo nichts entscheidbar ist, ist die
+ehrlichere Antwort als ein geratener Satz im Feld, das die Antwort als das
+Verlässliche auszeichnet.
+
+## Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte
+
+*Gemessen 02.09.2026 mit sqlite3 und über stdio, 155 612 Verse in fünf Ausgaben.*
+
+`verses_fts` führt `translation` und `book_id` UNINDEXED. Ein Filter
+`MATCH ? AND translation = ?` materialisiert deshalb die Treffer aller fünf
+Ausgaben und liest je Trefferzeile die Inhaltstabelle: „und" in Luther kostete
+94 ms für die Zählung und 103 ms für die Liste, Ende-zu-Ende 210 bis 230 ms;
+„Gott" 60 ms; Wortstudien 2 bis 15 ms.
+
+Die Tabelle wird von `rebuildVersesFts` (`scripts/schema.ts`) immer ganz neu
+und in `ORDER BY translation, book_id, chapter, verse` gefüllt, und FTS5 vergibt
+rowids fortlaufend. Jede Ausgabe und darin jedes Buch ist damit ein lückenloser
+rowid-Block (330 Blöcke, alle lückenlos und aneinander anschließend, 0
+Ordnungsverletzungen über alle Zeilen), und FTS5 drückt einen rowid-Bereich in
+die Trefferliste. Mit `rowid BETWEEN ? AND ?` und `ORDER BY rowid`: Zählung
+1,6 ms, Liste 0,2 ms, Ende-zu-Ende „und" 4 ms, „Gott" 2,4 ms.
+
+Gewählt: Die Blöcke werden beim Start aus einer Abfrage ermittelt (111 ms) und
+geprüft; die Startzeit sinkt trotzdem, weil zugleich zwei doppelte
+Editionsabfragen (2 mal 45 ms) und eine über alle Grundtextwörter (110 ms auf
+21 ms) entfielen: 0,4 auf 0,3 s. Hält die Prüfung nicht, bleibt die Suche
+gesperrt, nennt den Reparaturbefehl `bun run build:fts` und meldet
+`volltextsuche: false`. **Kein Rückfall auf die alten Statements:** Ein Pfad, den
+keine Datenbank aus diesem Repository je beträte, wäre der stille Zweig, gegen
+den die Testsuite gebaut ist.
+
+**Verworfen:** ein FTS5-Spaltenfilter (`translation` indiziert, `MATCH
+'text:… AND translation:LUT'`), die sauberste Lösung, aber ein Schemawechsel mit
+Neubau jeder Installation; er bleibt der Weg, der diesen Kunstgriff beim
+nächsten ohnehin nötigen Neubau ablöst. Ein Index auf `original_words`
+für die Konkordanz (25 ms auf 0,1 ms) ist ebenfalls nicht gebaut: 29 MB
+Datenbank (167 auf 196 MB) und ein Handgriff an jeder bestehenden Datei, für
+ein Werkzeug, das heute in 26 bis 48 ms antwortet.

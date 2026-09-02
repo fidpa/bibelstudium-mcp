@@ -14,6 +14,7 @@
  * Einzeln lauffähig: `bun run tests/golden/concordance.ts`
  */
 import { buendel, fahre } from "../lib/buendel.ts";
+import { originalBuendel } from "./original.ts";
 import { MAX_LEMMA_LENGTH } from "../../src/werkzeug-helfer.ts";
 import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
 
@@ -56,8 +57,58 @@ export const concordanceBuendel = buendel({
     // Die Gegenprobe: Wer den zutreffenden Texttyp schickt, hat nichts
     // übergangen bekommen und darf den Satz nicht lesen.
     concordHebTexttypWlc: ["bible_concordance", { strong: "H7225", texttyp: "wlc", limit: 2 }],
+    // Ein unbekannter Wert am hebräischen Zweig: angenommen, aber der Satz sagt
+    // „unbekannt" statt „gilt nur fürs NT" (bis zum 02.09.2026 letzteres, also
+    // eine Erklärung für einen Wert, der nirgends gilt).
+    concordHebTexttypUnbekannt: ["bible_concordance", { strong: "H7225", texttyp: "quatsch", limit: 1 }],
+    // Die Obergrenze: λόγος hat 331 Vorkommen im Mehrheitstext (gemessen
+    // 02.09.2026). Bis dahin klemmte der Handler auf 200 und nannte die
+    // Obergrenze nicht; der Ausweg „limit erhöhen" wäre keiner gewesen.
+    concordLimitUeber: ["bible_concordance", { strong: "G3056", limit: 1000 }],
+    // Der Vorgabefall ohne `limit`: 50 von 116 (ἀγάπη), fuhr bis dahin kein Test.
+    concordVorgabe: ["bible_concordance", { strong: "G26" }],
+    // Falscher Typ ist etwas anderes als eine falsche Schrift.
+    concordLemmaZahl: ["bible_concordance", { lemma: 123 }],
+    // Der NFC-Rückfall (`findStoredLemma`): dasselbe Lemma dekomponiert
+    // geschickt muss dieselbe Gesamtzahl liefern. Bis zum 02.09.2026 fuhr kein
+    // Aufruf eine NFD-Form; ein Einbau, der den Rückfall auf null festnagelte,
+    // blieb grün.
+    concordLemmaNfd: ["bible_concordance", { lemma: "ἀγάπη".normalize("NFD"), texttyp: "sblgnt", limit: 2 }],
   },
-  pruefe({ res }) {
+  pruefe({ res }, ctx) {
+    {
+      const { concordHebTexttypUnbekannt, concordLimitUeber, concordVorgabe, concordHebTexttyp, concordTexttyp } = res;
+      eq("H7225 mit unbekanntem texttyp: kein Fehler", concordHebTexttypUnbekannt.isError, false);
+      eq("H7225 mit unbekanntem texttyp: WLC", concordHebTexttypUnbekannt.json?.texttyp, "wlc");
+      has("H7225 mit unbekanntem texttyp: Satz sagt „unbekannt\"", String(concordHebTexttypUnbekannt.json?.hinweis ?? ""), 'Der Texttyp "quatsch" ist unbekannt');
+      lacks("H7225 mit unbekanntem texttyp: nicht „gilt nur fürs NT\"", String(concordHebTexttypUnbekannt.json?.hinweis ?? ""), "gilt nur fürs NT");
+      // Wortgleich mit bible_original: beide Werkzeuge nehmen den Satz aus demselben
+      // Helfer, und der Test hält fest, dass das so bleibt.
+      const satzOriginal = /\(Der Texttyp "sblgnt"[^)]*\)/.exec(String(ctx.fremd("original.origAtMitTexttyp").json?.hinweis ?? ""))?.[0] ?? "";
+      check("übergangener texttyp: Satz wortgleich mit bible_original", satzOriginal.length > 2 && String(concordHebTexttyp.json?.hinweis ?? "").includes(satzOriginal.slice(1, -1)), satzOriginal);
+      has("ungültiger texttyp: Langform mit Erklärung je Wert", concordTexttyp.text, '"tr" (Textus Receptus)');
+      eq("limit=1000: auf 200 geklemmt", (concordLimitUeber.json?.vorkommen as unknown[] ?? []).length, 200);
+      has("limit=1000: nennt beide Zahlen", String(concordLimitUeber.json?.hinweis ?? ""), "Nur die ersten 200 von 331");
+      has("limit=1000: nennt die Obergrenze als Grenze", String(concordLimitUeber.json?.hinweis ?? ""), "mehr als 200 listet dieses Werkzeug je Abruf nicht");
+      eq("ohne limit: Vorgabe 50", (concordVorgabe.json?.vorkommen as unknown[] ?? []).length, 50);
+      has("ohne limit: nennt 50 von 116", String(concordVorgabe.json?.hinweis ?? ""), "Nur die ersten 50 von 116");
+      eq("lemma=123: nennt den Typ", res.concordLemmaZahl.text, "Error: 'lemma' must be a Greek or Hebrew word.");
+      eq("NFD-Lemma: kein Fehler", res.concordLemmaNfd.isError, false);
+      eq("NFD-Lemma: dieselbe Gesamtzahl wie NFC", res.concordLemmaNfd.json?.gesamt, res.concordLemmaSblgnt.json?.gesamt);
+    }
+    // Schema gegen Verhalten: `default` und `max` aus der Beschreibung des
+    // `limit`-Arguments müssen mit dem übereinstimmen, was der Handler tut.
+    // Beide kommen seit dem 02.09.2026 aus einer Konstante; diese Zusicherung
+    // hält fest, dass niemand wieder eine nackte Zahl daneben schreibt.
+    {
+      const tool = ctx.tools.find((t) => t["name"] === "bible_concordance") ?? {};
+      const props = ((tool["inputSchema"] as Record<string, unknown> | undefined)?.["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+      const m = /\(default (\d+), max (\d+)\)/.exec(String(props["limit"]?.["description"] ?? ""));
+      check("bible_concordance: limit-Beschreibung nennt default und max", m !== null, String(props["limit"]?.["description"]));
+      eq("bible_concordance: default im Schema gleich der Beschreibung", props["limit"]?.["default"], Number(m?.[1]));
+      eq("bible_concordance: max der Beschreibung gleich der Klemmung", (res.concordLimitUeber.json?.vorkommen as unknown[] ?? []).length, Number(m?.[2]));
+    }
+
     const { concordanceLongLemma, concordVollstaendig, concordGekuerzt } = res;
     const { concordFormat, concordOhneAngabe, concordLemmaLatein } = res;
     const { concordTexttyp, concordOhneTreffer } = res;
@@ -71,7 +122,7 @@ export const concordanceBuendel = buendel({
       concordHebTexttyp.json?.texttyp, "wlc");
     has("H7225 mit NT-Texttyp: der Hinweis benennt die übergangene Angabe",
       String(concordHebTexttyp.json?.hinweis ?? ""),
-      'Der Texttyp "sblgnt" gilt nur fürs NT; fürs AT wird der hebräische WLC durchsucht.');
+      'Der Texttyp "sblgnt" gilt nur fürs NT; fürs AT wird der hebräische WLC verwendet.');
     lacks("H7225 mit texttyp=wlc: kein Satz über eine übergangene Angabe",
       String(concordHebTexttypWlc.json?.hinweis ?? ""), "gilt nur fürs NT");
     lacks("H7225 ohne texttyp: kein Satz über eine übergangene Angabe",
@@ -209,6 +260,7 @@ export const concordanceBuendel = buendel({
 });
 
 if (import.meta.main) {
-  await fahre([concordanceBuendel]);
+  // Das Original-Bündel zuerst: eine Zusicherung liest über ctx.fremd daraus.
+  await fahre([originalBuendel, concordanceBuendel]);
   abschluss();
 }

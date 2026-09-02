@@ -168,8 +168,13 @@ export function ensureProvenanceSchema(db: Database): void {
  * Baut den FTS5-Volltextindex über `verses` neu (verwerfen und neu füllen).
  *
  * `translation` ist UNINDEXED: Das Kürzel darf den Token-Index nicht
- * verschmutzen, die Suche filtert stattdessen je Übersetzung mit
- * `AND translation = ?`. Der abgelegte Text ist HTML-bereinigt, denn die
+ * verschmutzen. Die Suche filtert seit dem 02.09.2026 über rowid-Bereiche, und
+ * das macht die Reihenfolge unten zum Vertrag: verwerfen, neu anlegen, in
+ * `ORDER BY translation, book_id, chapter, verse` einfügen, nie anhängen. So ist
+ * jede Übersetzung und darin jedes Buch ein lückenloser rowid-Block, und die
+ * rowid-Ordnung ist die nach Kapitel und Vers. Der Server prüft die Blöcke beim
+ * Start und sperrt die Suche, wenn sie nicht gelten (src/db.ts, Abschnitt
+ * Volltextsuche, benennt diesen Kommentar). Der abgelegte Text ist HTML-bereinigt, denn die
  * Datenbank kann <i>-Hervorhebungen enthalten, und im FTS-Index zerrissen sie
  * Phrasen mit verirrten „i"-Tokens. remove_diacritics faltet die Umlaute, so
  * findet „fuhrt" auch „führt".

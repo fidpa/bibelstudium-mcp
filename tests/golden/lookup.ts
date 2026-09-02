@@ -43,6 +43,21 @@ const VERSES_TOO_MANY = Array.from({ length: MAX_VERSE_PARTS + 5 }, (_, i) =>
 export const lookupBuendel = buendel({
   name: "lookup",
   calls: {
+    // Eine umgekehrte Spanne: „10-5" allein bekam bis zum 02.09.2026 „No verses
+    // found", „10-5,1" dagegen Vers 1 ohne jeden Hinweis (parseVerses ließ die
+    // Spanne still fallen). Beide bekommen jetzt dieselbe Meldung, die die
+    // Bedingung nennt.
+    lookupUmgekehrt: ["bible_lookup", { book: "Johannes", chapter: 3, verses: "10-5" }],
+    lookupUmgekehrtKomma: ["bible_lookup", { book: "Johannes", chapter: 3, verses: "10-5,1" }],
+    // Menge, Johannes 5,3: eine öffnende eckige Klammer ohne schließende im
+    // selben Vers (11 solcher Verse, gemessen 02.09.2026). Der Klammerhinweis
+    // verlangte bis dahin ein „]" im Vers und blieb hier aus.
+    lookupKlammerOffen: ["bible_lookup", { book: "Johannes", chapter: 5, verses: "3", translation: "MB" }],
+    // Maleachi 4 führen nur Elberfelder, Luther und Schlachter 1951 (je sechs
+    // Verse); Menge und Schlachter 2000 zählen es zu Kapitel 3. Die Kapitellängen
+    // kommen seit dem 02.09.2026 je Ausgabe einzeln; ohne den Null-Filter stünde
+    // hier „Menge 1939 null" im Zählungshinweis.
+    lookupMaleachi4: ["bible_lookup", { book: "Maleachi", chapter: 4, translation: "LUT" }],
     lookupChap999: ["bible_lookup", { book: "Ps", chapter: 999 }],
     // Die Kopiervorlage `kurzref`, an den drei Fällen, die ein fremder Client von
     // Hand falsch umgeschrieben hat: ein Buch mit abweichendem Datenbanknamen
@@ -139,6 +154,15 @@ export const lookupBuendel = buendel({
     noteMehrvers: ["bible_lookup", { book: "Joh", chapter: 3, verses: "16-18", translation: "SLT" }],
   },
   pruefe({ res }, ctx) {
+    {
+      const UMGEKEHRT = `Error: in a range like "10-5" in 'verses' the first number must not be greater than the second`;
+      eq("verses=10-5: nennt die Bedingung", res.lookupUmgekehrt.text, UMGEKEHRT);
+      eq("verses=10-5,1: dieselbe Meldung, das Komma entscheidet nichts mehr", res.lookupUmgekehrtKomma.text, UMGEKEHRT);
+      eq("verses=10-5,1: isError", res.lookupUmgekehrtKomma.isError, true);
+      has("Joh 5,3 (MB): offene Klammer löst den Klammerhinweis aus", String(res.lookupKlammerOffen.json?.hinweis ?? ""), "eckigen Klammern");
+      eq("Maleachi 4 (LUT): kein Fehler", res.lookupMaleachi4.isError, false);
+      lacks("Maleachi 4 (LUT): fehlende Ausgaben erzeugen keinen Zählungssatz", String(res.lookupMaleachi4.json?.hinweis ?? ""), "zählen dieses Kapitel verschieden");
+    }
     const {
       lookupChap999, hesekiel, sirach, weisheit, weisheitsSprueche,
       zaehlungLut, zaehlungElb, zaehlungGleich,

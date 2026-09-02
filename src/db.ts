@@ -164,27 +164,49 @@ export const stmtVerseRange = db.prepare<
   "SELECT verse, text FROM verses WHERE translation = ? AND book_id = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
 );
 
-// Welche Übersetzungen tatsächlich gefüllt sind (für Prüfung und Meldungen).
 /**
- * Die Kapitellänge je Ausgabe, für genau einen Zweck: Die Ausgaben zählen nicht
- * überall gleich, und dieselbe Stellenangabe trifft dann je Ausgabe eine andere
- * Textstelle. 3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000 23 Verse,
- * in Luther und Schlachter 1951 dagegen 30, Kapitel 7 in allen fünf 38
- * (gemessen 06.08.2026, 140 der 1190 Kapitel weichen ab). Das ist keine
+ * Die Kapitellänge einer Ausgabe, für genau einen Zweck: Die Ausgaben zählen
+ * nicht überall gleich, und dieselbe Stellenangabe trifft dann je Ausgabe eine
+ * andere Textstelle. 3. Mose 6 hat in Elberfelder, Menge und Schlachter 2000
+ * 23 Verse, in Luther und Schlachter 1951 dagegen 30, Kapitel 7 in allen fünf
+ * 38 (gemessen 06.08.2026, 140 der 1190 Kapitel weichen ab). Das ist keine
  * Datenlücke, sondern eine Zählungsdifferenz.
+ *
+ * Je Ausgabe ein Punktzugriff über den Primärschlüssel (0,03 ms). Bis zum
+ * 02.09.2026 stand hier ein GROUP BY ohne `translation`, das den ganzen
+ * Deckungsindex durchlief (155 612 Zeilen, 8 bis 10 ms), und zwar bei jedem
+ * bible_lookup und je Parallelstellen-Mitglied im AT (Jeremia 13,8 mit 37
+ * Mitgliedern: 250 ms je Aufruf).
  */
-export const stmtKapitelLaengen = db.prepare<
-  { translation: string; n: number },
-  [number, number]
->(
-  "SELECT translation, MAX(verse) AS n FROM verses WHERE book_id = ? AND chapter = ? GROUP BY translation"
+export const stmtKapitelLaenge = db.prepare<{ n: number | null }, [string, number, number]>(
+  "SELECT MAX(verse) AS n FROM verses WHERE translation = ? AND book_id = ? AND chapter = ?"
 );
 
+// Welche Übersetzungen tatsächlich gefüllt sind (für Prüfung und Meldungen).
 export const availableTranslations: Set<string> = new Set(
   (db.query("SELECT DISTINCT translation FROM verses").all() as Array<{
     translation: string;
   }>).map((r) => r.translation)
 );
+
+/**
+ * Die Kapitellänge je geführter Ausgabe. Ausgaben, die das Kapitel nicht
+ * führen, fehlen in der Liste, wie zuvor beim GROUP BY: `MAX()` liefert dort
+ * eine Zeile mit NULL (Joel 4 führen nur Menge und Schlachter 2000, Maleachi 4
+ * nur Elberfelder, Luther und Schlachter 1951; gemessen 02.09.2026), und ohne
+ * den Filter stünde „Menge 1939 null" im Zählungshinweis.
+ */
+export function kapitelLaengen(
+  bookId: number,
+  chapter: number
+): Array<{ translation: string; n: number }> {
+  const out: Array<{ translation: string; n: number }> = [];
+  for (const translation of availableTranslations) {
+    const n = stmtKapitelLaenge.get(translation, bookId, chapter)?.n ?? null;
+    if (n !== null) out.push({ translation, n });
+  }
+  return out;
+}
 
 export const stmtBookName = db.prepare<{ name: string }, [number]>(
   "SELECT name FROM books WHERE book_id = ?"
@@ -246,11 +268,22 @@ export const dataFetchedAt: string | null = (() => {
 // Datei fest, und sie ist die ehrliche Antwort auf „welche Grundtexte haben
 // Sie". Die Download-Schritte sind getrennt, wlc ohne sblgnt (oder umgekehrt)
 // ist also ein wirklich vorkommender Zustand.
+// Als rekursive CTE (Loose-Index-Scan), nicht als DISTINCT: SQLite läuft für
+// ein DISTINCT auf der führenden Schlüsselspalte über alle 724 151 Zeilen (43
+// bis 49 ms bei jedem Start), die CTE springt je Edition einmal in den Index
+// (0,3 ms; gemessen 02.09.2026). Gleiche Menge, gleiche Reihenfolge; `edition`
+// ist NOT NULL, die leere Tabelle ergibt die leere Menge.
 export const originalEditions: readonly string[] = hasOriginal
   ? (
-      db.query("SELECT DISTINCT edition FROM original_words ORDER BY edition").all() as Array<{
-        edition: string;
-      }>
+      db
+        .query(
+          "WITH RECURSIVE e(edition) AS (" +
+            "SELECT MIN(edition) FROM original_words " +
+            "UNION ALL SELECT (SELECT MIN(edition) FROM original_words WHERE edition > e.edition) " +
+            "FROM e WHERE e.edition IS NOT NULL) " +
+            "SELECT edition FROM e WHERE edition IS NOT NULL"
+        )
+        .all() as Array<{ edition: string }>
     ).map((r) => r.edition)
   : [];
 
@@ -273,13 +306,9 @@ export const stmtOriginal = hasOriginal
   : null;
 
 // Welche Editionen tatsächlich gefüllt sind (für Prüfung und Meldungen).
-export const availableEditions: Set<string> = new Set(
-  hasOriginal
-    ? (db.query("SELECT DISTINCT edition FROM original_words").all() as Array<{
-        edition: string;
-      }>).map((r) => r.edition)
-    : []
-);
+// Dieselbe Menge wie `originalEditions`; bis zum 02.09.2026 ein zweiter voller
+// Durchlauf für dasselbe Ergebnis.
+export const availableEditions: Set<string> = new Set(originalEditions);
 
 /** Welche Editionen Strong-Nummern führen. Nicht alle tun es: `sblgnt` trägt in
  *  0 von 137 554 Wörtern eine, `byzantine` und `tr` in allen, `wlc` in 299 556
@@ -287,19 +316,24 @@ export const availableEditions: Set<string> = new Set(
  *  ergebnislose Suche, sondern eine unmögliche, und das gehört anders gemeldet:
  *  Die gemeinsame Meldung riet, „im Zweifel Strong-Nummer verwenden", also zu
  *  genau dem, was gerade gescheitert war. */
+// Eine Probe je Edition mit LIMIT 1 statt eines DISTINCT über alle Zeilen: Die
+// Probe endet beim ersten Treffer, nur eine Edition ohne Strong-Nummern
+// (sblgnt) wird ganz durchlaufen; 21 ms gegen 110 ms beim Start (gemessen
+// 02.09.2026).
 export const editionsWithStrong: Set<string> = new Set(
-  hasOriginal
-    ? (db
-        .query(
-          "SELECT DISTINCT edition FROM original_words WHERE strong IS NOT NULL AND strong <> ''"
-        )
-        .all() as Array<{ edition: string }>).map((r) => r.edition)
-    : []
+  originalEditions.filter(
+    (edition) =>
+      db
+        .query("SELECT 1 FROM original_words WHERE edition = ? AND strong IS NOT NULL AND strong <> '' LIMIT 1")
+        .get(edition) !== null
+  )
 );
 
-// Konkordanzabfragen laufen über die Zeilen einer Edition (ohne eigenen Index;
-// die Datenbank wird nur lesend geöffnet, und ein voller Editionsdurchlauf
-// kostet im lokalen SQLite wenige Millisekunden).
+// Konkordanzabfragen laufen über die Zeilen einer Edition, ohne eigenen Index:
+// 23 bis 25 ms je Abfrage, im Handler 26 bis 48 ms (gemessen 02.09.2026). Ein
+// Index auf (edition, strong) und (edition, lemma) brächte 0,1 ms, kostete aber
+// 29 MB Datenbank (167 auf 196 MB) und einen Handgriff an jeder bestehenden
+// Datei; das ist bewusst nicht gebaut, solange die Zahl so bleibt.
 export const stmtConcordStrong = hasOriginal
   ? db.prepare<
       { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },
@@ -369,39 +403,100 @@ export const stmtTagnt = hasTagnt
   : null;
 
 // --- Volltextsuche über die deutschen Verse (optionale FTS5-Tabelle) -------
-// `translation` ist in der FTS-Tabelle UNINDEXED; gefiltert wird schlicht über
-// Gleichheit, im Nachgang zum MATCH.
-export const hasFts =
+// `translation` und `book_id` sind in der FTS-Tabelle UNINDEXED. Gefiltert wird
+// trotzdem nicht über Gleichheit, sondern über rowid-Bereiche: `rebuildVersesFts`
+// (scripts/schema.ts) füllt die Tabelle immer ganz neu in der Reihenfolge
+// translation, book_id, chapter, verse, und FTS5 vergibt rowids fortlaufend. Jede
+// Übersetzung und darin jedes Buch ist damit ein lückenloser rowid-Block, und
+// die Ordnung nach rowid ist die nach Kapitel und Vers. FTS5 drückt einen
+// rowid-Bereich in die Trefferliste, ein Gleichheitsfilter auf einer
+// UNINDEXED-Spalte dagegen liest jede Trefferzeile aller fünf Übersetzungen:
+// „und" in Luther kostete so 94 ms für die Zählung und 103 ms für die Liste,
+// über den Bereich 1,6 und 0,2 ms (gemessen 02.09.2026). Beide Kommentare, dieser
+// und der an `rebuildVersesFts`, benennen einander; wer den Aufbau ändert,
+// ändert diese Annahme mit.
+export const hasFtsTable =
   db
     .query("SELECT name FROM sqlite_master WHERE type='table' AND name='verses_fts'")
     .get() !== null;
 
-export const stmtSearchCount = hasFts
-  ? db.prepare<{ n: number }, [string, string]>(
-      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ?"
+export interface FtsBereich {
+  readonly von: number;
+  readonly bis: number;
+}
+type FtsBloecke = ReadonlyMap<string, { gesamt: FtsBereich; buecher: ReadonlyMap<number, FtsBereich> }>;
+
+/**
+ * Die rowid-Blöcke je Übersetzung und Buch, oder null, wenn der Index nicht so
+ * liegt. Geprüft wird je Buch die Lückenlosigkeit (bis - von + 1 == n), je
+ * Übersetzung der Anschluss der Bücher aneinander und über alle Übersetzungen
+ * die Überschneidungsfreiheit. Eine Abfrage, 330 Gruppen, 111 ms beim Start
+ * (gemessen 02.09.2026); dafür entfällt P4-seitig mehr, als das kostet.
+ *
+ * Kein Rückfall auf Gleichheitsfilter: Ein Pfad, den keine Datenbank aus diesem
+ * Repository je beträte, wäre der stille Zweig, gegen den die Testsuite gebaut
+ * ist. Liegt der Index anders, bleibt die Suche gesperrt und nennt den
+ * Reparaturbefehl.
+ */
+function ermittleFtsBereiche(): FtsBloecke | null {
+  const rows = db
+    .query(
+      "SELECT translation, book_id, MIN(rowid) AS von, MAX(rowid) AS bis, COUNT(*) AS n " +
+        "FROM verses_fts GROUP BY translation, book_id ORDER BY translation, book_id"
     )
-  : null;
-export const stmtSearchCountBook = hasFts
-  ? db.prepare<{ n: number }, [string, string, number]>(
-      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ?"
+    .all() as Array<{ translation: string; book_id: number; von: number; bis: number; n: number }>;
+  const out = new Map<string, { gesamt: { von: number; bis: number }; buecher: Map<number, FtsBereich> }>();
+  let vorige: (typeof rows)[number] | null = null;
+  for (const r of rows) {
+    if (r.bis - r.von + 1 !== r.n) return null;
+    const eintrag = out.get(r.translation);
+    if (eintrag === undefined) {
+      out.set(r.translation, { gesamt: { von: r.von, bis: r.bis }, buecher: new Map([[r.book_id, { von: r.von, bis: r.bis }]]) });
+    } else {
+      if (vorige === null || vorige.translation !== r.translation || r.von !== vorige.bis + 1) return null;
+      eintrag.gesamt.bis = r.bis;
+      eintrag.buecher.set(r.book_id, { von: r.von, bis: r.bis });
+    }
+    vorige = r;
+  }
+  const bloecke = [...out.values()].map((e) => e.gesamt).sort((a, b) => a.von - b.von);
+  for (let i = 1; i < bloecke.length; i++) {
+    if (bloecke[i]!.von <= bloecke[i - 1]!.bis) return null;
+  }
+  return out.size > 0 ? out : null;
+}
+
+export const ftsBereiche: FtsBloecke | null = hasFtsTable ? ermittleFtsBereiche() : null;
+if (hasFtsTable && ftsBereiche === null) {
+  console.error(
+    "Der Volltextindex liegt nicht in zusammenhängenden Blöcken je Übersetzung und Buch; " +
+      "die Suche bleibt gesperrt. Neu bauen mit: bun run build:fts"
+  );
+}
+/** Ob die Volltextsuche verfügbar ist: Tabelle vorhanden und in Blöcken. */
+export const hasFts = ftsBereiche !== null;
+
+/** Der rowid-Block einer Übersetzung, optional eingeengt auf ein Buch; null,
+ *  wenn diese Ausgabe das Buch nicht führt (dann sind es null Treffer). */
+export function ftsBereich(translation: string, bookId: number | null): FtsBereich | null {
+  const eintrag = ftsBereiche?.get(translation);
+  if (eintrag === undefined) return null;
+  if (bookId === null) return eintrag.gesamt;
+  return eintrag.buecher.get(bookId) ?? null;
+}
+
+export const stmtSearchCount = hasFts
+  ? db.prepare<{ n: number }, [string, number, number]>(
+      "SELECT COUNT(*) as n FROM verses_fts WHERE verses_fts MATCH ? AND rowid BETWEEN ? AND ?"
     )
   : null;
 export const stmtSearch = hasFts
   ? db.prepare<
       { book_id: number; chapter: number; verse: number; text: string },
-      [string, string, number]
+      [string, number, number, number]
     >(
       "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? ORDER BY book_id, chapter, verse LIMIT ?"
-    )
-  : null;
-export const stmtSearchBook = hasFts
-  ? db.prepare<
-      { book_id: number; chapter: number; verse: number; text: string },
-      [string, string, number, number]
-    >(
-      "SELECT book_id, chapter, verse, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? ORDER BY chapter, verse LIMIT ?"
+        "FROM verses_fts WHERE verses_fts MATCH ? AND rowid BETWEEN ? AND ? ORDER BY rowid LIMIT ?"
     )
   : null;
 
@@ -409,18 +504,9 @@ export const stmtSearchBook = hasFts
 // Vorkommen als auch die Aufschlüsselung je Buch und Kapitel trägt: siehe den
 // `verteilung`-Block in `handleSearch` (handlers/search.ts).
 export const stmtSearchAll = hasFts
-  ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, string, number]>(
+  ? db.prepare<{ book_id: number; chapter: number; text: string }, [string, number, number, number]>(
       "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? LIMIT ?"
-    )
-  : null;
-export const stmtSearchAllBook = hasFts
-  ? db.prepare<
-      { book_id: number; chapter: number; text: string },
-      [string, string, number, number]
-    >(
-      "SELECT book_id, chapter, highlight(verses_fts, 0, '⟦', '⟧') as text " +
-        "FROM verses_fts WHERE verses_fts MATCH ? AND translation = ? AND book_id = ? LIMIT ?"
+        "FROM verses_fts WHERE verses_fts MATCH ? AND rowid BETWEEN ? AND ? LIMIT ?"
     )
   : null;
 

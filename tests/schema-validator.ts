@@ -81,6 +81,17 @@ export function schemaErrors(schema: Json, value: unknown, path = ""): string[] 
           out.push(...schemaErrors(schema.additionalProperties, sub, `${path}/${key}`));
         }
       }
+    } else if (isRecord(schema.properties)) {
+      // Strenger als JSON Schema, mit Absicht: Ein Feld, das die Antwort trägt
+      // und das Schema nicht nennt, ist hier ein Befund, kein erlaubter Zusatz.
+      // Drei Felder (`gekuerzt.parallelen_*`) gingen so vom 22.08. bis zum
+      // 02.09.2026 undeklariert hinaus, golden-getestet und trotzdem unbemerkt,
+      // weil dieser Prüfer nur die deklarierten Schlüssel ansah. Objekte ohne
+      // `properties` bleiben frei (das sind die Abbildungen), Objekte mit
+      // `additionalProperties`-Schema werden darüber geprüft (Zweig oben).
+      for (const key of Object.keys(value)) {
+        if (!(key in props)) out.push(`${where}: nicht deklariertes Feld '${key}'`);
+      }
     }
   }
 

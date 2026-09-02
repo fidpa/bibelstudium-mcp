@@ -133,9 +133,12 @@ export function crossCheckVariant(
   const head = greekLettersOnly(headword);
   if (head === "") return undefined;
 
-  // Ein mit ";" getrenntes Segment je Variante: ihre Zeugen und ihre griechische Form.
+  // ";" trennt die Notizen eines Wortes, "¦" trennt die Lesarten innerhalb
+  // einer Notiz („ἐπὶ … in: TR ¦ εἰς … in: SBL+Byz", Mt 18,6). 65 Notizen
+  // tragen "¦" (gemessen 02.09.2026); bis dahin wurde nur an ";" getrennt, und
+  // eine solche Notiz wurde ein Segment mit allen Zeugen und der ersten Form.
   const varianten = note
-    .split(";")
+    .split(/[;¦]/)
     .map((seg) => ({
       zeugen: new Set(seg.match(TAGNT_WITNESS_RE) ?? []),
       form: (seg.match(GREEK_RUN_RE) ?? [])
@@ -147,6 +150,13 @@ export function crossCheckVariant(
         v.form !== undefined && normForCompare(v.form) !== normForCompare(head)
     );
 
+  // Positionsblind, mit Absicht und mit Folge: gefragt wird, ob eine Form
+  // irgendwo im Vers steht, nicht ob sie an der Stelle der Notiz steht. Eine
+  // Wortposition liefert die Notiz nicht her. Deshalb unten die Regel: Führt
+  // eine Edition beide Formen im Vers (TR bei Mt 18,6: „εις εμε" an anderer
+  // Stelle, „επι" an der strittigen), lässt sich nichts entscheiden, und es
+  // fällt kein Satz. Bis zum 02.09.2026 fiel er trotzdem, und rund ein
+  // Drittel der Abgleichsätze betraf genau diese Lage.
   const liest = (form: string): string[] => {
     const n = normForCompare(form);
     return texts.filter((t) => t.words.some((w) => normForCompare(w) === n)).map((t) => t.ed);
@@ -160,29 +170,45 @@ export function crossCheckVariant(
   if (Object.keys(belege).length === 0) return undefined;
 
   const abgleich: string[] = [];
+  const kopfEds = liest(head);
+  // Wie viele Formen dieser Notiz (Kopf und alle Lesarten) eine Edition im Vers
+  // führt. Mehr als eine, und der Vers gibt nicht her, welche an der Stelle der
+  // Notiz steht: TR liest bei Mt 18,6 die Lesart „ἐπὶ" und daneben „εις εμε".
+  const formenJeEdition = new Map<string, number>();
+  for (const form of [head, ...varianten.map((v) => v.form)]) {
+    for (const ed of liest(form)) formenJeEdition.set(ed, (formenJeEdition.get(ed) ?? 0) + 1);
+  }
   for (const v of varianten) {
     if (istElision(normForCompare(v.form), normForCompare(head))) continue;
+    const variantenEds = liest(v.form);
     for (const t of texts) {
       const label = TAGNT_LABEL[t.ed];
       if (label === undefined) continue;
-      const liestVariante = liest(v.form).includes(t.ed);
+      if ((formenJeEdition.get(t.ed) ?? 0) > 1) continue;
+      const liestVariante = variantenEds.includes(t.ed);
+      const liestKopf = kopfEds.includes(t.ed);
       const genannt = v.zeugen.has(label);
       // Zuerst nennen, was die Edition liest, dann die Notiz, der sie
       // widerspricht. Umgekehrt formuliert („TAGNT nennt … der Text liest
       // anders") liest es sich wie eine Randbemerkung zur Datenqualität und
       // entfällt beim Wiedergeben des Befundes; Mk 14,46 wurde zweimal ohne den
       // Vorbehalt gemeldet (25.07.2026).
-      const liesForm = liest(v.form).includes(t.ed) ? v.form : head;
       if (liestVariante && !genannt) {
         abgleich.push(
-          `${t.ed} liest hier "${liesForm}"; die TAGNT-Notiz führt dafür nur ` +
+          `${t.ed} liest hier "${v.form}"; die TAGNT-Notiz führt dafür nur ` +
             `${[...v.zeugen].join("+") || "keine Edition"} als Zeugen. Für diese Edition gilt ` +
             "der Editionstext."
         );
       } else if (!liestVariante && genannt) {
+        // Der dritte Zustand ist keiner der beiden: Die Edition führt weder die
+        // Variante noch den Kopf (TR bei Mt 21,11 hat das Wort gar nicht). Bis
+        // zum 02.09.2026 wurde dann der Kopf behauptet.
         abgleich.push(
-          `${t.ed} liest hier "${liesForm}", nicht "${v.form}"; die TAGNT-Notiz nennt ` +
-            `${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
+          liestKopf
+            ? `${t.ed} liest hier "${head}", nicht "${v.form}"; die TAGNT-Notiz nennt ` +
+                `${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
+            : `${t.ed} führt an dieser Stelle weder "${head}" noch "${v.form}"; die TAGNT-Notiz ` +
+                `nennt ${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
         );
       }
     }
