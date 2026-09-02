@@ -107,10 +107,13 @@ jobs:
       - name: Open draft release with both bundles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Free prose from the CHANGELOG heading; through the environment, not
+          # interpolated into the command line, where a quote would break it.
+          TITLE: ${{ steps.changelog.outputs.title }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" \
-            --title "${{ steps.changelog.outputs.title }}" \
+            --title "$TITLE" \
             --notes-file /tmp/release-notes.md \
             --verify-tag \
             --draft \

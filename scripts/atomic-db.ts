@@ -1,8 +1,7 @@
 import { Database } from "bun:sqlite";
 import { dirname, resolve, basename } from "path";
 import {
-  copyFileSync, existsSync, renameSync, unlinkSync, chmodSync, mkdirSync,
-} from "fs";
+  copyFileSync, existsSync, renameSync, unlinkSync, chmodSync, mkdirSync, readdirSync } from "fs";
 
 /**
  * Atomarer Schreiber für die geteilte bible.db.
@@ -50,18 +49,34 @@ export function openAtomicDb(dbPath: string, opts: { fresh?: boolean } = {}): At
   const dir = dirname(dbPath);
   // Datenverzeichnis sicherstellen: Es ist gitignored, ein frischer Klon hat
   // also kein data/, bis der erste Download läuft.
-  mkdirSync(dir, { recursive: true });
+  // Eng von Anfang an, nicht erst in commit(): Beim allerersten Aufbau lag die
+  // vollständige Kopie sonst rund eine Minute mit Vorgaberechten offen
+  // (02.09.2026). Ein bestehendes Verzeichnis behält seine Rechte.
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const tmpPath = resolve(dir, `.${basename(dbPath)}.${process.pid}.tmp`);
 
-  // Reste eines früheren, abgestürzten Laufs wegräumen.
+  // Reste früherer, abgestürzter Läufe wegräumen: den eigenen Pfad und die
+  // Kopien fremder PIDs, deren Prozess nicht mehr lebt (ein SIGKILL mitten in
+  // bible_setup ließ bis zu 160 MB je Schritt dauerhaft liegen).
   removeSidecars(tmpPath);
   try { unlinkSync(tmpPath); } catch { /* keine da */ }
+  for (const name of readdirSync(dir)) {
+    const m = new RegExp(`^\\.${basename(dbPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)\\.tmp$`).exec(name);
+    if (m === null || Number(m[1]) === process.pid) continue;
+    try { process.kill(Number(m[1]), 0); continue; } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ESRCH") continue;
+    }
+    const fremd = resolve(dir, name);
+    removeSidecars(fremd);
+    try { unlinkSync(fremd); } catch { /* schon weg */ }
+  }
 
   if (!opts.fresh && existsSync(dbPath)) {
     copyFileSync(dbPath, tmpPath);
   }
 
   const db = new Database(tmpPath, { create: true });
+  try { chmodSync(tmpPath, 0o600); } catch { /* Kopie liegt in einem fremden Verzeichnis */ }
   db.exec("PRAGMA journal_mode = WAL"); // schnelles Massenladen auf der eigenen Kopie
   db.exec("PRAGMA synchronous = NORMAL");
 
@@ -82,6 +97,9 @@ export function openAtomicDb(dbPath: string, opts: { fresh?: boolean } = {}): At
     db.exec("PRAGMA journal_mode = DELETE"); // selbstgenügsame Datei veröffentlichen
     db.close();
     removeSidecars(tmpPath); // gefahrlos: die Kopie ist privat, kein zweiter Leser
+    // Kein fsync vor oder nach dem Tausch, bewusst: Bei Stromausfall genau hier
+    // kann eine halbe Datei zurückbleiben, und die ist aus den Quellen
+    // reproduzierbar (02.09.2026).
     renameSync(tmpPath, dbPath); // atomarer Tausch
     chmodSync(dbPath, 0o600); // die Datenbankdatei selbst beschränken (sicherheitsrelevant)
     try { chmodSync(dir, 0o700); } catch { /* nach Möglichkeit; das Elternverzeichnis gehört uns womöglich nicht */ }

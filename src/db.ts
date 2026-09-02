@@ -1,5 +1,5 @@
 /**
- * Die Datenschicht: die Datenbankverbindung, ihre Unversehrtheitsprüfung, alle
+ * Die Datenschicht: die Datenbankverbindung, ihre Bestandsprüfung, alle
  * vorbereiteten Statements und die Merkmale des vorhandenen Bestands.
  *
  * Anders als die übrigen Module dieser Seite ist das hier nicht zustandsfrei,
@@ -25,7 +25,10 @@
 import { Database } from "bun:sqlite";
 import { DB_PATH } from "./db-path.ts";
 
-// --- Setup: Datenbankverbindung und Unversehrtheitsprüfung -----------------
+// --- Setup: Datenbankverbindung und Bestandsprüfung ------------------------
+// „Bestand", nicht „Unversehrtheit": Geprüft werden Tabellen, eine Spalte und
+// eine Zeilenzahl, kein `PRAGMA quick_check` (der kostete bei 160 MB Sekunden
+// je Start). Eine beschädigte Seite fällt erst beim Lesen auf (02.09.2026).
 // DB_PATH kommt aus db-path.ts, das auch die Skripte des Datenaufbaus
 // importieren. Beide Seiten müssen dieselbe Datei meinen: bible_setup ruft jene
 // Skripte, und wichen sie voneinander ab, landete der Download dort, wo der

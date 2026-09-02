@@ -6,6 +6,29 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.26] - 2026-09-02: Die Abweisung fremder Herkunft verrät den Server nicht mehr
+
+### Geändert
+
+- **HTTP:** Die 403 für eine fremde Herkunft trägt keine CORS-Kopfzeilen mehr
+  (eine fremde Seite konnte sie lesen und daran erkennen, dass hier ein Server
+  läuft); alle Antworten tragen `vary: origin` und `cache-control: no-store`.
+  Der Rumpf wird je Anfrage einmal gelesen statt zweimal, die Telemetrie
+  bleibt vollständig. Der Metrikport hat dieselben Rumpf- und Leerlaufgrenzen
+  wie der MCP-Port.
+- **SDK** `@modelcontextprotocol/sdk` 1.29.0 auf 1.30.0; `@types/bun` auf
+  `^1.3.14` gepinnt statt `latest`.
+- **Datenaufbau:** Verzeichnis und Arbeitskopie entstehen mit engen Rechten
+  (0700/0600), liegen gebliebene Kopien abgestürzter Läufe werden entfernt;
+  `download:lexicon` scheitert bei einer griechischen Zeile mit sieben Spalten
+  statt still zu leeren.
+- **CI:** neuer Job `guards` (Verweise auf Ungeteiltes, Em-Dash), `permissions`,
+  Fristen und `concurrency` in `lint.yml`, Eingaben nur noch über `env:` in
+  die Shell, `yamllint` gepinnt.
+- **Aufgeräumt:** toter Code (`buildAliasMap`, ungenutzte Importe),
+  „Unversehrtheitsprüfung" heißt Bestandsprüfung, veraltete Zahlen in
+  `docs/` und ein Em-Dash im Verhaltenskodex.
+
 ## [0.6.25] - 2026-09-02: Der Editionsabgleich behauptet nichts mehr, was der Vers nicht hergibt
 
 ### Behoben

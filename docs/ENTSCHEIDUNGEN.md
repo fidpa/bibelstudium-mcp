@@ -220,7 +220,14 @@ Dazu, klein und derselben Art: `/health` nahm jede Methode an und antwortete mit
 
 ### Was das kostet und was es nicht kostet
 
-`access-control-allow-origin: *` bleibt unverändert. Das ist der Teil des
+*Nachtrag 02.09.2026:* Die **403** trägt seither keine CORS-Kopfzeilen mehr.
+Mit `access-control-allow-origin: *` darauf konnte eine fremde Seite die
+Abweisung lesen und daran erkennen, dass auf dem Port dieser Server läuft, also
+genau das, wogegen die Prüfung steht, eine Antwortstufe später. claude.ai
+bekommt die 403 nie, sein Profil ist nicht berührt; dazu tragen alle Antworten
+`vary: origin` und `cache-control: no-store`.
+
+`access-control-allow-origin: *` bleibt auf den beantworteten Pfaden unverändert. Das ist der Teil des
 Antwortprofils, der als von claude.ai akzeptiert gemessen ist, und er wird nicht
 wegen einer Aufräumarbeit angefasst.
 
@@ -1202,7 +1209,11 @@ dort fehlt, braucht einen benannten Fall im Golden-Test.
 
 Beide teilen sich den Prüfer in `tests/schema-validator.ts`. Er kann nur die
 Teilmenge von JSON Schema, die hier vorkommt, und das ist Absicht: alles darüber
-wäre ungeprüfter Code, der geprüften Code bewacht. `ajv` läge als transitive
+wäre ungeprüfter Code, der geprüften Code bewacht. *Nachtrag 02.09.2026:* Eine
+Regel prüft er seither, die JSON Schema nicht kennt: ein Feld in der Antwort,
+das das Schema nicht nennt, ist ein Befund (Hauspolitik, nicht
+`additionalProperties: false`, das bewusst nirgends steht). Drei Felder waren
+so zwölf Tage lang undeklariert unterwegs, golden-getestet und unbemerkt. `ajv` läge als transitive
 SDK-Abhängigkeit bereit und wäre als `devDependency` vertretbar (die Laufzeit
 bliebe bei einer Abhängigkeit), nur zu 95 Prozent ungenutzt.
 
@@ -1291,8 +1302,12 @@ die fehlende Zeile.
 
 Die Konkordanz trägt den Satz jetzt ebenfalls, mit derselben Bedingung wie
 dort: nur wenn `texttyp` gesetzt ist und nicht auf `wlc` auflöst. Wer `wlc`
-schickt, hat recht und bekommt keinen Hinweis; ein unbekannter Wert löst auf
-`null` auf und bekommt ihn. Der Satz steht **vor** der Kürzungsmeldung, weil er
+schickt, hat recht und bekommt keinen Hinweis. *Nachtrag 02.09.2026:* Beide
+Werkzeuge nehmen den Satz seither aus demselben Helfer
+(`editionFuerTestament`), und ein unbekannter Wert bekommt einen eigenen: „ist
+unbekannt; fürs AT wird ohnehin der WLC verwendet". Bis dahin hieß es auch dort
+„gilt nur fürs NT", also eine Erklärung für einen Wert, der nirgends gilt und
+den das NT abweist. Der Satz steht **vor** der Kürzungsmeldung, weil er
 sagt, worin überhaupt gesucht wurde, und damit alles einschränkt, was danach
 kommt.
 

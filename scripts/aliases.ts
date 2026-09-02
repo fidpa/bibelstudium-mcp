@@ -233,11 +233,3 @@ export const BOOK_ALIASES: ReadonlyArray<readonly [alias: string, bookId: number
   ["offenbarung", 66], ["offb", 66], ["off", 66], ["apokalypse", 66],
 ];
 
-/** Baut aus der Aliasliste eine Map für den Zugriff in O(1). */
-export function buildAliasMap(): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const [alias, bookId] of BOOK_ALIASES) {
-    map.set(alias, bookId);
-  }
-  return map;
-}

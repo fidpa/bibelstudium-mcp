@@ -27,7 +27,6 @@
  * ERGÄNZEND: fasst allein `original_words` an (edition 'tr').
  */
 
-import { dirname, resolve } from "path";
 import { ensureOriginalWordsSchema } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";

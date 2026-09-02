@@ -58,6 +58,8 @@ const JSON_HEADERS = {
 
 type Server = { proc: Bun.Subprocess; stop: () => void };
 
+// `protocolSightings` und der Deckel liegen in `src/transport.ts` (bis zum
+// 23.08.2026 in `server.ts`).
 /**
  * Startet einen frischen Server und kehrt erst zurück, wenn **dieser** Prozess
  * seine Startzeile geschrieben hat.
@@ -243,6 +245,10 @@ try {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
     eq("fremder Origin auf /mcp: 403", mcp.status, 403);
+    // Ohne CORS-Freigabe: Mit `access-control-allow-origin: *` auf der 403
+    // konnte eine fremde Seite die Abweisung lesen und daran erkennen, dass
+    // hier ein Server läuft (bis 02.09.2026).
+    eq("fremder Origin: die 403 trägt keine CORS-Freigabe", mcp.corsOrigin, null);
 
     // Der Befund vom 03.08.2026: Diese Prüfung lag hinter /health, der Pfad war
     // also für jede Webseite abfragbar.
@@ -659,7 +665,62 @@ try {
   lacks("die Bilanz nennt keine Argumente", gesamt, "arguments");
 }
 
+// Die Telemetrie liest den Rumpf seit dem 02.09.2026 nicht mehr selbst, sondern
+// bekommt ihn vom Aufrufer geparst (ein Parse je Anfrage statt zwei). Dass sie
+// dabei nichts verliert, zeigt ein kopfloses `initialize` mit einer noch nicht
+// gesehenen alten Revision nach 51 kopflosen Anfragen: Die Zeile muss weiter
+// erscheinen. Eigener Prozess mit vollem stderr, `start()` verwirft es.
+console.log("Protokoll-Telemetrie ohne Kopfzeile");
+{
+  const TELEMETRIE_PORT = 8943;
+  const proc = Bun.spawn(["bun", "run", SERVER], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      PATH: process.env["PATH"] ?? "",
+      HOME: process.env["HOME"] ?? "",
+      MCP_HTTP_PORT: String(TELEMETRIE_PORT),
+    },
+  });
+  const leser = proc.stderr.getReader();
+  const decoder = new TextDecoder();
+  let ausgabe = "";
+  const lies = async (bis: (s: string) => boolean, ms: number): Promise<boolean> => {
+    const frist = Date.now() + ms;
+    while (Date.now() < frist && !bis(ausgabe)) {
+      const rest = frist - Date.now();
+      const chunk = await Promise.race([
+        leser.read(),
+        new Promise<"frist">((res) => setTimeout(() => res("frist"), rest).unref()),
+      ]);
+      if (chunk === "frist" || chunk.done) break;
+      ausgabe += decoder.decode(chunk.value, { stream: true });
+    }
+    return bis(ausgabe);
+  };
+  check("Telemetrie-Server ist gestartet", await lies((s) => s.includes("running on"), 20_000), ausgabe.trim());
+  const post = (body: unknown) =>
+    fetch(`http://127.0.0.1:${TELEMETRIE_PORT}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify(body),
+    });
+  for (let i = 0; i < 51; i++) await post({ jsonrpc: "2.0", id: i + 1, method: "tools/list" });
+  const antwort = await post({
+    jsonrpc: "2.0", id: 99, method: "initialize",
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "telemetrie", version: "0" } },
+  });
+  eq("kopfloses initialize wird beantwortet", antwort.status, 200);
+  check(
+    "kopfloses initialize einer neuen alten Revision wird weiterhin protokolliert",
+    await lies((s) => s.includes("MCP-Protokoll: 2024-11-05"), 5_000),
+    ausgabe.split("\n").filter((z) => z.includes("MCP-Protokoll")).join(" | ")
+  );
+  proc.kill();
+}
+
 // Mindestzahl wie in test-golden.ts: Fällt ein Block dieser Datei weg, sinkt die
 // Summe, ohne dass eine Prüfung rot würde. Gemessen 02.09.2026, beim Ergänzen
 // mitziehen.
-abschluss(92);
+abschluss(96);

@@ -282,6 +282,11 @@ Skript oder durch Eintippen im Browser abfragt, schickt keinen und bekommt
 weiterhin 200 oder 503. Betroffen ist allein `fetch()` aus einer fremden
 Webseite heraus.
 
+**Seit 0.6.26 trägt die 403 keine CORS-Kopfzeilen mehr.** Im Browser erscheint
+die Abweisung deshalb als CORS-Fehler in der Konsole, nicht als lesbare 403:
+Eine fremde Seite kann so nicht mehr unterscheiden, ob hier ein Server abweist
+oder gar keiner läuft. `curl -i` zeigt die 403 unverändert.
+
 ### `/health` antwortet mit `405 Method Not Allowed`
 
 Seit 0.5.15 nimmt die Zustandsauskunft nur `GET` und `HEAD` an, dazu `OPTIONS`

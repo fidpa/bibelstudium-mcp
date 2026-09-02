@@ -25,7 +25,6 @@
  * ERGÄNZEND: fasst allein `strong_defs` an.
  */
 
-import { dirname, resolve } from "path";
 import { ensureStrongDefsSchema } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
@@ -104,7 +103,9 @@ function parseStepLexicon(
     const key = m[1]! + m[2]!;
     if (out.has(key)) continue;
     const cols = line.split("\t");
-    if (cols.length < 7) {
+    // Griechisch braucht Spalte 7 (`meaning`); eine Zeile mit genau sieben
+    // Spalten bekam bis zum 02.09.2026 still ein leeres `meaning`.
+    if (cols.length < (includeMeaning ? 8 : 7)) {
       throw new Error(`STEPBible row for ${cols[0]} has only ${cols.length} columns — format changed?`);
     }
     out.set(key, {

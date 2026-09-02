@@ -23,7 +23,6 @@
  * Verstext entfernt.
  */
 
-import { dirname, resolve } from "path";
 import { BOOK_ALIASES } from "./aliases.ts";
 import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";

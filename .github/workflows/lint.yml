@@ -6,10 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only by default, like the other workflows; a superseded run of the same
+# branch is cancelled instead of finishing behind the newer one.
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   data-absent:
     name: No Bible data is tracked in this repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # data/ carries the Bible database and its sources. Some of it may not
     # be redistributed: STEPBible asks that their files are not passed on,
     # and one German translation is licensed for the hosted service only.
@@ -60,6 +70,7 @@ jobs:
   typecheck:
     name: TypeScript (tsc --noEmit, strict)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +88,7 @@ jobs:
   startup:
     name: Startup guards (no database / incomplete database)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # CI has no Bible database — it is built locally from the upstream sources
     # (gitignored). What CI can verify is the path every new user hits first:
     # that a clone without data starts anyway, says so, and offers bible_setup.
@@ -199,9 +211,49 @@ jobs:
   yaml:
     name: YAML (yamllint)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: yamllint
         run: |
-          pipx install yamllint
+          # Pinned: a new yamllint could change what 'relaxed' accepts without
+          # anyone deciding it (measured 02.09.2026: 59 line-length warnings pass).
+          pipx install yamllint==1.38.0
           yamllint -d relaxed .
+
+  guards:
+    name: Repository guards (private references, em dash)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Two checks that docs/TYPESCRIPT.md prescribes as shell commands and that
+    # nobody ran automatically until 02.09.2026. Both are plain grep and need no
+    # database, so they run in the job that cannot run the golden tests.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No versioned .ts file refers to private, gitignored material
+        run: |
+          set -euo pipefail
+          # Rule K3: a comment must not point at CLAUDE.md, .claude/, TODO.md or
+          # docs/intern/, none of which a clone has. The two expected hits are
+          # the default path of the Schlachter 2000 delivery in
+          # scripts/import-schlachter2000.ts, which the script needs as a value.
+          hits=$(grep -rn "CLAUDE\.md\|\.claude/\|docs/intern\|TODO\.md" --include="*.ts" src tests scripts || true)
+          printf '%s\n' "$hits"
+          n=$(printf '%s\n' "$hits" | grep -c . || true)
+          [ "$n" -eq 2 ] || { echo "::error::expected exactly 2 hits, got $n"; exit 1; }
+
+      - name: No em dash in code comments or German Markdown
+        run: |
+          set -euo pipefail
+          # Wrong in German text (rule K1). Four files carry the character as
+          # the subject of that rule or inside a quoted English message.
+          if grep -rnE "^\s*(//|\*|/\*).*—" --include="*.ts" src tests scripts; then
+            echo "::error::em dash in a code comment"; exit 1
+          fi
+          hits=$(git ls-files '*.md' \
+            | grep -vE '^(CHANGELOG\.md|docs/TYPESCRIPT\.md|docs/anweisungen/README\.md|docs/FEHLERBEHEBUNG\.md)$' \
+            | xargs grep -n "—" || true)
+          if [ -n "$hits" ]; then
+            printf '%s\n' "$hits"; echo "::error::em dash in German Markdown"; exit 1
+          fi

@@ -22,7 +22,7 @@ NOTES.md
 # Interne Entwicklungsdokumentation: Recherchen, Messkataloge und Betriebsnotizen
 # aus dem Ursprungs-Repo. Enthält Betriebswissen (Container, Pfade, Hostnamen)
 # und Bezüge auf das private Repo. docs/ selbst ist öffentlich, docs/intern/
-# nicht — beim Anlegen neuer Dateien dort auf diesen Unterschied achten.
+# nicht; beim Anlegen neuer Dateien dort auf diesen Unterschied achten.
 /docs/intern/
 
 # Slash-Commands und Sitzungskram der lokalen Agenten-Umgebung. Enthalten

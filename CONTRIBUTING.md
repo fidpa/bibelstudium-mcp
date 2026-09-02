@@ -41,7 +41,7 @@ läuft ausschließlich beim Datenaufbau.
 | `src/metriken.ts` | Aufrufzähler nach Werkzeug, Prompt und Ressourcenart samt Ausgang, das Prometheus-Textformat und die Schlussbilanz beim Beenden |
 | `src/handlers/*.ts` | Ein Werkzeug je Datei: `lookup`, `original`, `crossrefs`, `concordance`, `search`, `compare` |
 | `src/werkzeug-helfer.ts` | Was mehrere Werkzeuge teilen: Ergebnisformen, Buchauflösung samt Grenzen und Meldungen, Versnutzlast, Testament-Routing des Grundtextes |
-| `src/db.ts` | Datenbankverbindung, Unversehrtheitsprüfung und alle vorbereiteten Abfragen |
+| `src/db.ts` | Datenbankverbindung, Bestandsprüfung und alle vorbereiteten Abfragen |
 | `src/editions.ts` | Die vier Grundtext-Editionen: Namen, Lesehinweise, Lizenzen, Auflösung des Texttyps |
 | `src/translations.ts` | Übersetzungs-Registry (Kürzel, Namen, Lizenzen, Aliase) |
 | `src/morphology.ts` | Die drei Morphologie-Schemata: MorphGNT, Robinson, OSHB |

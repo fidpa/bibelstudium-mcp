@@ -98,6 +98,9 @@ export function ensureStrongDefsSchema(db: Database): void {
   const cols = db
     .query("PRAGMA table_info(strong_defs)")
     .all() as Array<{ name: string }>;
+  // Die einzige Stelle im Baum, an der ein Bezeichner in SQL eingesetzt wird.
+  // `col` stammt aus dieser festen Liste und muss es bleiben; ein Feldname aus
+  // Daten wäre hier eine Injektion (02.09.2026).
   for (const col of ["gloss", "meaning"]) {
     if (!cols.some((c) => c.name === col)) {
       db.exec(`ALTER TABLE strong_defs ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);

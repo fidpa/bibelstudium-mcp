@@ -17,7 +17,6 @@
  * ERGÄNZEND: fasst allein `tagnt_words` an.
  */
 
-import { dirname, resolve } from "path";
 import { ensureTagntSchema } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";

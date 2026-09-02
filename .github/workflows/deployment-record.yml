@@ -37,6 +37,12 @@ jobs:
   record:
     name: Verify endpoint and record deployment
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The free-text input reaches the shell through the environment only, never
+    # by interpolating ${{ inputs.version }} into a run: block (a quote in the
+    # input would break out of the script before the format check runs).
+    env:
+      VERSION: ${{ inputs.version }}
     environment:
       name: production
       url: https://mcp.bibelstudium-mcp.de/mcp
@@ -44,7 +50,7 @@ jobs:
       - name: Reject a version that is not a release tag
         run: |
           set -euo pipefail
-          v='${{ inputs.version }}'
+          v="$VERSION"
           echo "requested version: $v"
           # A free-text input becomes the deployment ref. Anything that is not
           # a plain version keeps this job from recording nonsense.
@@ -61,9 +67,9 @@ jobs:
         run: |
           set -euo pipefail
           tagged=$(jq -r .version package.json)
-          echo "package.json at tag v${{ inputs.version }}: $tagged"
-          if [ "$tagged" != "${{ inputs.version }}" ]; then
-            echo "::error::Tag v${{ inputs.version }} carries $tagged"
+          echo "package.json at tag v$VERSION: $tagged"
+          if [ "$tagged" != "$VERSION" ]; then
+            echo "::error::Tag v$VERSION carries $tagged"
             exit 1
           fi
 
@@ -92,8 +98,8 @@ jobs:
           served=$(sed -n 's/^data: //p' /tmp/answer.txt \
             | jq -r '.result.serverInfo.version // empty')
           echo "endpoint serves: ${served:-<none>}"
-          if [ "$served" != "${{ inputs.version }}" ]; then
-            echo "::error::Endpoint serves ${served:-<none>}, expected ${{ inputs.version }}"
+          if [ "$served" != "$VERSION" ]; then
+            echo "::error::Endpoint serves ${served:-<none>}, expected $VERSION"
             exit 1
           fi
 

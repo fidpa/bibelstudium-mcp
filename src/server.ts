@@ -13,7 +13,9 @@
  * die download-*.ts-Skripte.
  *
  * Aufbau der Datei: Ausgabeschemata, Werkzeug-Registrierung, Prompts,
- * Ressourcen, bible_setup, Dispatch, Bootstrap. Die Werkzeuge selbst stehen
+ * Ressourcen, bible_setup, bible_server_info, Dispatch, Bootstrap. Die
+ * beiden genannten Werkzeuge bleiben hier, weil sie keinen Text lesen: das
+ * eine baut die Datenbank, das andere beschreibt die Instanz. Die übrigen stehen
  * nicht mehr hier: Jeder Handler hat eine eigene Datei unter handlers/, und was
  * mehrere von ihnen brauchen, steht in werkzeug-helfer.ts. Die
  * Datenbankverbindung samt allen vorbereiteten Statements steht in db.ts, die
@@ -47,7 +49,6 @@ import { DB_PATH } from "./db-path.ts";
 import {
   WERKZEUG_NAMEN,
   bilanzZeile,
-  metrikenText,
   registrierePrompts,
   registriereProzess,
   registriereRessourcen,
@@ -65,7 +66,6 @@ import {
   bookCount,
   dataFetchedAt,
   dataMissing,
-  db,
   hasFts,
   hasStepCols,
   hasStrongDefs,
@@ -216,10 +216,11 @@ const CROSSREFS_GEKUERZT_SCHEMA = {
 };
 
 /** Bedingt, drei Felder:
- *  `hinweis`, nur wenn der Text Wörter in Klammern trägt (Menge 137 Verse,
- *  Schlachter 2000 1925; Luther, Schlachter 1951 und Elberfelder keine) oder
- *  wenn die Wortlaut-Grenze gegriffen hat. Das Feld hat seit der Grenze zwei
- *  Ursachen, es kann also auch ohne Klammerverse dastehen.
+ *  `hinweis`, aus fünf Quellen (`lookupPayload`): Wortlaut-Grenze,
+ *  Fußnotenbudget, abweichende Verszählung (140 der 1190 Kapitel),
+ *  Namensnennung der Ausgabe (Schlachter 1951 und 2000, also dort in jeder
+ *  Antwort) und Wörter in Klammern (Menge 148 Verse, Schlachter 2000 1925).
+ *  Bis zum 02.09.2026 nannte dieser Kommentar zwei davon.
  *  `fussnoten`, nur wenn die Ausgabe zu einem der gelieferten Verse eine
  *  Anmerkung führt: allein Schlachter 2000, dort an 1134 von 31 171 Versen
  *  (rund 3,6 %, gemessen 05.08.2026). Die Noten haben ein eigenes Budget
@@ -692,7 +693,9 @@ const COMPARE_OUTPUT = {
 };
 
 /** Bedingt: `daten_stand`, erst wenn ein Download eine Herkunft vermerkt hat;
- *  `hinweis`, nur solange die Datenbank fehlt. */
+ *  `hinweis`, nur solange die Datenbank fehlt; `kanon` nur mit Datenbank;
+ *  `zusatzdaten.strong_lexikon_sprache` nur mit geladenem Lexikon; die drei
+ *  Lizenzfelder in `uebersetzungen[]` nur bei einem Kürzel mit Registry-Eintrag. */
 const SERVER_INFO_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -1192,7 +1195,7 @@ const MAX_PROMPT_ARG_LENGTH = 100;
  * "Missing required arguments: -32602", "Invalid prompt name: -32602"
  * (server/prompts, ein SHOULD in jeder Revision, die dieser Server spricht).
  */
-function promptArg(args: Record<string, string>, name: string, required: boolean): string {
+function promptArg(args: Record<string, unknown>, name: string, required: boolean): string {
   const raw = args[name];
   const value =
     typeof raw === "string" ? raw.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim() : "";
@@ -1219,7 +1222,9 @@ function loadedTranslationList(): string {
 
 const handleGetPrompt = async (request: GetPromptRequest) => {
   const name = request.params.name;
-  const args = (request.params.arguments ?? {}) as Record<string, string>;
+  // Auf `unknown`-Werte gecastet, nicht auf `string` (docs/TYPESCRIPT.md, Regel 4):
+  // Der Typ behauptete sonst, die Laufzeitprüfung in `promptArg` sei überflüssig.
+  const args = (request.params.arguments ?? {}) as Record<string, unknown>;
 
   // Vor der Auswertung, also gezählt werden Versuche und nicht geglückte
   // Abrufe: Ein fehlendes Pflichtargument wirft weiter unten, und gerade das
@@ -1344,9 +1349,11 @@ const URI_SCHEME = "bible://";
 // Abgeleitet aus den Grenzen, die die Segmente ohnehin tragen, nicht gewählt:
 // das Schema, vier namensartige Segmente (jedes durch MAX_BOOK_LENGTH begrenzt,
 // die weiteste solche Grenze im Gebrauch), eine Versliste von
-// MAX_VERSES_LENGTH, die Trennzeichen, und ein Faktor drei, weil die
-// Prozentkodierung aus einem Nicht-ASCII-Zeichen bis zu neun macht (drei
-// UTF-8-Bytes zu je drei Zeichen). Wie MAX_VERSES_LENGTH kann auch diese Grenze
+// MAX_VERSES_LENGTH, die Trennzeichen, und ein Faktor drei für die
+// Prozentkodierung: drei Zeichen je Byte, und Buchnamen sind überwiegend ASCII
+// (der längste hat rund 20 Zeichen, die Grenze 50; ein Name aus lauter
+// Umlauten käme auf neun Zeichen je Buchstabe und stieße nicht an). Wie
+// MAX_VERSES_LENGTH kann auch diese Grenze
 // nie die einzige verletzte sein; sie steht da, um eine übergroße URI vor dem
 // ersten split abzuweisen, und nicht als eigene Regel.
 const MAX_URI_LENGTH =
@@ -1794,7 +1801,7 @@ const handleReadResource = async (request: ReadResourceRequest) => {
  * Durch ein ausdrückliches Bestätigungsflag gesichert, statt beim ersten
  * Gebrauch loszulaufen.
  *
- * Der Download dauert rund eine Minute und greift auf acht fremde Quellen zu;
+ * Der Download dauert rund eine halbe Minute (26 s für acht Schritte, gemessen 29.08.2026) und greift auf acht fremde Quellen zu;
  * das startet man nicht hinter dem Rücken des Nutzers, nur weil ein Modell
  * gerade nach einem Vers gefragt hat. Ohne `bestaetigung` antwortet das Werkzeug
  * mit dem Plan, damit das Modell etwas Handfestes vorlegen kann, bevor es
@@ -1830,7 +1837,7 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
         "Originalquellen geladen werden. Frage die Nutzerin oder den Nutzer, ob der " +
         "Download jetzt starten soll, und rufe dieses Werkzeug danach mit " +
         "bestaetigung=true erneut auf.",
-      dauer: "ungefähr eine Minute",
+      dauer: "etwa eine halbe Minute",
       voraussetzung: "Internetverbindung",
       umfang_mb: 145,
       schritte: SETUP_STEPS.map((s) => ({ schritt: s.label, liefert: s.provides })),
@@ -1911,6 +1918,7 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
  * optional, eine Instanz ohne einen davon ist also ein gewöhnlicher Zustand, und
  * die übliche Ursache, wenn ein Werkzeug leer zurückkommt.
  */
+// --- bible_server_info: Fassung, Bestand, Voreinstellung -------------------
 function handleServerInfo() {
   const result = {
     server: "bibelstudium-mcp",
@@ -2069,7 +2077,7 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
             "Aufruf hilft nicht. Beantworte die Bibelfrage nicht aus dem Gedächtnis, " +
             "sondern sage, dass der Bibelserver derzeit keine Daten hat."
         : `${dataMissing} Dieser Server bringt die Bibeldaten nicht mit, sie werden einmalig ` +
-            "von den Originalquellen geladen (etwa eine Minute, Internetverbindung nötig).\n\n" +
+            "von den Originalquellen geladen (etwa eine halbe Minute, Internetverbindung nötig).\n\n" +
             "Frage die Nutzerin oder den Nutzer, ob der Download jetzt starten soll, und rufe " +
             "dann bible_setup mit bestaetigung=true auf. Beantworte die Bibelfrage bis dahin " +
             "nicht aus dem Gedächtnis."

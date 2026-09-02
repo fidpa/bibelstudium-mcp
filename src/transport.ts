@@ -66,6 +66,12 @@ export type ServerFabrik = () => Server;
 // streicht ("do not mint or echo session IDs").
 const CORS_HEADERS: Readonly<Record<string, string>> = {
   "access-control-allow-origin": "*",
+  // Die Antwort hängt vom Origin ab (200 oder 403): `vary` sagt das jedem
+  // Zwischenspeicher, `no-store` nimmt ihm die Gelegenheit ganz. Heute nicht
+  // ausnutzbar (Cloudflare speichert application/json nicht von sich aus),
+  // aber die Bauart, die später leckt (02.09.2026).
+  "vary": "origin",
+  "cache-control": "no-store",
   "access-control-allow-headers": "content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id",
   "access-control-expose-headers": "mcp-session-id",
   "access-control-max-age": "86400",
@@ -207,7 +213,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-async function noteProtocolVersion(request: Request): Promise<void> {
+function noteProtocolVersion(request: Request, rumpf: unknown): void {
   // Der billige Weg, den jede Anfrage nimmt, sobald eine Version einmal gesehen
   // ist: ein Blick in die Kopfzeilen und einer in die Menge, ohne den Rumpf zu
   // lesen.
@@ -232,11 +238,12 @@ async function noteProtocolVersion(request: Request): Promise<void> {
   let modernMeta = false;
   let discover = false;
 
-  // Den Rumpf nur für eine noch nicht vermerkte Version lesen, also höchstens
-  // einmal je Version. Die Kopfzeile fehlt genau bei einem alten `initialize`
-  // und bei Clients vor 2025-06-18, die sie nie definiert haben.
-  try {
-    const body = asRecord(await request.clone().json());
+  // Der Rumpf kommt geparst herein (der Aufrufer liest ihn ohnehin für das
+  // SDK); hier wird nichts mehr geklont oder geparst. Die Kopfzeile fehlt genau
+  // bei einem alten `initialize` und bei Clients vor 2025-06-18, die sie nie
+  // definiert haben.
+  {
+    const body = asRecord(rumpf);
     if (body !== null) {
       discover = body["method"] === "server/discover";
       const params = asRecord(body["params"]);
@@ -251,10 +258,6 @@ async function noteProtocolVersion(request: Request): Promise<void> {
         }
       }
     }
-  } catch {
-    // Kein JSON, oder ein Rumpf, den dieser Server ohnehin abweist. Die
-    // Kopfzeile allein bezeichnet die Ära weiterhin, und ein Fehlschlag hier darf
-    // die Anfrage nicht scheitern lassen.
   }
 
   const revision = bodyRevision ?? headerRevision;
@@ -293,8 +296,11 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
   const host = process.env["MCP_HTTP_HOST"] ?? "127.0.0.1";
   // Browser-Herkünfte, die mit diesem Server sprechen dürfen. Voreingestellt
   // leer: MCP-Clients sind keine Browser und schicken überhaupt keinen Origin,
-  // die strenge Vorgabe kostet also nichts und schließt das Loch für
-  // DNS-Rebinding, das die Spezifikation zu schließen verlangt. Ein Web-Client
+  // die strenge Vorgabe kostet also nichts. Gegen DNS-Rebinding schließt sie das
+  // Loch für POST (Browser setzen Origin dort auch gleichursprünglich), nicht
+  // für GET /health: Ein gleichursprüngliches GET trägt keinen Origin, und eine
+  // Host-Prüfung gibt es hier nicht (aus der Fetch-Spezifikation abgeleitet,
+  // 02.09.2026; bis dahin behauptete dieser Satz das Gegenteil). Ein Web-Client
   // lässt sich über MCP_HTTP_ALLOWED_ORIGINS ausdrücklich zulassen.
   const allowedOrigins = (process.env["MCP_HTTP_ALLOWED_ORIGINS"] ?? "")
     .split(",")
@@ -337,10 +343,13 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
       // der Pfad ungeschützt, den ein Fremder zuerst probiert.
       const origin = request.headers.get("origin");
       if (origin !== null && !allowedOrigins.includes(origin)) {
-        // Kein `access-control-allow-methods`: Diese Antwort gehört zu keinem
-        // Pfad, für den eine Methodenliste gälte, und einem abgewiesenen
-        // Aufrufer ist über den Endpunkt nichts mitzuteilen.
-        return withCors(new Response("Forbidden origin", { status: 403 }), null);
+        // Keine CORS-Kopfzeilen, auch kein `access-control-allow-origin`: Mit
+        // ihnen konnte eine fremde Seite die 403 lesen und daran erkennen, dass
+        // auf diesem Port dieser Server läuft, also genau das, wogegen die
+        // Prüfung steht, eine Antwortstufe später (bis 02.09.2026). Ohne sie
+        // blockt der Browser das Lesen, und Abweisung und „kein Server" sehen
+        // für die Seite gleich aus. Die 404 unten behält ihre Kopfzeilen.
+        return new Response("Forbidden origin", { status: 403 });
       }
 
       if (url.pathname === "/health") {
@@ -450,11 +459,20 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
         );
       }
 
-      // Hält die Protokollrevision des Aufrufers fest, höchstens eine Zeile je
-      // gesehener Version. Lässt die Anfrage nie scheitern: Ein Aufrufer darf ein
-      // Nachschlagen nicht dadurch zerbrechen können, dass er einen Rumpf
-      // schickt, den dies hier nicht lesen kann.
-      await noteProtocolVersion(request);
+      // Den Rumpf genau einmal lesen und dem SDK geparst übergeben. Bis zum
+      // 02.09.2026 las die Telemetrie einen Klon und das SDK danach das
+      // Original: zwei vollständige Parses je Anfrage ohne Kopfzeile, bis zu
+      // 1 MB. Ein unlesbarer Rumpf geht ungeparst weiter, das SDK antwortet dann
+      // wie bisher mit 400, und die Telemetrie zählt nach der Kopfzeile. Ein
+      // Aufrufer darf ein Nachschlagen nie dadurch zerbrechen, dass er einen
+      // Rumpf schickt, den dies hier nicht lesen kann.
+      let rumpf: unknown;
+      try {
+        rumpf = await request.clone().json();
+      } catch {
+        rumpf = undefined;
+      }
+      noteProtocolVersion(request, rumpf);
 
       // Zustandslos: ein Server samt Transport je Anfrage, keine
       // Sitzungsregistratur. Dieser Server ist reines Anfrage-Antwort-Spiel, er
@@ -468,7 +486,10 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
         sessionIdGenerator: undefined,
       });
       await createServer().connect(transport);
-      return withCors(await transport.handleRequest(request), METHODS_MCP);
+      return withCors(
+        await transport.handleRequest(request, rumpf === undefined ? undefined : { parsedBody: rumpf }),
+        METHODS_MCP
+      );
     },
   });
 
@@ -530,6 +551,11 @@ export function serveMetrics(): void {
       port,
       hostname: host,
       development: false,
+      // Dieselben Grenzen wie am MCP-Port, aus demselben Grund: Ohne sie nimmt
+      // Bun bis zu 128 MB je Rumpf an, und ein Abruf von /metrics trägt gar
+      // keinen (02.09.2026).
+      maxRequestBodySize: 4096,
+      idleTimeout: 30,
       // Ohne diese Zeile teilen sich zwei Prozesse den Port stillschweigend.
       // Bun setzt SO_REUSEPORT von sich aus: Ein zweiter Serverprozess band
       // denselben Port anstandslos, beide erschienen als LISTEN, und der Kern

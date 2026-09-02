@@ -472,7 +472,7 @@ export const bookTooLong = `Error: 'book' must be at most ${MAX_BOOK_LENGTH} cha
 // beim Werkzeug, weil sie dessen eigene Beispiele trägt: `bible_compare` nennt
 // nur neutestamentliche, denn fürs AT weist es ohnehin ab. Diese hier trägt
 // keine, sie benennt die Bedingung.
-export const bookNotAString = `Error: 'book' must be a string with the German book name`;
+const bookNotAString = `Error: 'book' must be a string with the German book name`;
 export const queryNotAString = `Error: 'query' must be a string`;
 export const queryTooLong = `Error: 'query' must be at most ${MAX_QUERY_LENGTH} characters`;
 // Eine Meldung je Bedingung. Eine einzige Sammelmeldung nannte die Form von

@@ -3,7 +3,7 @@
 ## Unser Versprechen
 
 Wir als Mitglieder, Mitwirkende und Verantwortliche versprechen, die Teilnahme
-an unserer Gemeinschaft für alle Menschen frei von Belästigung zu halten —
+an unserer Gemeinschaft für alle Menschen frei von Belästigung zu halten,
 unabhängig von Alter, Körpergröße, sichtbarer oder unsichtbarer Behinderung,
 ethnischer Zugehörigkeit, Geschlechtsmerkmalen, Geschlechtsidentität und
 -ausdruck, Erfahrungsgrad, Ausbildung, sozioökonomischem Status,

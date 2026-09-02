@@ -110,12 +110,14 @@ Am 05.08.2026 sind in zwei Zügen Blöcke in eigene Dateien gezogen: erst drei
 zustandsfreie (`morphology.ts`, `verse-budget.ts`, `greek-diff.ts`), dann die
 Datenschicht (`db.ts`) und die Editionen (`editions.ts`), zuletzt die geteilten
 Werkzeughelfer (`werkzeug-helfer.ts`) und die sechs Handler unter `handlers/`.
-Die Kommentare gingen jeweils mit. `server.ts` hat seither 2360 Zeilen, die
-übrigen Laufzeitmodule zusammen 3146, und der Anteil bleibt in derselben
-Größenordnung: gemessen 30 Prozent in `server.ts`, 20 bis 36 Prozent in den
-Modulen (gezählt über Zeilen, die mit `//`, `/*` oder `*` beginnen). Die Zahlen
-der Reihe darüber sind nicht fortgeschrieben, sie belegen den damaligen Stand
-einer einzigen Datei.
+Die Kommentare gingen jeweils mit. Am 02.09.2026 gemessen: `server.ts` hat
+2339 Zeilen, die übrigen Laufzeitmodule (mit `transport.ts` und `metriken.ts`
+vom 23.08.2026) zusammen 5252, und der Anteil bleibt in derselben
+Größenordnung: 26 Prozent in `server.ts` (620 Kommentarzeilen), 20 bis 36
+Prozent in den Modulen (gezählt über Zeilen, die mit `//`, `/*` oder `*`
+beginnen). Die Zahlen der Reihe darüber sind nicht fortgeschrieben, sie belegen
+den damaligen Stand einer einzigen Datei; die hier genannten sind eine
+Momentaufnahme mit Datum, keine gepflegte Größe.
 
 Das ist Absicht. Ein großer Teil der
 Entscheidungen hier beruht auf Messungen an fremden Clients, fremden Quellen

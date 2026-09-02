@@ -34,7 +34,7 @@
  */
 
 /** Für ein Label, dessen Wert nicht registriert wurde. */
-export const UNBEKANNT = "unbekannt";
+const UNBEKANNT = "unbekannt";
 
 /**
  * Unixzeit des Prozessstarts.

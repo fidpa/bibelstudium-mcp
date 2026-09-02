@@ -13,7 +13,6 @@
  * ERGÄNZEND: fasst allein `verses_fts` an.
  */
 
-import { dirname, resolve } from "path";
 import { rebuildVersesFts } from "./schema.ts";
 import { DB_PATH } from "../src/db-path.ts";
 import { openAtomicDb } from "./atomic-db.ts";
@@ -41,9 +40,12 @@ function main(): void {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  console.error("FTS build failed:", error);
-  process.exit(1);
+// Wie die übrigen Skripte: nur beim direkten Aufruf laufen, nicht beim Import.
+if (import.meta.main) {
+  try {
+    main();
+  } catch (error) {
+    console.error("FTS build failed:", error);
+    process.exit(1);
+  }
 }
