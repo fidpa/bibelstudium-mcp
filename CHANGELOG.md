@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.30] - 2026-09-02: Der Editionsabgleich liest SBLGNTs kontrahierte Reflexivform richtig
+
+### Behoben
+
+- **Editionsabgleich (`bible_compare`):** SBLGNT schreibt die Reflexivform an
+  18 Stellen kontrahiert („αὑτῷ"); der Vergleich verlor den Spiritus und
+  behauptete an sechs Stellen einen Widerspruch zur TAGNT-Notiz, den es nicht
+  gibt (Joh 2,24; 13,32; 20,10; Eph 2,15; Phil 3,21; Offb 8,6). αὑτ- gilt jetzt
+  als ἑαυτ-, αὕτη und αὗται bleiben unberührt. Dazu zählt eine Elision mit
+  Hauchwechsel (μεθ᾽ gegen μετά, ἀφ᾽ gegen ἀπό) als Schreibung wie ἀλλ᾽.
+  643 Sätze statt 654 über 6194 Notizzeilen: 14 weg, 3 dazu (SBLGNT liest die
+  Reflexivform, wo der Apparat es unter αὐτ- führt).
+- **Golden-Treiber:** Die stderr-Sammlung wird mit Frist abgewartet. Ein
+  Enkelprozess, der stderr offen hält, ließ den Fehlerpfad hängen.
+
+### Geändert (Dokumentation)
+
+- **Edition `tr`:** `docs/FEHLERBEHEBUNG.md` erklärt, warum Lk 17,36 fehlt; das
+  Bundle-Manifest nennt Stephanus 1550. Die verworfene Regelfassung aus 0.6.29
+  erzeugte 1376 falsche Belege, nicht 1310.
+- **`istSchreibvariante`:** Kommentar und Entscheidungs-Doku nennen die 21
+  Formunterschiede, die die Regel als Schreibung durchlässt, heute folgenlos.
+- Tests: 1106 Golden-Zusicherungen (vorher 1094).
+
 ## [0.6.29] - 2026-09-02: Der Textus Receptus nennt seine Ausgabe, Stephanus 1550
 
 ### Behoben

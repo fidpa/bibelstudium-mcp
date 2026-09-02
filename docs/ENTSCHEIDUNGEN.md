@@ -1673,11 +1673,45 @@ gefasst über den vorletzten Buchstaben, damit „τὸ" gegen „τὸν", „�
 genau die 14 weg, keiner dazu. Positive Sätze („liest hier X") bleiben, weil
 sie bei einer Schreibvariante wahr sind. **Verworfen:** die Schreibvariante
 schon beim Kopf-Vergleich gleichsetzen; dann gälte „ἐστιν" als Beleg für die
-Lesart „ἐστι", gemessen 1310 falsche Belege. Das Review fand außerdem drei
-sachlich falsche Sätze mit je eigener Ursache, die stehen bleiben: Mk 6,27
-(Byz teilt den Vers anders, „ὁ δὲ ἀπελθὼν" steht in Vers 28), Phil 3,21 (SBL
-liest „αὑτῷ", der Spiritus geht in der Normalform verloren), Mk 14,31 (TR liest
-„ἐκ περισσοῦ" in zwei Wörtern).
+Lesart „ἐστι", gemessen 1376 falsche Belege. Das Review fand außerdem drei
+sachlich falsche Sätze mit je eigener Ursache: Mk 6,27 (Byz teilt den Vers
+anders, „ὁ δὲ ἀπελθὼν" steht in Vers 28), Phil 3,21 (SBL liest „αὑτῷ", der
+Spiritus ging in der Normalform verloren), Mk 14,31 (TR liest „ἐκ περισσοῦ" in
+zwei Wörtern). Mk 6,27 und Mk 14,31 bleiben.
+
+**Seit 0.6.30: αὑτ- ist ἑαυτ-, und die Elision kennt den Hauchwechsel.** Ein
+zweites Review vom 02.09.2026 las alle 43 Widerspruchssätze der Fassung
+0.6.29: Der Fall Phil 3,21 war keiner, sondern sechs (Joh 2,24; 13,32; 20,10;
+Eph 2,15; Phil 3,21; Offb 8,6), alle über SBLGNT, das die Reflexivform an 18
+Stellen kontrahiert „αὑτῷ" schreibt. `normForCompare` löst αὑτ- mit Spiritus
+asper ohne Akzent auf dem υ jetzt zu εαυτ- auf; αὕτη und αὗται tragen den
+Akzent und bleiben unberührt, ebenso der Nominativ αὑτός (Mt 6,4 in TAGNT,
+ohne reflexives Gegenstück). Dazu Mt 14,7: „byzantine liest hier μεθ, nicht
+μετὰ" war eine Elision mit Hauchwechsel (μεθ᾽ ὅρκου gegen μετὰ ὅρκου), die
+`istElision` nicht kannte; sie kennt jetzt θ/τ, φ/π, χ/κ vor dem Schlussvokal
+und οὐχ/οὐκ (zehn Paare im Bestand). Ergebnis: 643 Sätze statt 654. Weg sind
+14: die sechs Widersprüche und Mt 14,7, vier positive Sätze über eine
+Hauchwechsel-Elision („byzantine liest hier μεθ; nur TR", Mt 26,72, Mk 9,2,
+Lk 2,46, Mk 14,19; dieselbe Klasse wie ἀλλ᾽), und drei positive Sätze, die
+SBL oder Byz die falsche Form zuschrieben (Lk 24,12, zweimal 1Joh 5,10). Dazu
+kommen drei: SBL liest die Reflexivform, wo TAGNT es unter αὐτ- führt
+(Apg 14,17, Hebr 5,3, Offb 18,7), und das ist ein echter Unterschied zwischen
+Editionstext und Apparat.
+
+Dasselbe Review hat `istSchreibvariante` vermessen: Die Regel akzeptiert 625
+Paare Kopf/Lesart, davon 25 aus TAGNTs Bedeutungsvarianten, und 21 davon
+sind Formunterschiede nach TAGNTs eigenen Codes (τί/τίς in 1Kor 3,5 und
+Kol 1,27, οὐδέ/οὐδέν Joh 3,27, διδάσκει/διδάσκειν Offb 2,20, ὑπάγει/ὑπάγειν
+Offb 17,8, βάτραχοι/βατράχοις Offb 16,13, συγκληρονόμοις/συγκληρονόμοι
+1Petr 3,7, ἔρις/ἔρεις 2Kor 12,20, εἴδετε/ἴδετε Phil 1,30 und Jak 5,11, der
+Stammwechsel λιπ-/λειπ- an neun Stellen). An keinem widerspricht heute eine
+Edition ihrer Notiz; die Regel bleibt, weil sie heute nichts Falsches erzeugt,
+und ihre Grenze steht an der Funktion. Ein Golden-Fall (Lk 12,59 τὸ/τὸν)
+sichert, dass ein echter Unterschied gemeldet bleibt. **Nicht gebaut:** den
+Morphologiecode der Notizform (steht in der Notiz, `G5101=I-NSM`) gegen die
+Spalte `grammar` des Kopfes halten und nur bei gleichem Code schweigen. Das
+wäre die Regel über Formen statt über Buchstaben; sie lohnt, sobald ein Import
+an einem der 21 Paare einen Widerspruch bringt.
 
 ## Der TR-Import liest die erste von zwei Lesarten
 

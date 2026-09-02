@@ -148,11 +148,14 @@ function mitFrist<T>(p: Promise<T>, ms: number): Promise<T | "frist"> {
 
 /**
  * Liest stderr mit und behält die letzten 20 Zeilen; endet mit dem Strom, also
- * mit dem Prozess. Keine Frist je Lesevorgang: Bis zum 02.09.2026 brach die
- * Sammlung nach zwei Sekunden Stille ab, und ein Server, der erst nach drei
- * Sekunden seine Fehlermeldung schrieb, hinterließ eine Ausnahme ohne sie
- * (gemessen mit einem verzögerten Ersatzserver). `proc.kill()` im `finally`
- * des Aufrufers schließt den Strom, danach endet auch diese Schleife.
+ * mit dem letzten Prozess, der ihn hält. Keine Frist je Lesevorgang: Bis zum
+ * 02.09.2026 brach die Sammlung nach zwei Sekunden Stille ab, und ein Server,
+ * der erst nach drei Sekunden seine Fehlermeldung schrieb, hinterließ eine
+ * Ausnahme ohne sie (gemessen mit einem verzögerten Ersatzserver). `proc.kill()`
+ * im `finally` des Aufrufers beendet den Server; hat der einen Enkel mit
+ * geerbtem stderr hinterlassen, bleibt der Strom offen, und `proc.exited` löst
+ * trotzdem auf (nachgebaut 02.09.2026). Deshalb wartet der Aufrufer auf diese
+ * Sammlung mit Frist.
  */
 function sammleStderr(strom: ReadableStream<Uint8Array>): Promise<string[]> {
   return (async () => {
@@ -281,7 +284,10 @@ export async function callTools(
   }
 
   if (seen.size < expected) {
-    const schwanz = (await stderrZeilen).join("\n");
+    // Mit Frist, siehe `sammleStderr`: Ohne sie hing der Lauf hier, sobald ein
+    // Enkelprozess stderr offen hielt, in beiden Nachbauten 15 s und länger.
+    const gesammelt = await mitFrist(stderrZeilen, 2_000);
+    const schwanz = gesammelt === "frist" ? "(stderr nicht lesbar: ein Prozess hält den Strom offen)" : gesammelt.join("\n");
     throw new Error(
       `Server antwortete nur auf ${seen.size} von ${expected} Anfragen. ` +
         `Läuft 'bun install', und existiert data/bible.db?` +

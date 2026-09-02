@@ -18,6 +18,17 @@
  * liegen unakzentuiert vor, sblgnt akzentuiert; ohne das wiche jedes Wortpaar
  * voneinander ab.
  *
+ * Eine Ausnahme vor dem Entfernen: αὑτ- mit Spiritus asper ist die kontrahierte
+ * Reflexivform ἑαυτ- und wird zu ihr aufgelöst. SBLGNT schreibt sie an 18
+ * Stellen (Phil 3,21 „αὑτῷ"), TAGNT nennt SBL dort als Zeugen für „ἑαυτῷ", und
+ * ohne den Spiritus fiel „αὐτῷ" heraus: sechs Sätze „sblgnt liest hier αὐτῷ,
+ * nicht ἑαυτῷ", die SBLGNT falsch zitierten und einen Widerspruch behaupteten
+ * (gemessen 02.09.2026, Joh 2,24; 13,32; 20,10; Eph 2,15; Phil 3,21; Offb 8,6).
+ * Gefordert ist der Spiritus ohne Akzent auf dem υ: αὕτη („diese") und αὗται
+ * tragen ihn mit Akzent (69 und 3 Wörter in SBLGNT) und bleiben, was sie sind;
+ * ein Nominativ αὑτός (Mt 6,4 in TAGNT, Krasis von ὁ αὐτός) hat kein
+ * reflexives Gegenstück und bleibt ebenfalls.
+ *
  * Die Sigma-Faltung ist Vorsorge und kein laufendes Geschäft, und dafür gibt es
  * keinen Testfall: Sie greift nur, wo zwei Editionen dieselbe Form schreiben,
  * die eine mit Schlusssigma, die andere mit medialem. Gemessen am 05.08.2026
@@ -30,8 +41,9 @@
  * herstellen, ohne dass jemand diese Datei anfasst.
  */
 function normForCompare(w: string): string {
-  return w
-    .normalize("NFD")
+  const d = w.normalize("NFD");
+  const reflexiv = /^αυ\u0314τ(?!ο[\u0300\u0301]?ς)/u.test(d);
+  return (reflexiv ? "ε" + d : d)
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/ς/g, "σ");
@@ -105,14 +117,22 @@ function greekLettersOnly(s: string): string {
 
 /**
  * Wahr, wenn sich zwei normalisierte Formen allein durch einen elidierten
- * Schlussvokal unterscheiden („αλλ" ↔ „αλλα"; „αφ" ↔ „απο" ist NICHT dieser
- * Fall). Die Editionen elidieren nach verschiedenen Konventionen, ein solches
- * Paar ist also eine Schreibvariante und keine Textvariante: in `in_dieser_db`
- * zu zeigen, aber keine Warnung wert.
+ * Schlussvokal unterscheiden („αλλ" ↔ „αλλα"), auch mit dem Hauchwechsel vor
+ * Spiritus asper („μεθ" ↔ „μετα", „αφ" ↔ „απο", „ουχ" ↔ „ουκ"). Die Editionen
+ * elidieren nach verschiedenen Konventionen, ein solches Paar ist also eine
+ * Schreibvariante und keine Textvariante: in `in_dieser_db` zu zeigen, aber
+ * keine Warnung wert. Der Hauchwechsel fehlte bis zum 02.09.2026; zehn Paare im
+ * Bestand tragen ihn, und an einem hing ein Satz („byzantine liest hier μεθ,
+ * nicht μετὰ", Mt 14,7).
  */
 function istElision(a: string, b: string): boolean {
   const [kurz, lang] = a.length <= b.length ? [a, b] : [b, a];
-  return lang.length === kurz.length + 1 && lang.startsWith(kurz) && /[αεηιουω]$/.test(lang);
+  if (kurz === "ουχ" && lang === "ουκ") return true;
+  if (lang.length !== kurz.length + 1 || !/[αεηιουω]$/.test(lang)) return false;
+  if (lang.startsWith(kurz)) return true;
+  const hauch: Record<string, string> = { θ: "τ", φ: "π", χ: "κ" };
+  const letzter = kurz.slice(-1);
+  return hauch[letzter] !== undefined && lang.slice(0, -1) === kurz.slice(0, -1) + hauch[letzter];
 }
 
 /**
@@ -123,10 +143,14 @@ function istElision(a: string, b: string): boolean {
  * Schreibung wird kein Widerspruch gestützt: Bis zum 02.09.2026 hießen 14 der
  * 57 Widerspruchssätze „liest an dieser Stelle ηνοιξεν, weder … noch ἤνοιξε"
  * und nannten die Notiz falsch, wo sie recht hatte. Die Bedingung an den
- * vorletzten Buchstaben hält echte Unterschiede heraus: „τὸ" gegen „τὸν",
- * „βασιλεῦ" gegen „βασιλεὺς", „πάντα" gegen „πάντας" (dieselbe Messung). Ein
- * positiver Satz („liest hier X") bleibt davon unberührt; er ist bei einer
- * Schreibvariante wahr und nützlich.
+ * vorletzten Buchstaben hält „τὸ" gegen „τὸν", „βασιλεῦ" gegen „βασιλεὺς",
+ * „πάντα" gegen „πάντας" heraus (dieselbe Messung), aber nicht jeden echten
+ * Unterschied: τί/τίς, οὐδέ/οὐδέν, διδάσκει/διδάσκειν und der Stammwechsel
+ * λιπ-/λειπ- gelten ihr als Schreibung (21 Paare, gemessen 02.09.2026; an
+ * keinem widerspricht heute eine Edition ihrer Notiz, und kein Lauf würde rot,
+ * wenn eine es täte). Die Liste und der Weg über den Morphologiecode stehen in
+ * `docs/ENTSCHEIDUNGEN.md`. Ein positiver Satz („liest hier X") bleibt von der
+ * Regel unberührt; er ist bei einer Schreibvariante wahr und nützlich.
  */
 function istSchreibvariante(a: string, b: string): boolean {
   if (a === b) return false;
@@ -285,7 +309,7 @@ export function crossCheckVariant(
         // Die Edition schreibt die Lesart nur anders (Apg 5,19 „ηνοιξεν" gegen
         // „ἤνοιξε"): weder Beleg noch Widerspruch. Der Kopf wird zuerst geprüft,
         // sonst gälte „ἐστιν" als Beleg für die Lesart „ἐστι" (gemessen
-        // 02.09.2026: 1310 falsche Belege).
+        // 02.09.2026: 1376 falsche Belege).
         if (dort !== "" && dort !== headNorm && istSchreibvariante(dort, n)) continue;
         // Lücke, und die Lesart steht höchstens zwei Wörter daneben: Die Edition
         // liest sie in anderer Wortstellung (Mk 1,13 Byz „ημερας τεσσαρακοντα"

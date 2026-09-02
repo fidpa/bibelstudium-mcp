@@ -59,6 +59,17 @@ Der Server startet absichtlich auch mit unvollständigen Daten. Alles, wofür
 Daten vorhanden sind, funktioniert; die übrigen Werkzeuge melden gezielt, welches
 Skript fehlt.
 
+### `Keine Urtext-Daten für Lukas 17,36 (Texttyp tr)`, obwohl `download:tr` lief
+
+Kein Datenfehler. Die TR-Quelle führt an 261 Stellen zwei Lesarten, Stephanus
+1550 und Scrivener 1894; geladen ist Stephanus (Begründung in
+`docs/ENTSCHEIDUNGEN.md`, „Der TR-Import liest die erste von zwei Lesarten").
+Lk 17,36 und der zweite Teil von 1Joh 2,23 stehen nur bei Scrivener und fehlen
+deshalb in der Edition `tr`; `bible_compare` findet für Lk 17,36 in keiner der
+drei griechischen Editionen Text und meldet dasselbe. Die Bezeugung von
+STEPBible TAGNT führt den Vers unter `TR`, das ist die Apparatspalte, nicht die
+Edition.
+
 ## Abrufe ohne `translation` liefern die falsche Ausgabe
 
 Steht auf stderr eine Zeile wie `BIBLE_DEFAULT_TRANSLATION="…" ist in dieser

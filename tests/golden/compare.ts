@@ -100,6 +100,16 @@ export const compareBuendel = buendel({
     cmpBeweglichesNy: ["bible_compare", { book: "Apg", chapter: 5, verse: 19 }],
     cmpBeweglichesNyOhneStelle: ["bible_compare", { book: "Apg", chapter: 13, verse: 31 }],
     cmpIotaEi: ["bible_compare", { book: "Joh", chapter: 4, verse: 40 }],
+    // Drei Grenzen der Schreibvarianten-Regeln, gemessen 02.09.2026. Phil 3,21:
+    // SBL schreibt die Reflexivform kontrahiert „αὑτῷ", die Notiz nennt SBL für
+    // „ἑαυτῷ"; bis dahin ging der Spiritus in der Normalform verloren, und der
+    // Satz „sblgnt liest hier αὐτῷ, nicht ἑαυτῷ" zitierte SBL falsch (sechs
+    // Stellen). Mt 14,7: Byz „μεθ᾽ ὅρκου" gegen die Notiz „μετὰ", Elision mit
+    // Hauchwechsel, die die Elisionsregel nicht kannte. Lk 12,59: „τὸ" gegen
+    // „τὸν" ist ein Kasus und muss gemeldet bleiben; er hält die Regel eng.
+    cmpSpiritus: ["bible_compare", { book: "Phil", chapter: 3, verse: 21 }],
+    cmpHauchwechsel: ["bible_compare", { book: "Mt", chapter: 14, verse: 7 }],
+    cmpEchterUnterschied: ["bible_compare", { book: "Lk", chapter: 12, verse: 59 }],
   },
   pruefe({ res }) {
     {
@@ -136,6 +146,10 @@ export const compareBuendel = buendel({
       check("Apg 5,19: bewegliches ν ist kein Widerspruch an der Stelle", !saetze(cmpBeweglichesNy).some((s) => s.includes("ηνοιξεν")), saetze(cmpBeweglichesNy).join(" | "));
       check("Apg 13,31: bewegliches ν ist kein Widerspruch ohne Stelle", !saetze(cmpBeweglichesNyOhneStelle).some((s) => s.includes("εἰσιν")), saetze(cmpBeweglichesNyOhneStelle).join(" | "));
       has("Joh 4,40: der positive Satz einer ι/ει-Schreibung bleibt", saetze(cmpIotaEi).join(" | "), 'byzantine liest hier "Σαμαρεῖται"');
+      const { cmpSpiritus, cmpHauchwechsel, cmpEchterUnterschied } = res;
+      check('Phil 3,21: SBL „αὑτῷ" ist die Notizform ἑαυτῷ, kein Satz über sblgnt', !saetze(cmpSpiritus).some((s) => s.startsWith("sblgnt")), saetze(cmpSpiritus).join(" | "));
+      check("Mt 14,7: Elision mit Hauchwechsel ist kein Widerspruch", !saetze(cmpHauchwechsel).some((s) => s.includes("μεθ")), saetze(cmpHauchwechsel).join(" | "));
+      has("Lk 12,59: τὸ gegen τὸν bleibt gemeldet", saetze(cmpEchterUnterschied).join(" | "), 'tr liest hier "τὸ", nicht "τὸν"');
     }
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;
