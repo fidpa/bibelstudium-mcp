@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Lädt den Textus Receptus (die morphologisch bestimmte TR-Ausgabe von Dr.
- * Maurice A. Robinson, Tradition Scrivener/Stephens) samt Morphologie und Strong-Nummern
+ * Maurice A. Robinson, Tradition Stephanus/Scrivener) samt Morphologie und Strong-Nummern
  * in die lokale SQLite-Datenbank, als dritte griechische Edition in
  * `original_words` (edition = 'tr').
  *
@@ -20,15 +20,20 @@
  * Die Quelle führt an 261 Stellen in 246 Versen zwei Lesarten als Gruppe
  * `| a | b |` (gezählt 02.09.2026 über alle 27 Dateien), eine Seite darf leer
  * sein, und die Strong-Nummer samt Code kann hinter der Gruppe stehen, wenn
- * sie für beide gilt. Welche der beiden TR-Ausgaben vorn steht, sagt die Quelle
- * nicht; an vier Stellen (Mt 10,10; Lk 17,36; 2Petr 1,1; 1Joh 2,23) passt die
- * Reihenfolge zu Stephanus 1550 vor Scrivener 1894, belegt ist sie nicht.
- * Geladen wird die erste Lesart, die zweite entfällt und wird gezählt; bis zum
+ * sie für beide gilt. Welche TR-Ausgabe vorn steht, sagt die Quelle nicht;
+ * die Textausgaben Stephanus 1550 und Scrivener 1894 auf
+ * textusreceptusbibles.com sagen es (je Kapitel gelesen 02.09.2026): In 238
+ * der 261 Gruppen ist die erste Lesart der Stephanus-Text, in 221 die zweite
+ * der Scrivener-Text; der Rest sind Worttrennungen, die vertauschten Verse
+ * Mt 23,13.14 und die Unterschriftsgruppen. Geladen wird die erste Lesart,
+ * also Stephanus 1550; die zweite entfällt und wird gezählt. Bis zum
  * 02.09.2026 nahm der Import beide (Mt 10,10 „ραβδον ραβδους") oder keine
  * (Röm 1,27 ohne ἄρρενες, weil die Nummer hinter der Gruppe stand). Ebenso
  * entfallen die eingeklammerten Unterschriften am Ende der Briefe („[prov
  * filhmona egrafh apo rwmhv …]"), die bis dahin als Wörter des letzten Verses
- * gespeichert waren (Phlm 1,25 hatte sechs zu viel).
+ * gespeichert waren (Phlm 1,25 hatte sieben zu viel). Beide Ausgaben und die
+ * TAGNT-Bezeugung führen die Unterschrift als Schluss des letzten Verses; sie
+ * wegzulassen ist eine Entscheidung dieses Imports, keine der Quelle.
  *
  * WARUM DIESE EDITION: Der TR ist der einzige griechische Texttyp, der das
  * Comma Johanneum (1Joh 5,7 in der Langform) und weitere nur dort bezeugte
@@ -88,7 +93,7 @@ function parseStrongsLemmas(js: string): Map<string, string> {
 const TOKEN_RE = /([a-zA-Z']+)\s+(\d+)(?:\s+\d+)*\s*\{([^}]+)\}/g;
 // Eine Variantengruppe der Quelle: erste Lesart, zweite Lesart, je auch leer.
 const GRUPPE_RE = /\|([^|]*)\|([^|]*)\|/g;
-// Eingeklammerte Unterschrift am Briefende, kein Verstext.
+// Eingeklammerte Unterschrift am Briefende; sie bleibt draußen, siehe Kopf.
 const UNTERSCHRIFT_RE = /\[[^\]]*\]/g;
 
 /**

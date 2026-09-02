@@ -85,11 +85,11 @@ export const EDITION_META: Record<
       "Bei Lesarten-Fragen den Texttyp beachten; die Morphologie ist davon unberührt.",
   },
   tr: {
-    label: "Textus Receptus (Robinson, Scrivener/Stephens-Tradition)",
+    label: "Textus Receptus (Robinson; bei Doppellesarten Stephanus 1550)",
     sprache: "Griechisch (Koine)",
     decoder: "robinson",
     quelle: {
-      werk: "Textus Receptus (Scrivener-/Stephanus-Tradition), Text und Robinson-Parsing",
+      werk: "Textus Receptus (Tradition Stephanus 1550/Scrivener 1894, geladen ist die Stephanus-Lesart), Text und Robinson-Parsing",
       lizenz: "Public Domain",
       nennung: null,
     },
@@ -100,8 +100,10 @@ export const EDITION_META: Record<
       "des Mehrheitstextes, nicht als Grundtext. " +
       "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
       "beim Zitieren nicht um Akzente oder Interpunktion ergänzen. " +
-      "Wo die Quelle zwei TR-Lesarten führt, ist die erste geladen; ein Vers, den " +
-      "nur die zweite kennt, fehlt in dieser Edition.",
+      "Wo die Quelle zwei TR-Lesarten führt (Stephanus 1550 gegen Scrivener 1894, " +
+      "261 Stellen), ist die Stephanus-Lesart geladen; ein Vers, den nur Scrivener " +
+      "kennt, fehlt in dieser Edition. Die Spalte 'TR' der TAGNT-Bezeugung ist eine " +
+      "andere Quelle und folgt an diesen Stellen keiner der beiden Ausgaben durchgehend.",
   },
   wlc: {
     label: "Westminster Leningrad Codex (masoretisch, OSHB-Morphologie)",

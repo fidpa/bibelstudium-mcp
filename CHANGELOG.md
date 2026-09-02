@@ -6,6 +6,31 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.29] - 2026-09-02: Der Textus Receptus nennt seine Ausgabe, Stephanus 1550
+
+### Behoben
+
+- **Editionsabgleich (`bible_compare`):** Auf ein bewegliches ν oder ς und auf
+  ι gegen ει wird kein Widerspruch mehr gestützt („byzantine liest an dieser
+  Stelle ηνοιξεν, weder … noch ἤνοιξε", Apg 5,19, wo die Notiz recht hatte):
+  654 Sätze statt 668 über 6194 Notizen, genau 14 weg, keiner dazu. Echte
+  Unterschiede wie τό gegen τόν und alle positiven Sätze bleiben.
+- **Golden-Treiber:** Nach `proc.kill()` folgt nach zwei Sekunden SIGKILL. Ein
+  Server, der SIGTERM abfängt, ließ den Lauf seit 0.6.28 unbegrenzt hängen.
+
+### Geändert (Dokumentation)
+
+- **Edition `tr`:** Label, `hinweis` und Quellenangabe sagen, dass an den 261
+  Doppellesarten der Quelle Stephanus 1550 geladen ist. Gemessen gegen die
+  Textausgaben auf textusreceptusbibles.com: 238 von 261 Gruppen Stephanus als
+  erste, 221 Scrivener 1894 als zweite. Der `bezeugung`-Hinweis sagt, dass die
+  Apparatspalte `TR` eine andere Quelle ist. Kein Datenneubau nötig.
+- **Berichtigt gegenüber 0.6.28:** Die Begründung über die TAGNT-TR-Spalte ist
+  ersetzt. 1Joh 2,23b steht in TAGNT unter `KJV`. Phlm 1,25 hatte sieben Wörter
+  zu viel, nicht sechs. Von den zwölf entfallenen Sätzen war einer richtig
+  (Lk 18,24). `tr` führt 1064 Morphologiecodes, nicht 1066.
+- Tests: 1094 Golden-Zusicherungen (vorher 1082).
+
 ## [0.6.28] - 2026-09-02: Der Editionsabgleich urteilt an der Stelle der Notiz, und der Textus Receptus liest eine Lesart statt zwei
 
 ### Behoben

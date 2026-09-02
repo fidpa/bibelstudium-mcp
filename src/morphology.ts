@@ -130,7 +130,7 @@ const ROB_MOOD: Record<string, string> = {
  * unbekanntes Endsegment hinter dem Deklinationsblock, ein unbekanntes Zeichen
  * im Tempus-, Personen- oder Kasusblock verschwand stumm, und die Ausgabe sah
  * vollständig aus. Gegen den Bestand vom 02.09.2026 (1055 Codes in byzantine,
- * 1066 in tr) entsteht kein solcher Eintrag; er zeigt einen künftigen
+ * 1064 in tr) entsteht kein solcher Eintrag; er zeigt einen künftigen
  * Quellenstand an.
  */
 /**

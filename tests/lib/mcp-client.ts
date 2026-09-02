@@ -273,6 +273,11 @@ export async function callTools(
     }
   } finally {
     proc.kill();
+    // Ein Server, der SIGTERM abfängt und stderr offen hält, ließe die Sammlung
+    // unten nie enden: nachgebaut am 02.09.2026 mit einem stummen Ersatzserver,
+    // 0.6.28 hing, die Fassung davor warf nach der Lesefrist. Zwei Sekunden,
+    // dann SIGKILL; der echte Server ist nach `process.exit(0)` längst weg.
+    if ((await mitFrist(proc.exited, 2_000)) === "frist") proc.kill("SIGKILL");
   }
 
   if (seen.size < expected) {

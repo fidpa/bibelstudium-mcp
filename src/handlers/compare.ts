@@ -190,7 +190,9 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
           "Editionen: NA28, NA27, Tyn(dale House), SBL, WH (Westcott-Hort), Treg(elles), TR, " +
           "Byz. Insbesondere ist 'Byz' hier eine Apparatspalte und nicht der oben verglichene " +
           "Text 'byzantine' (Robinson-Pierpont 2018); beide gehen in 10,8 % der NT-Verse " +
-          "auseinander. typ: N=Nestle-Aland, K=KJV/TR-Tradition, O=andere; Kleinbuchstabe = " +
+          "auseinander. Ebenso ist 'TR' die Apparatspalte (laut TAGNT Scrivener 1894) und " +
+          "nicht die Edition 'tr', die an den 261 Doppellesarten ihrer Quelle Stephanus 1550 " +
+          "folgt. typ: N=Nestle-Aland, K=KJV/TR-Tradition, O=andere; Kleinbuchstabe = " +
           "ohne Übersetzungsrelevanz; »n/«n = Wortstellung verschoben.",
         woerter_gesamt: rows.length,
         von_allen_acht_bezeugt: rows.length - abweichend.length,

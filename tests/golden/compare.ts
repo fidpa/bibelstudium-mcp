@@ -83,14 +83,23 @@ export const compareBuendel = buendel({
     cmpLuecke: ["bible_compare", { book: "Mk", chapter: 10, verse: 16 }],
     // Mk 1,13 Byz „ημερας τεσσαρακοντα": Lesart direkt neben der Lücke.
     cmpWortstellung: ["bible_compare", { book: "Mk", chapter: 1, verse: 13 }],
-    // Apg 5,19: an der Stelle steht ein drittes Wort (ηνοιξεν mit beweglichem ν).
-    cmpDrittes: ["bible_compare", { book: "Apg", chapter: 5, verse: 19 }],
+    // Offb 10,8: an der Stelle steht ein drittes Wort (βιβλιδαριον gegen die
+    // beiden Formen der Notiz). Bis 0.6.28 stand hier Apg 5,19 „ηνοιξεν", das
+    // seit 0.6.29 als Schreibvariante von „ἤνοιξε" gilt (unten).
+    cmpDrittes: ["bible_compare", { book: "Offb", chapter: 10, verse: 8 }],
     // Lk 3,32: keine Stelle bestimmbar, Byz führt weder Kopf noch Lesart.
     cmpOhneStelle: ["bible_compare", { book: "Lk", chapter: 3, verse: 32 }],
     // Mt 21,7: SBL schreibt die Elision „ἐπ’" mit U+2019; bis zum 02.09.2026
     // passte sie nicht auf den Kopf „ἐπ᾽", und der Satz „sblgnt liest hier
     // ἐπάνω" fiel (das ἐπάνω steht am Versende).
     cmpApostroph: ["bible_compare", { book: "Mt", chapter: 21, verse: 7 }],
+    // Schreibvarianten tragen keinen Widerspruch (seit 0.6.29): Apg 5,19 Byz und
+    // TR lesen „ηνοιξεν" mit beweglichem ν, die Notiz nennt sie für „ἤνοιξε";
+    // Apg 13,31 „εἰσιν" gegen „εἰσὶ" ohne bestimmbare Stelle. Joh 4,40 zeigt,
+    // dass der positive Satz einer ι/ει-Schreibung bleibt.
+    cmpBeweglichesNy: ["bible_compare", { book: "Apg", chapter: 5, verse: 19 }],
+    cmpBeweglichesNyOhneStelle: ["bible_compare", { book: "Apg", chapter: 13, verse: 31 }],
+    cmpIotaEi: ["bible_compare", { book: "Joh", chapter: 4, verse: 40 }],
   },
   pruefe({ res }) {
     {
@@ -120,9 +129,13 @@ export const compareBuendel = buendel({
         'byzantine führt an dieser Stelle kein Wort, also auch nicht "ηὐλόγει"; die TAGNT-Notiz nennt Byz jedoch als Zeugen'
       );
       has("Mk 1,13: Lesart neben der Lücke heißt andere Wortstellung", saetze(cmpWortstellung).join(" | "), 'byzantine liest hier "τεσσαράκοντα" in anderer Wortstellung');
-      has("Apg 5,19: drittes Wort an der Stelle wird genannt", saetze(cmpDrittes).join(" | "), 'byzantine liest an dieser Stelle "ηνοιξεν", weder "ἀνοίξας" noch "ἤνοιξε"');
+      has("Offb 10,8: drittes Wort an der Stelle wird genannt", saetze(cmpDrittes).join(" | "), 'byzantine liest an dieser Stelle "βιβλιδαριον", weder "βιβλίον" noch "βιβλαρίδιον"');
       has("Lk 3,32: ohne Stelle bleibt der Satz mit weder und noch", saetze(cmpOhneStelle).join(" | "), 'byzantine führt an dieser Stelle weder "Ἰωβὴδ" noch "Ἰωβὴλ"');
       check("Mt 21,7: kein Satz nennt sblgnt mit ἐπάνω", !saetze(cmpApostroph).some((s) => s.startsWith("sblgnt") && s.includes("ἐπάνω")), saetze(cmpApostroph).join(" | "));
+      const { cmpBeweglichesNy, cmpBeweglichesNyOhneStelle, cmpIotaEi } = res;
+      check("Apg 5,19: bewegliches ν ist kein Widerspruch an der Stelle", !saetze(cmpBeweglichesNy).some((s) => s.includes("ηνοιξεν")), saetze(cmpBeweglichesNy).join(" | "));
+      check("Apg 13,31: bewegliches ν ist kein Widerspruch ohne Stelle", !saetze(cmpBeweglichesNyOhneStelle).some((s) => s.includes("εἰσιν")), saetze(cmpBeweglichesNyOhneStelle).join(" | "));
+      has("Joh 4,40: der positive Satz einer ι/ει-Schreibung bleibt", saetze(cmpIotaEi).join(" | "), 'byzantine liest hier "Σαμαρεῖται"');
     }
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;

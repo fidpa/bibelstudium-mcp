@@ -45,7 +45,7 @@ Datenbank führt sie nicht.
 | Quelle | Daten | Lizenz |
 |--------|-------|--------|
 | [byztxt/byzantine-majority-text](https://github.com/byztxt/byzantine-majority-text) | Byzantinischer Mehrheitstext (Robinson-Pierpont 2018) mit Strong-Nummern + Robinson-Parsing | Public Domain |
-| [byztxt (Textus Receptus)](https://github.com/byztxt) | Textus Receptus (Scrivener-/Stephanus-Tradition) mit Strong-Nummern + Robinson-Parsing | Public Domain |
+| [byztxt (Textus Receptus)](https://github.com/byztxt) | Textus Receptus (Tradition Stephanus 1550/Scrivener 1894, geladen ist die Stephanus-Lesart) mit Strong-Nummern + Robinson-Parsing | Public Domain |
 | [MorphGNT/sblgnt](https://github.com/morphgnt/sblgnt) | SBLGNT-Text + MorphGNT-Morphologie | Text: CC BY 4.0 (SBL); Morphologie: **CC BY-SA 3.0** |
 | [openscriptures/morphhb (OSHB)](https://github.com/openscriptures/morphhb) | Westminster Leningrad Codex + hebräische Morphologie | Text: Public Domain; Morphologie und Lemmata: CC BY 4.0, Namensnennung „Open Scriptures Hebrew Bible Project" |
 

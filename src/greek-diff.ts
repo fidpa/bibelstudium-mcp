@@ -115,6 +115,29 @@ function istElision(a: string, b: string): boolean {
   return lang.length === kurz.length + 1 && lang.startsWith(kurz) && /[αεηιουω]$/.test(lang);
 }
 
+/**
+ * Wahr, wenn sich zwei Normalformen nur um ein bewegliches ν (nach ε oder ι:
+ * „ηνοιξεν" gegen „ἤνοιξε", „εἰσιν" gegen „εἰσὶ"), ein bewegliches ς (nach ω
+ * oder ι: „ἄχρι" gegen „ἄχρις", „οὕτω" gegen „οὕτως") oder um ι gegen ει
+ * („ὀφθαλμοδουλίαις" gegen „ὀφθαλμοδουλείαις") unterscheiden. Auf eine solche
+ * Schreibung wird kein Widerspruch gestützt: Bis zum 02.09.2026 hießen 14 der
+ * 57 Widerspruchssätze „liest an dieser Stelle ηνοιξεν, weder … noch ἤνοιξε"
+ * und nannten die Notiz falsch, wo sie recht hatte. Die Bedingung an den
+ * vorletzten Buchstaben hält echte Unterschiede heraus: „τὸ" gegen „τὸν",
+ * „βασιλεῦ" gegen „βασιλεὺς", „πάντα" gegen „πάντας" (dieselbe Messung). Ein
+ * positiver Satz („liest hier X") bleibt davon unberührt; er ist bei einer
+ * Schreibvariante wahr und nützlich.
+ */
+function istSchreibvariante(a: string, b: string): boolean {
+  if (a === b) return false;
+  const [kurz, lang] = a.length <= b.length ? [a, b] : [b, a];
+  if (kurz.length > 0 && lang.length === kurz.length + 1 && lang.startsWith(kurz)) {
+    if (lang.endsWith("ν") && /[ει]$/.test(kurz)) return true;
+    if (lang.endsWith("σ") && /[ωι]$/.test(kurz)) return true;
+  }
+  return a.replace(/ει/g, "ι") === b.replace(/ει/g, "ι");
+}
+
 /** Die Nachbarwörter der TAGNT-Zeile, links und rechts des Kopfworts; am Versrand fehlt eines. */
 export interface Umfeld {
   readonly vorher?: string;
@@ -236,6 +259,8 @@ export function crossCheckVariant(
   const schluss = " Für diese Edition gilt der Editionstext.";
   for (const [n, v] of varianten) {
     if (istElision(n, headNorm)) continue;
+    // Kopf und Lesart nur verschieden geschrieben: kein Satz gegen die Notiz.
+    const nurSchreibung = istSchreibvariante(n, headNorm);
     for (const t of normTexts) {
       const label = TAGNT_LABEL[t.ed];
       if (label === undefined) continue;
@@ -257,6 +282,11 @@ export function crossCheckVariant(
           if (!genannt) abgleich.push(nurZeugen);
           continue;
         }
+        // Die Edition schreibt die Lesart nur anders (Apg 5,19 „ηνοιξεν" gegen
+        // „ἤνοιξε"): weder Beleg noch Widerspruch. Der Kopf wird zuerst geprüft,
+        // sonst gälte „ἐστιν" als Beleg für die Lesart „ἐστι" (gemessen
+        // 02.09.2026: 1310 falsche Belege).
+        if (dort !== "" && dort !== headNorm && istSchreibvariante(dort, n)) continue;
         // Lücke, und die Lesart steht höchstens zwei Wörter daneben: Die Edition
         // liest sie in anderer Wortstellung (Mk 1,13 Byz „ημερας τεσσαρακοντα"
         // gegen „τεσσεράκοντα ἡμέρας"). Weiter weg ist es ein anderes Vorkommen
@@ -273,7 +303,7 @@ export function crossCheckVariant(
         // da, nur woanders. Ein echter Widerspruch mit derselben Form an zwei
         // Stellen (Mt 28,3 „ὡς ἀστραπὴ") bleibt so unerkannt; das ist der
         // Preis, und er ist kleiner als ein falsches „führt kein Wort".
-        if (genannt && !liestVariante) {
+        if (genannt && !liestVariante && !nurSchreibung) {
           abgleich.push(
             widerspruch(
               stelle.art === "luecke"
@@ -289,7 +319,7 @@ export function crossCheckVariant(
       if ((formenJeEdition.get(t.ed) ?? 0) > 1) continue;
       const liestKopf = liest(headNorm).includes(t.ed);
       if (liestVariante && !genannt) abgleich.push(nurZeugen);
-      else if (!liestVariante && genannt) {
+      else if (!liestVariante && genannt && !nurSchreibung) {
         // Der dritte Zustand ist keiner der beiden: Die Edition führt weder die
         // Variante noch den Kopf. Bis zum 02.09.2026 wurde dann der Kopf behauptet.
         abgleich.push(

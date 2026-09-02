@@ -1662,6 +1662,23 @@ einer (Mt 28,3 „ὡς ἀστραπὴ", Byz laut Notiz ὡσεὶ, im Text �
 im Vers vorkommt und das negative Urteil deshalb unterbleibt. Der Preis für
 kein falsches „führt kein Wort".
 
+**Seit 0.6.29: keine Widerspruchssätze über eine Schreibung.** Ein Review vom
+02.09.2026 las 50 der 668 Sätze; 14 der 57 Widerspruchssätze meldeten nur ein
+bewegliches ν oder ς oder ι gegen ει (Apg 5,19 „ηνοιξεν" gegen „ἤνοιξε",
+Apg 13,31 „εἰσιν" gegen „εἰσὶ", Gal 4,19 „αχρι" gegen „ἄχρις", Kol 3,22
+„ὀφθαλμοδουλίαις" gegen „ὀφθαλμοδουλείαις"), also einen Widerspruch, wo die
+Notiz recht hatte. `istSchreibvariante` fängt sie wie `istElision` ab, eng
+gefasst über den vorletzten Buchstaben, damit „τὸ" gegen „τὸν", „βασιλεῦ" gegen
+„βασιλεὺς" und „πάντα" gegen „πάντας" gemeldet bleiben: 654 Sätze statt 668,
+genau die 14 weg, keiner dazu. Positive Sätze („liest hier X") bleiben, weil
+sie bei einer Schreibvariante wahr sind. **Verworfen:** die Schreibvariante
+schon beim Kopf-Vergleich gleichsetzen; dann gälte „ἐστιν" als Beleg für die
+Lesart „ἐστι", gemessen 1310 falsche Belege. Das Review fand außerdem drei
+sachlich falsche Sätze mit je eigener Ursache, die stehen bleiben: Mk 6,27
+(Byz teilt den Vers anders, „ὁ δὲ ἀπελθὼν" steht in Vers 28), Phil 3,21 (SBL
+liest „αὑτῷ", der Spiritus geht in der Normalform verloren), Mk 14,31 (TR liest
+„ἐκ περισσοῦ" in zwei Wörtern).
+
 ## Der TR-Import liest die erste von zwei Lesarten
 
 *Gemessen 02.09.2026 über alle 27 `.UTR`-Dateien der Quelle.*
@@ -1671,21 +1688,39 @@ Gruppe `| a | b |`, eine Seite darf leer sein, und Strong-Nummer samt Code
 stehen teils hinter der Gruppe. Bis 0.6.27 kannte der Import die Klammern
 nicht: Er nahm beide Lesarten (Mt 10,10 „ραβδον ραβδους", 2Petr 1,1 „συμεων
 σιμων") oder keine (Röm 1,27 ohne ἄρρενες), und die eingeklammerten
-Unterschriften der Briefe hingen als Wörter am letzten Vers (Phlm 1,25 sechs zu
+Unterschriften der Briefe hingen als Wörter am letzten Vers (Phlm 1,25 sieben zu
 viel). 140 941 Wörter, davon 359 zu viel oder falsch.
 
 Gewählt: die erste Lesart, die zweite entfällt und wird gezählt. Welche
-TR-Ausgabe vorn steht, sagt die Quelle nicht. Gemessen gegen die TR-Spalte der
-TAGNT-Bezeugung stimmt die erste Lesart in 145 Gruppen überein, die zweite in
-49 (Rest unentscheidbar). An vier Stellen passt die Reihenfolge zu Stephanus
-1550 vor Scrivener 1894 (Mt 10,10; Lk 17,36; 2Petr 1,1; 1Joh 2,23), belegt ist
-das nicht. Folge: Lk 17,36 und der zweite Teil von 1Joh 2,23 stehen nur in der
-zweiten Lesart und fehlen jetzt im TR; TAGNT führt beide als TR-Lesart.
+TR-Ausgabe vorn steht, sagt die Quelle nicht; die Textausgaben auf
+textusreceptusbibles.com sagen es (Stephanus 1550 und Scrivener 1894, je
+Kapitel gelesen am 02.09.2026): In 238 der 261 Gruppen ist die erste Lesart
+der Stephanus-Text, in 221 die zweite der Scrivener-Text. Die Ausnahmen sind
+14 Worttrennungen („διαπαντος" gegen „δια παντος", beide Ausgaben schreiben
+sie gleich), die vertauschten Verse Mt 23,13 und 23,14, Mk 6,25 („εξ αυτης")
+und die 14 Unterschriftsgruppen. Die Edition `tr` ist damit an den
+Variantenstellen Stephanus 1550, und so heißt sie seit 0.6.29. Folge: Lk 17,36
+und der zweite Teil von 1Joh 2,23 stehen nur bei Scrivener und fehlen im TR.
+
+Die TAGNT-Bezeugung taugt dafür nicht als Maßstab, obwohl 0.6.28 sie so
+benutzt hat (145 Gruppen für die erste, 49 für die zweite Lesart): Ihre Spalte
+`TR` heißt laut Kopf der Quelldatei Scrivener 1894, folgt an den Gruppen aber
+der ersten Lesart (Einwortgruppen 104 gegen 3), mischt in Offb 13,3 beide
+Ausgaben und führt den zweiten Teil von 1Joh 2,23 unter `KJV`, nicht unter
+`TR`. Wer die beiden „TR" in einer `bible_compare`-Antwort nebeneinander
+sieht, sieht zwei Quellen, nicht eine; der `bezeugung`-Hinweis sagt das.
 
 **Verworfen:** die zweite Lesart nehmen, wo die erste leer ist. Das ergäbe einen
 Text, der keiner der beiden Ausgaben entspricht. **Verworfen:** beide Lesarten
 speichern. Kein Werkzeug fragt sie ab, und eine Tabelle ohne Leser ist ein
 stiller Zweig.
+
+**Bewusst gegen die Quellen:** Stephanus 1550, Scrivener 1894 und die
+TAGNT-Bezeugung führen die Unterschrift als Schluss des letzten Verses
+(Eph 6,24: „προς εφεσιους εγραφη απο ρωμης δια τυχικου", in TAGNT sieben
+Wörter mit `editions = TR`). Der Import lässt sie weg, weil sie kein Text des
+Briefs ist; `bible_compare` zeigt in diesen 14 Versen deshalb TR-Zeugen für
+Wörter, die die Edition nicht führt.
 
 ## Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte
 
