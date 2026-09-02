@@ -90,7 +90,7 @@ bun run test:schemas   # jede Antwort gegen ihr deklariertes outputSchema
 bun run tests/golden/lookup.ts
 ```
 
-Wer eine Zusicherung ergänzt, hängt sie in das Bündel des betroffenen Werkzeugs und zieht die Mindestzahl in `tests/test-golden.ts` mit.
+Wer eine Zusicherung ergänzt, hängt sie in das Bündel des betroffenen Werkzeugs und zieht die Mindestzahl in `tests/test-golden.ts` mit; für `tests/test-http.ts` gilt dasselbe mit dem Wächter am Ende der Datei.
 
 Was die Tests nicht abdecken, bleibt Handarbeit:
 

@@ -17,6 +17,19 @@
  * überführt, passend zur ebenfalls unakzentuierten byzantinischen Edition. Die
  * Morphologiecodes folgen Robinson (derselbe Dekoder wie bei byz).
  *
+ * Die Quelle führt an 261 Stellen in 246 Versen zwei Lesarten als Gruppe
+ * `| a | b |` (gezählt 02.09.2026 über alle 27 Dateien), eine Seite darf leer
+ * sein, und die Strong-Nummer samt Code kann hinter der Gruppe stehen, wenn
+ * sie für beide gilt. Welche der beiden TR-Ausgaben vorn steht, sagt die Quelle
+ * nicht; an vier Stellen (Mt 10,10; Lk 17,36; 2Petr 1,1; 1Joh 2,23) passt die
+ * Reihenfolge zu Stephanus 1550 vor Scrivener 1894, belegt ist sie nicht.
+ * Geladen wird die erste Lesart, die zweite entfällt und wird gezählt; bis zum
+ * 02.09.2026 nahm der Import beide (Mt 10,10 „ραβδον ραβδους") oder keine
+ * (Röm 1,27 ohne ἄρρενες, weil die Nummer hinter der Gruppe stand). Ebenso
+ * entfallen die eingeklammerten Unterschriften am Ende der Briefe („[prov
+ * filhmona egrafh apo rwmhv …]"), die bis dahin als Wörter des letzten Verses
+ * gespeichert waren (Phlm 1,25 hatte sechs zu viel).
+ *
  * WARUM DIESE EDITION: Der TR ist der einzige griechische Texttyp, der das
  * Comma Johanneum (1Joh 5,7 in der Langform) und weitere nur dort bezeugte
  * Lesarten enthält. Er liegt bereit für den direkten Variantenvergleich gegen
@@ -73,6 +86,25 @@ function parseStrongsLemmas(js: string): Map<string, string> {
 
 // Token: Beta-Wort  Strong  [Robinson-Verbcode]  {MORPH}
 const TOKEN_RE = /([a-zA-Z']+)\s+(\d+)(?:\s+\d+)*\s*\{([^}]+)\}/g;
+// Eine Variantengruppe der Quelle: erste Lesart, zweite Lesart, je auch leer.
+const GRUPPE_RE = /\|([^|]*)\|([^|]*)\|/g;
+// Eingeklammerte Unterschrift am Briefende, kein Verstext.
+const UNTERSCHRIFT_RE = /\[[^\]]*\]/g;
+
+/**
+ * Löst die Variantengruppen eines Verses zur ersten Lesart auf und entfernt
+ * Unterschriften; zählt die Gruppen, damit der Lauf sie meldet. Die Gruppe
+ * „| nazaret | nazareq | 3478 {N-PRI}" wird so zu „nazaret 3478 {N-PRI}", und
+ * die Nummer hinter der Gruppe gehört wieder zum Wort davor.
+ */
+export function ersteLesart(text: string): { text: string; gruppen: number } {
+  let gruppen = 0;
+  const ohneGruppen = text.replace(GRUPPE_RE, (_, a: string) => {
+    gruppen++;
+    return ` ${a} `;
+  });
+  return { text: ohneGruppen.replace(UNTERSCHRIFT_RE, " "), gruppen };
+}
 
 interface VerseAcc {
   chapter: number;
@@ -121,19 +153,23 @@ export async function main(): Promise<void> {
   );
 
   let totalWords = 0;
+  let totalGruppen = 0;
 
   for (const [abbrev, bookId] of BOOKS) {
     const raw = await fetchText(`${RAW_BASE}/${abbrev}.UTR`);
     dUtr.add(raw);
     const verses = splitVerses(raw);
     let fileWords = 0;
+    let fileGruppen = 0;
 
     db.transaction(() => {
       for (const v of verses) {
         let wordIndex = 0;
+        const { text, gruppen } = ersteLesart(v.text);
+        fileGruppen += gruppen;
         TOKEN_RE.lastIndex = 0;
         let m: RegExpExecArray | null;
-        while ((m = TOKEN_RE.exec(v.text)) !== null) {
+        while ((m = TOKEN_RE.exec(text)) !== null) {
           const surface = translit(m[1]!);
           const strong = m[2]!;
           const morph = m[3]!;
@@ -146,14 +182,21 @@ export async function main(): Promise<void> {
       }
     })();
 
-    console.log(`  ${abbrev} → book ${bookId}: ${fileWords} words`);
+    totalGruppen += fileGruppen;
+    console.log(
+      `  ${abbrev} → book ${bookId}: ${fileWords} words` +
+        (fileGruppen > 0 ? ` (${fileGruppen} Variantengruppen, je erste Lesart)` : "")
+    );
     await sleep(DELAY_MS);
   }
 
   const count = db.query(
     "SELECT COUNT(*) as n FROM original_words WHERE edition='tr'"
   ).get() as { n: number };
-  console.log(`\nDone! ${count.n} TR word forms stored (imported ${totalWords}).`);
+  console.log(
+    `\nDone! ${count.n} TR word forms stored (imported ${totalWords}; ` +
+      `${totalGruppen} Variantengruppen auf die erste Lesart aufgelöst).`
+  );
 
   writeProvenance(db, "download-tr.ts", [dStrongs, dUtr]);
   commit();

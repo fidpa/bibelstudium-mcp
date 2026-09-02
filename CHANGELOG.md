@@ -6,6 +6,36 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.28] - 2026-09-02: Der Editionsabgleich urteilt an der Stelle der Notiz, und der Textus Receptus liest eine Lesart statt zwei
+
+### Behoben
+
+- **Editionsabgleich (`bible_compare`):** Die Stelle des Kopfworts wird über
+  die Nachbarwörter der TAGNT-Zeile gesucht; geurteilt wird, was dort steht.
+  Sieben richtige Sätze, die 0.6.25 verschluckt hatte, sind zurück (Mt 28,3,
+  Röm 1,27), zwölf falsche weg. Neue Satzformen: „in anderer Wortstellung",
+  „liest an dieser Stelle …", „führt an dieser Stelle kein Wort". 668 Sätze
+  über 6194 Notizen; Herleitung in `docs/ENTSCHEIDUNGEN.md`.
+- **Robinson-Dekoder:** Unbekannte Zeichen erscheinen in jedem Block als `?…`.
+  Dabei fand sich das fehlende Tempus `2L` (zweites Plusquamperfekt, 95 Wörter).
+- **HTTP:** 403 und 421 tragen `vary` und `cache-control: no-store`.
+- **Golden-Treiber:** Die stderr-Sammlung endet mit dem Prozess, nicht nach
+  zwei Sekunden Stille.
+
+### Geändert (Daten)
+
+- **Textus Receptus:** Die Quelle führt an 261 Stellen zwei Lesarten; der
+  Import nahm bisher beide oder keine. Geladen ist jetzt die erste: 140 582
+  Wörter statt 140 941, keine Briefunterschriften mehr im letzten Vers.
+  Lk 17,36 und der zweite Teil von 1Joh 2,23 fehlen damit im TR.
+  `bun run download:tr` ausführen; ohne Neuaufbau bleibt der alte Text.
+- **Byzantinische Edition:** Label „Robinson-Pierpont 2018" statt „2005"; die
+  Quelle trägt seit ihrem Release 3.0.0 die Ausgabe 2018.
+
+### Geändert (Dokumentation)
+
+- Tests: 1082 Golden-Zusicherungen (vorher 1059), 105 über HTTP (vorher 101).
+
 ## [0.6.27] - 2026-09-02: Eine Host-Weißliste für den HTTP-Transport, und die Downloads haben eine Zeitgrenze
 
 ### Hinzugefügt

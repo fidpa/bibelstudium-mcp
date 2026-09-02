@@ -50,11 +50,11 @@ export const EDITION_META: Record<
   }
 > = {
   byzantine: {
-    label: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)",
+    label: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2018)",
     sprache: "Griechisch (Koine)",
     decoder: "robinson",
     quelle: {
-      werk: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005), Text und Robinson-Parsing",
+      werk: "Byzantinischer Mehrheitstext (Robinson-Pierpont 2018), Text und Robinson-Parsing",
       lizenz: "Public Domain",
       nennung: null,
     },
@@ -99,7 +99,9 @@ export const EDITION_META: Record<
       "vergleich; die Mehrheitstext-Position sieht den TR als enge Reformationsform " +
       "des Mehrheitstextes, nicht als Grundtext. " +
       "Das Feld 'wort' ist unakzentuiert gespeichert (so liegt die Quelle vor): " +
-      "beim Zitieren nicht um Akzente oder Interpunktion ergänzen.",
+      "beim Zitieren nicht um Akzente oder Interpunktion ergänzen. " +
+      "Wo die Quelle zwei TR-Lesarten führt, ist die erste geladen; ein Vers, den " +
+      "nur die zweite kennt, fehlt in dieser Edition.",
   },
   wlc: {
     label: "Westminster Leningrad Codex (masoretisch, OSHB-Morphologie)",

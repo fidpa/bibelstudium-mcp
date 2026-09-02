@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Lädt den byzantinischen Mehrheitstext (Robinson-Pierpont 2005) samt
+ * Lädt den byzantinischen Mehrheitstext (Robinson-Pierpont 2018) samt
  * morphologischer Bestimmung und Strong-Nummern in die lokale SQLite-Datenbank,
  * und zwar als *primäre* Edition in `original_words` (edition = 'byzantine').
  *
@@ -8,8 +8,12 @@
  *   bun run download-byz.ts
  *
  * Text, Morphologie und Strong-Nummern: Robinson-Pierpont Byzantine Textform
- *   2005, frei verbreitbar (Public Domain),
+ *   2018, frei verbreitbar (Public Domain),
  *   https://github.com/byztxt/byzantine-majority-text
+ *   Geladen wird `master`; das Repo trägt laut seinem README seit Release 3.0.0
+ *   die Ausgabe 2018 (aktuell v3.3.2 vom 31.12.2024, der geladene Pfad zuletzt
+ *   am 31.05.2023 geändert; geprüft 02.09.2026). Bis dahin stand hier „2005";
+ *   der unakzentuierte Text beider Ausgaben gilt laut README als nahezu gleich.
  * Strong-Nummer → griechisches Lemma: Open Scriptures Strong's Greek
  *   Dictionary, CC-BY-SA, https://github.com/openscriptures/strongs
  *

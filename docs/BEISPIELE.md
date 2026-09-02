@@ -26,7 +26,7 @@ Morphologie und Strong-Nummer:
 {
   "reference": "Johannes 1,1",
   "texttyp": "byzantine",
-  "edition": "Byzantinischer Mehrheitstext (Robinson-Pierpont 2005)",
+  "edition": "Byzantinischer Mehrheitstext (Robinson-Pierpont 2018)",
   "woerter": [
     { "wort": "εν",     "grundform": "ἐν",    "morphologie": "Präposition",                                   "strong": "G1722" },
     { "wort": "αρχη",   "grundform": "ἀρχή",  "morphologie": "Substantiv Dativ Singular feminin",             "strong": "G746"  },

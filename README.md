@@ -309,13 +309,13 @@ Ausgaben eine laufende Instanz tatsächlich führt, sagt `bible_server_info`.
 | `texttyp` | Edition | Umfang | Rolle |
 |-----------|---------|--------|-------|
 | `wlc` | Westminster Leningrad Codex (masoretisch, OSHB-Morphologie) | AT (Bücher 1 bis 39) | einzige AT-Quelle, damit primär |
-| `byzantine` | Mehrheitstext (Robinson-Pierpont 2005) | NT (40 bis 66) | **NT-Voreinstellung** |
+| `byzantine` | Mehrheitstext (Robinson-Pierpont 2018) | NT (40 bis 66) | **NT-Voreinstellung** |
 | `sblgnt` | SBL Greek New Testament (kritisch, Nestle-Aland-nah) | NT | sekundär, Vergleich |
 | `tr` | Textus Receptus (Scrivener-/Stephanus-Tradition) | NT | Vergleich (TR-eigene Lesarten) |
 
 `bible_compare` meldet zusätzlich je Wort, welche von acht Editionen es bezeugen. Die acht sind NA28, NA27, Tyndale House, SBL, Westcott-Hort, Tregelles, Textus Receptus und Byzantinisch; sie stammen aus den Bezeugungsnotizen von STEPBible TAGNT und stehen als Muster in `TAGNT_WITNESS_RE` in `src/greek-diff.ts`. Vier davon sind vollständige Texte in dieser Datenbank, die übrigen vier nur Zeugen im Apparat.
 
-Die Bezeugungsnotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und dessen „Byz" ist nicht dasselbe wie der hier geladene Robinson-Pierpont 2005. Über 400 zufällig gezogene NT-Verse gemessen widerspricht die Notiz in rund 11 % der Fälle dem Editionstext. Der Server gleicht beides ab und stellt den Widerspruch als `warnung` an den Anfang der Antwort, statt ihn in einer Fußnote zu verstecken. Für die Frage „was steht in dieser Edition" gilt der Editionstext.
+Die Bezeugungsnotizen von TAGNT nennen nur die Zeugen des eigenen Apparats, und dessen „Byz" ist nicht dasselbe wie der hier geladene Robinson-Pierpont 2018. Über 400 zufällig gezogene NT-Verse gemessen widerspricht die Notiz in rund 11 % der Fälle dem Editionstext. Der Server gleicht beides ab und stellt den Widerspruch als `warnung` an den Anfang der Antwort, statt ihn in einer Fußnote zu verstecken. Für die Frage „was steht in dieser Edition" gilt der Editionstext.
 
 ## Architektur
 

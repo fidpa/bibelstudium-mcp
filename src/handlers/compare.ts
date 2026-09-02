@@ -164,7 +164,11 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
       const eintraege = abweichend.map((r) => {
         const notiz = [r.meaning_variant, r.spelling_variant].filter((s) => s !== "").join(" ; ");
         if (notiz !== "") hatVariantennotiz = true;
-        const check = notiz !== "" ? crossCheckVariant(notiz, r.surface, texts) : undefined;
+        // Die Nachbarn der Zeile geben dem Abgleich die Stelle im Vers; ohne sie
+        // urteilte er über den ganzen Vers (bis 02.09.2026).
+        const i = rows.indexOf(r);
+        const umfeld = { vorher: rows[i - 1]?.surface, nachher: rows[i + 1]?.surface };
+        const check = notiz !== "" ? crossCheckVariant(notiz, r.surface, texts, umfeld) : undefined;
         if (check !== undefined) {
           for (const w of check.abgleich) quellenkonflikte.push(`${r.surface}: ${w}`);
         }
@@ -185,7 +189,7 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
           "STEPBible TAGNT (CC BY 4.0); Zeugen des Apparats, nicht die oben verglichenen " +
           "Editionen: NA28, NA27, Tyn(dale House), SBL, WH (Westcott-Hort), Treg(elles), TR, " +
           "Byz. Insbesondere ist 'Byz' hier eine Apparatspalte und nicht der oben verglichene " +
-          "Text 'byzantine' (Robinson-Pierpont 2005); beide gehen in 10,8 % der NT-Verse " +
+          "Text 'byzantine' (Robinson-Pierpont 2018); beide gehen in 10,8 % der NT-Verse " +
           "auseinander. typ: N=Nestle-Aland, K=KJV/TR-Tradition, O=andere; Kleinbuchstabe = " +
           "ohne Übersetzungsrelevanz; »n/«n = Wortstellung verschoben.",
         woerter_gesamt: rows.length,

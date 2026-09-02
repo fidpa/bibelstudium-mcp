@@ -131,6 +131,8 @@ type Probe = {
   corsMethods: string | null;
   contentType: string | null;
   corsOrigin: string | null;
+  vary: string | null;
+  cacheControl: string | null;
   corsHeaders: string | null;
   body: string;
 };
@@ -149,6 +151,8 @@ async function probe(path: string, init: RequestInit = {}, basis = BASE): Promis
     corsMethods: res.headers.get("access-control-allow-methods"),
     contentType: res.headers.get("content-type"),
     corsOrigin: res.headers.get("access-control-allow-origin"),
+    vary: res.headers.get("vary"),
+    cacheControl: res.headers.get("cache-control"),
     corsHeaders: res.headers.get("access-control-allow-headers"),
     body,
   };
@@ -249,6 +253,11 @@ try {
     // konnte eine fremde Seite die Abweisung lesen und daran erkennen, dass
     // hier ein Server läuft (bis 02.09.2026).
     eq("fremder Origin: die 403 trägt keine CORS-Freigabe", mcp.corsOrigin, null);
+    // Aber `vary` und `no-store`: Gerade die vom Origin abhängige Antwort muss
+    // es dem Zwischenspeicher sagen, sonst bekäme der nächste Aufrufer ohne
+    // Origin die gespeicherte 403 (bis 02.09.2026 fehlten beide auf der 403).
+    has("fremder Origin: die 403 nennt origin in vary", mcp.vary ?? "", "origin");
+    eq("fremder Origin: die 403 ist no-store", mcp.cacheControl, "no-store");
 
     // Der Befund vom 03.08.2026: Diese Prüfung lag hinter /health, der Pfad war
     // also für jede Webseite abfragbar.
@@ -682,6 +691,8 @@ console.log("Host-Weisliste");
     const health = await fetch(`http://127.0.0.1:${HOST_PORT}/health`);
     eq("fremder Host auf /health: 421", health.status, 421);
     eq("fremder Host: keine CORS-Freigabe", health.headers.get("access-control-allow-origin"), null);
+    has("fremder Host: die 421 nennt host in vary", health.headers.get("vary") ?? "", "host");
+    eq("fremder Host: die 421 ist no-store", health.headers.get("cache-control"), "no-store");
     const mcp = await fetch(`http://127.0.0.1:${HOST_PORT}/mcp`, {
       method: "POST",
       headers: JSON_HEADERS,
@@ -760,4 +771,4 @@ console.log("Protokoll-Telemetrie ohne Kopfzeile");
 // Mindestzahl wie in test-golden.ts: Fällt ein Block dieser Datei weg, sinkt die
 // Summe, ohne dass eine Prüfung rot würde. Gemessen 02.09.2026, beim Ergänzen
 // mitziehen.
-abschluss(101);
+abschluss(105);

@@ -146,7 +146,14 @@ function mitFrist<T>(p: Promise<T>, ms: number): Promise<T | "frist"> {
   });
 }
 
-/** Liest stderr mit und behält die letzten 20 Zeilen; endet mit dem Strom. */
+/**
+ * Liest stderr mit und behält die letzten 20 Zeilen; endet mit dem Strom, also
+ * mit dem Prozess. Keine Frist je Lesevorgang: Bis zum 02.09.2026 brach die
+ * Sammlung nach zwei Sekunden Stille ab, und ein Server, der erst nach drei
+ * Sekunden seine Fehlermeldung schrieb, hinterließ eine Ausnahme ohne sie
+ * (gemessen mit einem verzögerten Ersatzserver). `proc.kill()` im `finally`
+ * des Aufrufers schließt den Strom, danach endet auch diese Schleife.
+ */
 function sammleStderr(strom: ReadableStream<Uint8Array>): Promise<string[]> {
   return (async () => {
     const zeilen: string[] = [];
@@ -154,8 +161,8 @@ function sammleStderr(strom: ReadableStream<Uint8Array>): Promise<string[]> {
     const d = new TextDecoder();
     let rest = "";
     for (;;) {
-      const chunk = await mitFrist(r.read(), 2_000);
-      if (chunk === "frist" || chunk.done) break;
+      const chunk = await r.read();
+      if (chunk.done) break;
       rest += d.decode(chunk.value, { stream: true });
       const teile = rest.split("\n");
       rest = teile.pop() ?? "";
@@ -164,6 +171,7 @@ function sammleStderr(strom: ReadableStream<Uint8Array>): Promise<string[]> {
         if (zeilen.length > 20) zeilen.shift();
       }
     }
+    if (rest.trim() !== "") zeilen.push(rest);
     return zeilen;
   })();
 }

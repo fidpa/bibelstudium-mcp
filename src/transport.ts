@@ -64,14 +64,19 @@ export type ServerFabrik = () => Server;
 // hier also nichts freigegeben, was es gibt. Die Zeile steht folgenlos und wird
 // mit dem Umstieg auf die Revision 2026-07-28 fällig, die das Feld ganz
 // streicht ("do not mint or echo session IDs").
+// Die Antwort hängt vom Origin und vom Host ab (200, 403 oder 421): `vary` sagt
+// das jedem Zwischenspeicher, `no-store` nimmt ihm die Gelegenheit ganz. Heute
+// nicht ausnutzbar (Cloudflare speichert application/json nicht von sich aus),
+// aber die Bauart, die später leckt (02.09.2026). Getrennt von den
+// CORS-Kopfzeilen, weil die Abweisungen 403 und 421 ohne CORS antworten und
+// bis zum 02.09.2026 gerade die abhängige Antwort keinem Zwischenspeicher
+// sagte, wovon sie abhängt.
+const CACHE_HEADERS: Readonly<Record<string, string>> = {
+  "vary": "origin, host",
+  "cache-control": "no-store",
+};
 const CORS_HEADERS: Readonly<Record<string, string>> = {
   "access-control-allow-origin": "*",
-  // Die Antwort hängt vom Origin ab (200 oder 403): `vary` sagt das jedem
-  // Zwischenspeicher, `no-store` nimmt ihm die Gelegenheit ganz. Heute nicht
-  // ausnutzbar (Cloudflare speichert application/json nicht von sich aus),
-  // aber die Bauart, die später leckt (02.09.2026).
-  "vary": "origin",
-  "cache-control": "no-store",
   "access-control-allow-headers": "content-type, accept, mcp-session-id, mcp-protocol-version, last-event-id",
   "access-control-expose-headers": "mcp-session-id",
   "access-control-max-age": "86400",
@@ -138,6 +143,7 @@ function healthProblem(): string | null {
  */
 function withCors(response: Response, methods: string | null): Response {
   const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(CACHE_HEADERS)) headers.set(k, v);
   for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
   if (methods !== null) headers.set("access-control-allow-methods", methods);
   return new Response(response.body, {
@@ -360,7 +366,7 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
       if (allowedHosts.length > 0) {
         const host = (request.headers.get("host") ?? "").trim().toLowerCase();
         if (!allowedHosts.includes(host)) {
-          return new Response("Misdirected request", { status: 421 });
+          return new Response("Misdirected request", { status: 421, headers: CACHE_HEADERS });
         }
       }
 
@@ -372,7 +378,7 @@ export async function serveHttp(port: number, createServer: ServerFabrik): Promi
         // Prüfung steht, eine Antwortstufe später (bis 02.09.2026). Ohne sie
         // blockt der Browser das Lesen, und Abweisung und „kein Server" sehen
         // für die Seite gleich aus. Die 404 unten behält ihre Kopfzeilen.
-        return new Response("Forbidden origin", { status: 403 });
+        return new Response("Forbidden origin", { status: 403, headers: CACHE_HEADERS });
       }
 
       if (url.pathname === "/health") {

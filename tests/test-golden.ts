@@ -77,4 +77,4 @@ pruefeWerkzeugAbdeckung();
  * Sie hängt am geladenen Bestand: Ohne die Ausgabe mit Apparat entfallen die
  * Fußnotenfälle.
  */
-abschluss(1059);
+abschluss(1082);

@@ -70,9 +70,27 @@ export const compareBuendel = buendel({
     // Mk 4,8: Kopf ἓν, Lesart εἰς, und alle drei Editionen führen beide Formen im
     // Vers. Kein Satz darf fallen, weil keiner entscheidbar ist.
     cmpBeideFormen: ["bible_compare", { book: "Mk", chapter: 4, verse: 8 }],
-    // Mt 21,11: TR führt weder Ναζαρὲθ noch Ναζαρὲτ; bis dahin wurde der Kopf
-    // behauptet („tr liest hier Ναζαρὲθ").
+    // Mt 21,11: Bis zum 02.09.2026 fehlte in TR das Wort ganz (der Import
+    // übersprang die Variantengruppe der Quelle), und der Abgleich behauptete
+    // erst den Kopf, dann „weder noch". Seit dem Import der ersten Lesart liest
+    // TR Ναζαρέτ, genau die TR-Lesart der Notiz: kein Satz über tr.
     cmpWederNoch: ["bible_compare", { book: "Mt", chapter: 21, verse: 11 }],
+    // Fünf Lagen des positionsfesten Abgleichs (seit 02.09.2026), je eine Stelle:
+    // Mt 28,3 Byz „λευκον ωσει χιων": Lesart an der Stelle, Kopf ὡς anderswo
+    // im Vers; die Mehrformen-Regel allein verschluckte diesen Satz.
+    cmpStelle: ["bible_compare", { book: "Mt", chapter: 28, verse: 3 }],
+    // Mk 10,16: Byz lässt das Wort an der Stelle aus („ηὐλόγει" steht nirgends).
+    cmpLuecke: ["bible_compare", { book: "Mk", chapter: 10, verse: 16 }],
+    // Mk 1,13 Byz „ημερας τεσσαρακοντα": Lesart direkt neben der Lücke.
+    cmpWortstellung: ["bible_compare", { book: "Mk", chapter: 1, verse: 13 }],
+    // Apg 5,19: an der Stelle steht ein drittes Wort (ηνοιξεν mit beweglichem ν).
+    cmpDrittes: ["bible_compare", { book: "Apg", chapter: 5, verse: 19 }],
+    // Lk 3,32: keine Stelle bestimmbar, Byz führt weder Kopf noch Lesart.
+    cmpOhneStelle: ["bible_compare", { book: "Lk", chapter: 3, verse: 32 }],
+    // Mt 21,7: SBL schreibt die Elision „ἐπ’" mit U+2019; bis zum 02.09.2026
+    // passte sie nicht auf den Kopf „ἐπ᾽", und der Satz „sblgnt liest hier
+    // ἐπάνω" fiel (das ἐπάνω steht am Versende).
+    cmpApostroph: ["bible_compare", { book: "Mt", chapter: 21, verse: 7 }],
   },
   pruefe({ res }) {
     {
@@ -93,12 +111,18 @@ export const compareBuendel = buendel({
       check("Mt 18,6: keine Quellenkonflikte", !("quellenkonflikte" in (cmpTrenner.json ?? {})));
       check("Mk 4,8: ἓν gegen εἰς überall doppelt, kein Satz", saetze(cmpBeideFormen).length === 0, saetze(cmpBeideFormen).join(" | "));
       check("Mk 4,8: Bezeugung trotzdem besetzt", abweichend(cmpBeideFormen).length > 0);
-      check(
-        "Mt 21,11: tr führt weder Kopf noch Lesart, und der Satz sagt es",
-        saetze(cmpWederNoch).some((s) => s.startsWith('tr führt an dieser Stelle weder "Ναζαρὲθ" noch "Ναζαρὲτ"')),
-        saetze(cmpWederNoch).join(" | ")
+      check("Mt 21,11: kein Satz über tr, das die TR-Lesart liest", !saetze(cmpWederNoch).some((s) => s.startsWith("tr ")), saetze(cmpWederNoch).join(" | "));
+      const { cmpStelle, cmpLuecke, cmpWortstellung, cmpDrittes, cmpOhneStelle, cmpApostroph } = res;
+      has("Mt 28,3: Lesart an der Stelle, Kopf anderswo", saetze(cmpStelle).join(" | "), 'byzantine liest hier "ὡσεὶ"; die TAGNT-Notiz führt dafür nur TR als Zeugen.');
+      has(
+        "Mk 10,16: Lücke wird als Lücke gemeldet",
+        saetze(cmpLuecke).join(" | "),
+        'byzantine führt an dieser Stelle kein Wort, also auch nicht "ηὐλόγει"; die TAGNT-Notiz nennt Byz jedoch als Zeugen'
       );
-      lacks("Mt 21,11: kein Satz behauptet den Kopf für tr", saetze(cmpWederNoch).join(" | "), 'tr liest hier "Ναζαρὲθ"');
+      has("Mk 1,13: Lesart neben der Lücke heißt andere Wortstellung", saetze(cmpWortstellung).join(" | "), 'byzantine liest hier "τεσσαράκοντα" in anderer Wortstellung');
+      has("Apg 5,19: drittes Wort an der Stelle wird genannt", saetze(cmpDrittes).join(" | "), 'byzantine liest an dieser Stelle "ηνοιξεν", weder "ἀνοίξας" noch "ἤνοιξε"');
+      has("Lk 3,32: ohne Stelle bleibt der Satz mit weder und noch", saetze(cmpOhneStelle).join(" | "), 'byzantine führt an dieser Stelle weder "Ἰωβὴδ" noch "Ἰωβὴλ"');
+      check("Mt 21,7: kein Satz nennt sblgnt mit ἐπάνω", !saetze(cmpApostroph).some((s) => s.startsWith("sblgnt") && s.includes("ἐπάνω")), saetze(cmpApostroph).join(" | "));
     }
     const { cmpVerse999, comma, mk1446, cmpOhneBezeugung, cmpMitNotiz, cmpBuchZahl } = res;
     const { cmpBuchFehlt, cmpBuchZuLang, cmpBuchNull, cmpAltesTestament, cmpKapitel999 } = res;

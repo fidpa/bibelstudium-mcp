@@ -104,7 +104,10 @@ const DECLINABLE = new Set(["N", "A", "T", "P", "R", "C", "D", "K", "I", "X", "Q
 const ROB_TENSE: Record<string, string> = {
   P: "Präsens", I: "Imperfekt", F: "Futur", A: "Aorist",
   R: "Perfekt", L: "Plusquamperfekt", X: "Perfekt",
-  "2A": "Aorist", "2F": "Futur", "2R": "Perfekt", "2P": "Präsens",
+  // "2L" (zweites Plusquamperfekt, PARSING.COD) fehlte bis zum 02.09.2026:
+  // fünf Codes in byzantine und tr (V-2LAI-*) kamen ohne Tempus heraus, und
+  // erst die Meldung unverbrauchter Zeichen machte das sichtbar.
+  "2A": "Aorist", "2F": "Futur", "2R": "Perfekt", "2P": "Präsens", "2L": "Plusquamperfekt",
 };
 const ROB_VOICE: Record<string, string> = {
   A: "Aktiv", M: "Medium", P: "Passiv", E: "Medium/Passiv",
@@ -121,11 +124,32 @@ const ROB_MOOD: Record<string, string> = {
 /**
  * Löst einen Robinson-Morphologiecode (byzantine, tr) in lesbares Deutsch auf.
  *
- * Jedes Segment wird verbraucht oder gemeldet: Ein Segment, das keine Tabelle
- * kennt, geht als `?<Segment>` in die Ausgabe, statt zu verschwinden. Gegen den
- * Bestand vom 02.09.2026 (1055 Codes in byzantine, 1066 in tr) entsteht kein
- * solcher Eintrag; er zeigt einen künftigen Quellenstand an.
+ * Jedes Zeichen wird verbraucht oder gemeldet: Was keine Tabelle kennt, geht
+ * als `?<Rest>` in die Ausgabe, statt zu verschwinden. Das gilt auch innerhalb
+ * eines Blocks („V-RAI-3S-ZZZ", „T-ZSM"): Bis zum 02.09.2026 meldete nur ein
+ * unbekanntes Endsegment hinter dem Deklinationsblock, ein unbekanntes Zeichen
+ * im Tempus-, Personen- oder Kasusblock verschwand stumm, und die Ausgabe sah
+ * vollständig aus. Gegen den Bestand vom 02.09.2026 (1055 Codes in byzantine,
+ * 1066 in tr) entsteht kein solcher Eintrag; er zeigt einen künftigen
+ * Quellenstand an.
  */
+/**
+ * Liest einen Block Zeichen für Zeichen gegen seine Tabellen und gibt zurück,
+ * was keine Tabelle verbraucht hat (leer, wenn alles aufging). Ein Zeichen, das
+ * seine Tabelle nicht kennt, bleibt mitsamt dem Rest stehen, damit „T-ZSM" als
+ * „?ZSM" erscheint und nicht als „Singular maskulin" ohne Kasus.
+ */
+function verbraucheBlock(block: string, tabellen: ReadonlyArray<Record<string, string>>, out: string[]): string {
+  let i = 0;
+  for (const tabelle of tabellen) {
+    const wert = tabelle[block[i] ?? ""];
+    if (wert === undefined) break;
+    out.push(wert);
+    i++;
+  }
+  return block.slice(i);
+}
+
 export function decodeRobinson(code: string): string {
   const raw = code.trim();
   if (!raw) return "—";
@@ -133,7 +157,7 @@ export function decodeRobinson(code: string): string {
   const head = parts[0]!;
   const out: string[] = [];
   const rest = parts.slice(1);
-  const unbekannt = (seg: string): void => { out.push(`?${seg}`); };
+  const unbekannt = (seg: string): void => { if (seg !== "") out.push(`?${seg}`); };
 
   // Verb: V-<Tempus+Genus+Modus>-<Person+Numerus> oder V-<tgm>-<Kasus+Numerus+Genus>
   // beim Partizip; der Infinitiv hat keinen Anhang. Danach höchstens ein Marker.
@@ -147,23 +171,16 @@ export function decodeRobinson(code: string): string {
     if (tense === "2" && tvm[i + 1]) { tense = "2" + tvm[i + 1]; i += 2; } else { i += 1; }
     const voice = tvm[i] ?? ""; i += 1;
     const mood = tvm[i] ?? "";
-    if (ROB_TENSE[tense]) out.push(ROB_TENSE[tense]!);
-    if (ROB_VOICE[voice]) out.push(ROB_VOICE[voice]!);
-    if (ROB_MOOD[mood]) out.push(ROB_MOOD[mood]!);
+    if (ROB_TENSE[tense]) out.push(ROB_TENSE[tense]!); else if (tense) unbekannt(tense);
+    if (ROB_VOICE[voice]) out.push(ROB_VOICE[voice]!); else if (voice) unbekannt(voice);
+    if (ROB_MOOD[mood]) out.push(ROB_MOOD[mood]!); else if (mood) unbekannt(mood);
+    if (tvm.length > i + 1) unbekannt(tvm.slice(i + 1));
     for (const seg of rest) {
       if (ROB_SUFFIX[seg]) { out.push(ROB_SUFFIX[seg]!); continue; }
-      if (mood === "P") {
-        // Partizip: Kasus, Numerus, Genus
-        if (GCASE[seg[0] ?? ""]) out.push(GCASE[seg[0]!]!);
-        if (GNUMBER[seg[1] ?? ""]) out.push(GNUMBER[seg[1]!]!);
-        if (GENDER[seg[2] ?? ""]) out.push(GENDER[seg[2]!]!);
-      } else if (mood !== "N") {
-        // finite Form: Person und Numerus
-        if (PERSON[seg[0] ?? ""]) out.push(PERSON[seg[0]!]!);
-        if (GNUMBER[seg[1] ?? ""]) out.push(GNUMBER[seg[1]!]!);
-      } else {
-        unbekannt(seg);
-      }
+      // Partizip: Kasus, Numerus, Genus; finite Form: Person und Numerus; der
+      // Infinitiv trägt keinen Block. Was die Tabellen übrig lassen, wird gemeldet.
+      const tabellen = mood === "P" ? [GCASE, GNUMBER, GENDER] : mood !== "N" ? [PERSON, GNUMBER] : [];
+      unbekannt(verbraucheBlock(seg, tabellen, out));
     }
     return out.join(" ");
   }
@@ -183,9 +200,7 @@ export function decodeRobinson(code: string): string {
         d = d.slice(1);
         if (head === "S" && GNUMBER[d[0] ?? ""]) { out.push(`${GNUMBER[d[0]!]!} (Besitzer)`); d = d.slice(1); }
       }
-      if (GCASE[d[0] ?? ""]) out.push(GCASE[d[0]!]!);
-      if (GNUMBER[d[1] ?? ""]) out.push(GNUMBER[d[1]!]!);
-      if (GENDER[d[2] ?? ""]) out.push(GENDER[d[2]!]!);
+      unbekannt(verbraucheBlock(d, [GCASE, GNUMBER, GENDER], out));
       return;
     }
     if (ROB_SUFFIX[seg]) { out.push(ROB_SUFFIX[seg]!); return; }

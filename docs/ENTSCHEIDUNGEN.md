@@ -1620,6 +1620,73 @@ ein eigenes Vorhaben; ein Schweigen, wo nichts entscheidbar ist, ist die
 ehrlichere Antwort als ein geratener Satz im Feld, das die Antwort als das
 Verlässliche auszeichnet.
 
+## Der Editionsabgleich urteilt an der Stelle der Notiz
+
+*Gemessen 02.09.2026 über alle 6194 TAGNT-Notizen, Alt- und Neufassung
+nebeneinander.*
+
+Ein Review desselben Tages hat die Mehrformen-Regel des Abschnitts darüber
+nachgemessen: Von den 448 Sätzen, die sie gegenüber 0.6.24 entfernte, waren
+acht richtig. In allen acht führt die Edition die Lesart **an der Stelle der
+Notiz** und die Kopfform anderswo im Vers (Mt 28,3 Byz „λευκον ωσει χιων",
+Röm 1,27 Byz „οι αρρενες αφεντες"), und die Regel schwieg, weil sie zwei Formen
+zählte. Unter den 693 verbliebenen Sätzen waren neun falsch, alle aus derselben
+Positionsblindheit: ein häufiges Wort anderswo im Vers (Mt 8,5 TR „αὐτῷ"),
+SBLGNT-Elisionen mit „’" (U+2019, 1221 Wörter), die der Buchstabenvergleich
+nicht traf (Mt 21,7 „ἐπ’"), eine Mehrwortlesart auf ihr erstes Wort geschrumpft
+(Mk 11,29 „καὶ ἐγὼ"), eine andere Versgrenze (Mk 6,27).
+
+Gewählt: Die Stelle wird über die beiden Nachbarwörter der TAGNT-Zeile in der
+Edition gesucht; die Handler geben sie mit (`umfeld`). Genau ein Treffer: Es
+gilt, was dort steht. Stehen die Nachbarn direkt nebeneinander, lässt die
+Edition das Wort aus, und steht die Lesart höchstens zwei Wörter neben der
+Lücke, liest die Edition sie „in anderer Wortstellung" (Mk 1,13 Byz „ημερας
+τεσσαρακοντα"). Ein negatives Urteil („kein Wort", „liest X") fällt nur, wenn
+die Lesart nirgends im Vers steht; sonst bliebe bei vertauschter Wortstellung
+(Mt 5,30 Byz „βληθη εις γεενναν") ein falsches „führt kein Wort". Ohne
+bestimmbare Stelle gilt die Mehrformen-Regel weiter. Editionswörter gehen als
+reine Buchstaben in den Vergleich, Lesarten mit gleicher Normalform vereinen
+ihre Zeugen, und die griechischen Läufe der Notiz schließen kombinierende
+Zeichen ein (Apg 4,34 „ὑπῇρχεν" brach sonst nach „ὑπῆ" ab).
+
+Ergebnis gegen 0.6.27: 668 Sätze statt 673 (die 673 sind mit dem zugleich
+reparierten TR-Import gezählt), sieben zurückgekehrt, zwölf entfallen (die
+neun falschen, zwei Apostrophfälle, ein Fall vertauschter Wortstellung über
+fünf Wörter, Lk 18,24), kein Satz ohne Gegenstück in 0.6.24. Die Sätze tragen
+fünf Formen: 602 „liest hier X; nur … als Zeugen", 51 „liest hier Kopf, nicht
+X", 6 „in anderer Wortstellung", 6 „liest an dieser Stelle Y", 1 „führt an
+dieser Stelle kein Wort", 2 „führt weder … noch" ohne Stelle.
+
+**Bewusst unerkannt:** derselbe Wortlaut an zwei Stellen mit Widerspruch nur an
+einer (Mt 28,3 „ὡς ἀστραπὴ", Byz laut Notiz ὡσεὶ, im Text ὡς), weil die Lesart
+im Vers vorkommt und das negative Urteil deshalb unterbleibt. Der Preis für
+kein falsches „führt kein Wort".
+
+## Der TR-Import liest die erste von zwei Lesarten
+
+*Gemessen 02.09.2026 über alle 27 `.UTR`-Dateien der Quelle.*
+
+Die TR-Quelle (byztxt) führt an 261 Stellen in 246 Versen zwei Lesarten als
+Gruppe `| a | b |`, eine Seite darf leer sein, und Strong-Nummer samt Code
+stehen teils hinter der Gruppe. Bis 0.6.27 kannte der Import die Klammern
+nicht: Er nahm beide Lesarten (Mt 10,10 „ραβδον ραβδους", 2Petr 1,1 „συμεων
+σιμων") oder keine (Röm 1,27 ohne ἄρρενες), und die eingeklammerten
+Unterschriften der Briefe hingen als Wörter am letzten Vers (Phlm 1,25 sechs zu
+viel). 140 941 Wörter, davon 359 zu viel oder falsch.
+
+Gewählt: die erste Lesart, die zweite entfällt und wird gezählt. Welche
+TR-Ausgabe vorn steht, sagt die Quelle nicht. Gemessen gegen die TR-Spalte der
+TAGNT-Bezeugung stimmt die erste Lesart in 145 Gruppen überein, die zweite in
+49 (Rest unentscheidbar). An vier Stellen passt die Reihenfolge zu Stephanus
+1550 vor Scrivener 1894 (Mt 10,10; Lk 17,36; 2Petr 1,1; 1Joh 2,23), belegt ist
+das nicht. Folge: Lk 17,36 und der zweite Teil von 1Joh 2,23 stehen nur in der
+zweiten Lesart und fehlen jetzt im TR; TAGNT führt beide als TR-Lesart.
+
+**Verworfen:** die zweite Lesart nehmen, wo die erste leer ist. Das ergäbe einen
+Text, der keiner der beiden Ausgaben entspricht. **Verworfen:** beide Lesarten
+speichern. Kein Werkzeug fragt sie ab, und eine Tabelle ohne Leser ist ein
+stiller Zweig.
+
 ## Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte
 
 *Gemessen 02.09.2026 mit sqlite3 und über stdio, 155 612 Verse in fünf Ausgaben.*

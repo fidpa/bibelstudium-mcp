@@ -88,7 +88,10 @@ const TAGNT_LABEL: Record<string, string> = {
 };
 
 const TAGNT_WITNESS_RE = /\b(?:NA28|NA27|Tyn|SBL|WH|Treg|TR|Byz)\b/g;
-const GREEK_RUN_RE = /\p{Script=Greek}+/gu;
+// Mit den kombinierenden Zeichen: STEPBible schreibt das Iota subscriptum
+// teils zerlegt (U+0345, Script=Inherited), und „ὑπῇρχεν" brach als Lauf
+// sonst nach „ὑπῆ" ab (Apg 4,34; gemessen 02.09.2026).
+const GREEK_RUN_RE = /[\p{Script=Greek}\p{M}]+/gu;
 
 /**
  * Nur griechische Buchstaben. Der Bereich Script=Greek führt auch Zeichen, die
@@ -112,6 +115,46 @@ function istElision(a: string, b: string): boolean {
   return lang.length === kurz.length + 1 && lang.startsWith(kurz) && /[αεηιουω]$/.test(lang);
 }
 
+/** Die Nachbarwörter der TAGNT-Zeile, links und rechts des Kopfworts; am Versrand fehlt eines. */
+export interface Umfeld {
+  readonly vorher?: string;
+  readonly nachher?: string;
+}
+
+/** Was eine Edition an der Stelle der Notiz führt, sofern die Stelle bestimmbar ist. */
+type Stelle =
+  | { readonly art: "wort"; readonly wort: string }
+  | { readonly art: "luecke"; readonly bei: number }
+  | { readonly art: "unbestimmt" };
+
+/**
+ * Sucht die Stelle des Kopfworts in einer Edition über die beiden Nachbarn
+ * der TAGNT-Zeile: genau ein Wort, dessen linker Nachbar `vorher` und dessen
+ * rechter `nachher` ist (am Versrand: das erste beziehungsweise letzte Wort).
+ * Stehen die beiden Nachbarn direkt nebeneinander, lässt die Edition das Wort
+ * an dieser Stelle aus. Alles andere (kein Treffer, zwei Treffer, keine
+ * Nachbarn) ist unbestimmt, etwa bei vertauschter Wortstellung oder wenn die
+ * Edition den Vers anders teilt.
+ */
+function stelleIn(words: readonly string[], original: readonly string[], vorher: string, nachher: string): Stelle {
+  if (vorher === "" && nachher === "") return { art: "unbestimmt" };
+  const letzte = words.length - 1;
+  const passt = (p: number): boolean =>
+    (vorher === "" ? p === 0 : words[p - 1] === vorher) &&
+    (nachher === "" ? p === letzte : words[p + 1] === nachher);
+  const treffer: number[] = [];
+  for (let p = 0; p < words.length; p++) if (passt(p)) treffer.push(p);
+  if (treffer.length === 1) return { art: "wort", wort: original[treffer[0]!]! };
+  if (treffer.length === 0) {
+    // `bei` ist der Index, an dem das Wort stünde: der des rechten Nachbarn.
+    if (vorher === "" && words[0] === nachher) return { art: "luecke", bei: 0 };
+    if (nachher === "" && words[letzte] === vorher) return { art: "luecke", bei: words.length };
+    const q = words.findIndex((w, i) => w === vorher && words[i + 1] === nachher);
+    if (vorher !== "" && nachher !== "" && q >= 0) return { art: "luecke", bei: q + 1 };
+  }
+  return { art: "unbestimmt" };
+}
+
 /**
  * Gleicht eine TAGNT-Variantennotiz gegen die Editionstexte dieser Datenbank ab.
  *
@@ -124,91 +167,137 @@ function istElision(a: string, b: string): boolean {
  * 11 Prozent auseinander). Gemeldet wird deshalb, welche geladene Edition
  * welche Form tatsächlich bezeugt, unmittelbar aus `original_words`, und die
  * Widersprüche werden gekennzeichnet.
+ *
+ * Geurteilt wird an der Stelle der Notiz, wo die Stelle über die Nachbarwörter
+ * (`umfeld`) bestimmbar ist. Ohne Stelle gilt die Frage „steht die Form
+ * irgendwo im Vers", und dann schweigt der Abgleich, sobald eine Edition mehr
+ * als eine Form der Notiz führt. Bis zum 02.09.2026 gab es nur diese zweite
+ * Frage: Sie erzeugte Sätze wie „sblgnt liest hier ὃς" (Mt 5,32, das ὃς steht
+ * 13 Wörter weiter), und die Mehrformen-Regel, die das abstellte, verschluckte
+ * acht richtige Sätze, in denen die Edition die Lesart an der Stelle und die
+ * Kopfform anderswo führt (Mt 28,3 „λευκον ωσει χιων", Röm 1,27 „οι αρρενες").
  */
 export function crossCheckVariant(
   note: string,
   headword: string,
-  texts: Array<{ ed: string; words: string[] }>
+  texts: Array<{ ed: string; words: string[] }>,
+  umfeld: Umfeld = {}
 ): { belege: Record<string, string[]>; abgleich: string[] } | undefined {
   const head = greekLettersOnly(headword);
   if (head === "") return undefined;
+  const headNorm = normForCompare(head);
+  const buchstaben = (w: string): string => normForCompare(greekLettersOnly(w));
 
   // ";" trennt die Notizen eines Wortes, "¦" trennt die Lesarten innerhalb
   // einer Notiz („ἐπὶ … in: TR ¦ εἰς … in: SBL+Byz", Mt 18,6). 65 Notizen
   // tragen "¦" (gemessen 02.09.2026); bis dahin wurde nur an ";" getrennt, und
   // eine solche Notiz wurde ein Segment mit allen Zeugen und der ersten Form.
-  const varianten = note
-    .split(/[;¦]/)
-    .map((seg) => ({
-      zeugen: new Set(seg.match(TAGNT_WITNESS_RE) ?? []),
-      form: (seg.match(GREEK_RUN_RE) ?? [])
-        .map((f) => f.replace(/[^\p{L}]/gu, ""))
-        .find((f) => f.length > 1),
-    }))
-    .filter(
-      (v): v is { zeugen: Set<string>; form: string } =>
-        v.form !== undefined && normForCompare(v.form) !== normForCompare(head)
-    );
-
-  // Positionsblind, mit Absicht und mit Folge: gefragt wird, ob eine Form
-  // irgendwo im Vers steht, nicht ob sie an der Stelle der Notiz steht. Eine
-  // Wortposition liefert die Notiz nicht her. Deshalb unten die Regel: Führt
-  // eine Edition beide Formen im Vers (TR bei Mt 18,6: „εις εμε" an anderer
-  // Stelle, „επι" an der strittigen), lässt sich nichts entscheiden, und es
-  // fällt kein Satz. Bis zum 02.09.2026 fiel er trotzdem, und rund ein
-  // Drittel der Abgleichsätze betraf genau diese Lage.
-  const liest = (form: string): string[] => {
+  // Zwei Schreibungen derselben Form (Apg 15,4: „SBL+Treg: Ἱεροσόλυμα ; WH:
+  // Ἰεροσόλυμα") sind eine Lesart mit vereinten Zeugen, sonst zählte sie
+  // doppelt. Eine Mehrwortlesart („καὶ ἐγὼ") geht mit ihrem ersten Wort ein.
+  const varianten = new Map<string, { form: string; zeugen: Set<string> }>();
+  for (const seg of note.split(/[;¦]/)) {
+    const form = (seg.match(GREEK_RUN_RE) ?? [])
+      .map((f) => f.replace(/[^\p{L}]/gu, ""))
+      .find((f) => f.length > 1);
+    if (form === undefined) continue;
     const n = normForCompare(form);
-    return texts.filter((t) => t.words.some((w) => normForCompare(w) === n)).map((t) => t.ed);
-  };
+    if (n === headNorm) continue;
+    const eintrag = varianten.get(n) ?? { form, zeugen: new Set<string>() };
+    for (const z of seg.match(TAGNT_WITNESS_RE) ?? []) eintrag.zeugen.add(z);
+    varianten.set(n, eintrag);
+  }
+
+  // Editionswörter als reine Buchstaben: SBLGNT schreibt die Elision mit „’"
+  // (1221 Wörter, gemessen 02.09.2026), und „ἐπ’" passte bis dahin nie auf den
+  // Kopf „ἐπ᾽", sodass die Edition als Leserin allein der Lesart galt.
+  const normTexts = texts.map((t) => ({ ed: t.ed, words: t.words.map(buchstaben), original: t.words }));
+  const liest = (n: string): string[] => normTexts.filter((t) => t.words.includes(n)).map((t) => t.ed);
 
   const belege: Record<string, string[]> = {};
-  for (const form of [head, ...varianten.map((v) => v.form)]) {
-    const eds = liest(form);
+  for (const [n, form] of [[headNorm, head] as const, ...[...varianten].map(([n, v]) => [n, v.form] as const)]) {
+    const eds = liest(n);
     if (eds.length > 0) belege[form] = eds;
   }
   if (Object.keys(belege).length === 0) return undefined;
 
-  const abgleich: string[] = [];
-  const kopfEds = liest(head);
-  // Wie viele Formen dieser Notiz (Kopf und alle Lesarten) eine Edition im Vers
-  // führt. Mehr als eine, und der Vers gibt nicht her, welche an der Stelle der
-  // Notiz steht: TR liest bei Mt 18,6 die Lesart „ἐπὶ" und daneben „εις εμε".
+  // Ohne Stelle: Wie viele Formen dieser Notiz (Kopf und alle Lesarten) eine
+  // Edition irgendwo im Vers führt. Mehr als eine, und der Vers gibt nicht her,
+  // welche an der Stelle der Notiz steht (TR bei Mt 18,6 liest die Lesart „ἐπὶ"
+  // und daneben „εις εμε"); dann fällt kein Satz.
   const formenJeEdition = new Map<string, number>();
-  for (const form of [head, ...varianten.map((v) => v.form)]) {
-    for (const ed of liest(form)) formenJeEdition.set(ed, (formenJeEdition.get(ed) ?? 0) + 1);
+  for (const n of [headNorm, ...varianten.keys()]) {
+    for (const ed of liest(n)) formenJeEdition.set(ed, (formenJeEdition.get(ed) ?? 0) + 1);
   }
-  for (const v of varianten) {
-    if (istElision(normForCompare(v.form), normForCompare(head))) continue;
-    const variantenEds = liest(v.form);
-    for (const t of texts) {
+  const vorher = umfeld.vorher === undefined ? "" : buchstaben(umfeld.vorher);
+  const nachher = umfeld.nachher === undefined ? "" : buchstaben(umfeld.nachher);
+
+  const abgleich: string[] = [];
+  const schluss = " Für diese Edition gilt der Editionstext.";
+  for (const [n, v] of varianten) {
+    if (istElision(n, headNorm)) continue;
+    for (const t of normTexts) {
       const label = TAGNT_LABEL[t.ed];
       if (label === undefined) continue;
-      if ((formenJeEdition.get(t.ed) ?? 0) > 1) continue;
-      const liestVariante = variantenEds.includes(t.ed);
-      const liestKopf = kopfEds.includes(t.ed);
       const genannt = v.zeugen.has(label);
+      const zeugen = [...v.zeugen].join("+") || "keine Edition";
       // Zuerst nennen, was die Edition liest, dann die Notiz, der sie
       // widerspricht. Umgekehrt formuliert („TAGNT nennt … der Text liest
       // anders") liest es sich wie eine Randbemerkung zur Datenqualität und
       // entfällt beim Wiedergeben des Befundes; Mk 14,46 wurde zweimal ohne den
       // Vorbehalt gemeldet (25.07.2026).
-      if (liestVariante && !genannt) {
-        abgleich.push(
-          `${t.ed} liest hier "${v.form}"; die TAGNT-Notiz führt dafür nur ` +
-            `${[...v.zeugen].join("+") || "keine Edition"} als Zeugen. Für diese Edition gilt ` +
-            "der Editionstext."
-        );
-      } else if (!liestVariante && genannt) {
+      const nurZeugen = `${t.ed} liest hier "${v.form}"; die TAGNT-Notiz führt dafür nur ${zeugen} als Zeugen.${schluss}`;
+      const widerspruch = (was: string): string =>
+        `${t.ed} ${was}; die TAGNT-Notiz nennt ${label} jedoch als Zeugen für "${v.form}".${schluss}`;
+      const liestVariante = liest(n).includes(t.ed);
+      const stelle = stelleIn(t.words, t.original, vorher, nachher);
+      if (stelle.art !== "unbestimmt") {
+        const dort = stelle.art === "wort" ? buchstaben(stelle.wort) : "";
+        if (dort === n) {
+          if (!genannt) abgleich.push(nurZeugen);
+          continue;
+        }
+        // Lücke, und die Lesart steht höchstens zwei Wörter daneben: Die Edition
+        // liest sie in anderer Wortstellung (Mk 1,13 Byz „ημερας τεσσαρακοντα"
+        // gegen „τεσσεράκοντα ἡμέρας"). Weiter weg ist es ein anderes Vorkommen
+        // (Mt 8,5 TR „προσηλθεν αυτω", vier Wörter hinter der Lücke).
+        if (stelle.art === "luecke" && !genannt && t.words.slice(Math.max(0, stelle.bei - 2), stelle.bei + 2).includes(n)) {
+          abgleich.push(
+            `${t.ed} liest hier "${v.form}" in anderer Wortstellung; die TAGNT-Notiz führt dafür nur ${zeugen} als Zeugen.${schluss}`
+          );
+          continue;
+        }
+        // Ein negatives Urteil nur, wenn die Lesart nirgends im Vers steht: Bei
+        // vertauschter Wortstellung (Mt 5,30 Byz „βληθη εις γεενναν" gegen
+        // „εἰς γέενναν ἀπέλθῃ") ist die Stelle bestimmt und die Lesart trotzdem
+        // da, nur woanders. Ein echter Widerspruch mit derselben Form an zwei
+        // Stellen (Mt 28,3 „ὡς ἀστραπὴ") bleibt so unerkannt; das ist der
+        // Preis, und er ist kleiner als ein falsches „führt kein Wort".
+        if (genannt && !liestVariante) {
+          abgleich.push(
+            widerspruch(
+              stelle.art === "luecke"
+                ? `führt an dieser Stelle kein Wort, also auch nicht "${v.form}"`
+                : dort === headNorm
+                  ? `liest hier "${head}", nicht "${v.form}"`
+                  : `liest an dieser Stelle "${stelle.wort}", weder "${head}" noch "${v.form}"`
+            )
+          );
+        }
+        continue;
+      }
+      if ((formenJeEdition.get(t.ed) ?? 0) > 1) continue;
+      const liestKopf = liest(headNorm).includes(t.ed);
+      if (liestVariante && !genannt) abgleich.push(nurZeugen);
+      else if (!liestVariante && genannt) {
         // Der dritte Zustand ist keiner der beiden: Die Edition führt weder die
-        // Variante noch den Kopf (TR bei Mt 21,11 hat das Wort gar nicht). Bis
-        // zum 02.09.2026 wurde dann der Kopf behauptet.
+        // Variante noch den Kopf. Bis zum 02.09.2026 wurde dann der Kopf behauptet.
         abgleich.push(
-          liestKopf
-            ? `${t.ed} liest hier "${head}", nicht "${v.form}"; die TAGNT-Notiz nennt ` +
-                `${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
-            : `${t.ed} führt an dieser Stelle weder "${head}" noch "${v.form}"; die TAGNT-Notiz ` +
-                `nennt ${label} jedoch als Zeugen für "${v.form}". Für diese Edition gilt der Editionstext.`
+          widerspruch(
+            liestKopf
+              ? `liest hier "${head}", nicht "${v.form}"`
+              : `führt an dieser Stelle weder "${head}" noch "${v.form}"`
+          )
         );
       }
     }
