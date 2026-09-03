@@ -16,6 +16,7 @@ import { KAPITEL_AUSSERHALB, VERSLISTE_ZU_LANG } from "../lib/meldungen.ts";
 import { INVALID_PARAMS } from "../lib/mcp-client.ts";
 import { serverInfoBuendel } from "./server-info.ts";
 import { lookupBuendel } from "./lookup.ts";
+import { VORGESCHRIEBENE_NENNUNG } from "./uebergreifend.ts";
 
 const VERSES_TOO_MANY = Array.from({ length: MAX_VERSE_PARTS + 5 }, (_, i) =>
   String(i + 1)
@@ -32,6 +33,14 @@ export const ressourcenBuendel = buendel({
     resKapitel: "bible://kapitel/LUT/Psalter/23",
     resVersBereich: "bible://vers/SCH/Johannes/3/16-17",
     resVersEinzeln: "bible://vers/LUT/Joh/3/16",
+    // Die beiden Wege, auf denen die nennungspflichtige Ausgabe über eine
+    // Ressource hinausgeht. Sie brauchen eigene Fälle, weil hier der einzige
+    // Ausgabepfad des Servers ohne `outputSchema` liegt: Fiele `quellen` aus
+    // der Ressourcennutzlast, griffe weder die Nachprüfung des Runners noch
+    // eine Zusicherung eines anderen Bündels (gemessen 03.09.2026 über einen
+    // Fehlereinbau, der alle vier Läufe grün ließ).
+    resVersSlt: "bible://vers/SLT/Johannes/3/16",
+    resKapitelSlt: "bible://kapitel/SLT/Psalter/23",
     resKapitelPunkt: "bible://kapitel/LUT/1.%20Mose/1",
     resKapitelUmlaut: "bible://kapitel/LUT/R%C3%B6mer/8",
     resGrundtextAt: "bible://grundtext/wlc/1%20Mose/1/1",
@@ -65,7 +74,8 @@ export const ressourcenBuendel = buendel({
     eq("überlange URI: als InvalidParams", ressourcen.resUriZuLang!.code, INVALID_PARAMS);
     const {
       resBuecher, resUebersetzungen, resEditionen, resQuellen, resKapitel,
-      resVersBereich, resVersEinzeln, resKapitelPunkt, resKapitelUmlaut,
+      resVersBereich, resVersEinzeln, resVersSlt, resKapitelSlt,
+      resKapitelPunkt, resKapitelUmlaut,
       resGrundtextAt, resGrundtextNt, resFremdesSchema, resUnbekannt,
       resZuWenigSegmente, resBuchFehlt, resKapitelGrenze, resVerslisteZuLang, resVersUnlesbar,
       resUebersetzungUnbekannt, resEditionFalschesTestament, resZweiVerletzt,
@@ -143,6 +153,30 @@ export const ressourcenBuendel = buendel({
   has("Schlachter-Vers: Nennung mit Adresse", quellenVonVers[0]?.nennung ?? "", "ebible.org");
   const quellenVonLut = resVersEinzeln!.json?.quellen as Array<{ nennung: string | null }>;
   eq("Luther-Vers: Nennung ist null", quellenVonLut[0]?.nennung, null);
+
+  // Der Ort allein genügt nicht, und die Ressourcen sind die Wege, an denen das
+  // zuletzt auffiele: Sie tragen kein `outputSchema`, ein fehlendes `quellen`
+  // wäre hier also kein Schemafehler. Geprüft wird deshalb zeichengenau gegen
+  // dieselbe Tabelle, gegen die `uebergreifend.ts` die Werkzeuge hält. Nur wenn
+  // die Ausgabe geladen ist: Ihre Quelldateien liegen nicht im Repository, und
+  // ein Klon führt sie nicht.
+  if (!codes.includes("SLT")) {
+    console.log("  übersprungen: die Ausgabe mit vorgeschriebener Nennung ist nicht geladen");
+  } else {
+    for (const [name, r] of [
+      ["Vers-Ressource", resVersSlt],
+      ["Kapitel-Ressource", resKapitelSlt],
+    ] as const) {
+      eq(`${name} (SLT): lesbar`, r!.error, "");
+      const q = (r!.json?.quellen ?? []) as Array<{ werk?: unknown; nennung?: unknown }>;
+      const eintrag = q.find((e) => e.werk === "Schlachter 2000");
+      eq(
+        `${name} (SLT): Nennung im vorgeschriebenen Wortlaut`,
+        eintrag?.nennung,
+        VORGESCHRIEBENE_NENNUNG["Schlachter 2000"]
+      );
+    }
+  }
   const alleQuellen = resQuellen!.json?.quellen as Array<{ werk: string }>;
   const werke = alleQuellen.map((q) => q.werk).join(" | ");
   const namen = (info.uebersetzungen as Array<{ name: string }>).map((t) => t.name);

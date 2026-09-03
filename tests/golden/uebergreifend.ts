@@ -29,14 +29,21 @@ import { INVALID_PARAMS } from "../lib/mcp-client.ts";
  * Ein Vergleich gegen die Quelle, die er prüfen soll, ist immer grün und sichert
  * nichts. Wer den Wortlaut dort ändert, muß ihn hier zweitschreiben, und genau
  * das ist der Zweck. Vorlage ist das unterzeichnete Papier, nicht der Code.
+ *
+ * Exportiert, weil `ressourcen.ts` dieselbe Tabelle braucht: Die beiden
+ * Textressourcen geben denselben Wortlaut aus wie `bible_lookup`, und eine
+ * dritte Handschrift derselben zwei Zeichenketten liefe von dieser weg. Der
+ * Zweck bleibt gewahrt, denn geprüft wird `translations.ts`, und von dort
+ * kommt hier nichts.
  */
-const VORGESCHRIEBENE_NENNUNG: Record<string, string> = {
+export const VORGESCHRIEBENE_NENNUNG: Record<string, string> = {
   "Schlachter 2000":
     "Bibeltext der Schlachter, Copyright 2000 © Genfer Bibelgesellschaft. " +
     "Wiedergegeben mit freundlicher Genehmigung. Alle Rechte vorbehalten.",
   "Schlachter 1951":
     "Die Heilige Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft " +
     "(Geneva Bible Society), bereitgestellt unter CC BY 4.0, " +
+    "https://creativecommons.org/licenses/by/4.0/, Lizenzerklärung " +
     "https://ebible.org/deu1951/copyright.htm",
 };
 

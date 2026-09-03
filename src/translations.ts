@@ -52,9 +52,18 @@ export const TRANSLATIONS = {
   SCH: {
     name: "Schlachter 1951",
     license: "CC BY 4.0 (Genfer Bibelgesellschaft / ebible.org)",
+    // Zwei Adressen, und beide sind Auflage, nicht Freundlichkeit: CC BY 4.0
+    // verlangt in Ziffer 3.a.1.C, die Lizenz zu benennen **und** ihren Text
+    // oder eine URI darauf beizugeben, und in 3.a.1.A die Herkunftsangabe der
+    // Quelle. Bis 0.6.31 stand hier allein die Quellseite; die Lizenz war
+    // benannt, aber nur mittelbar erreichbar. Die Quellseite selbst schreibt
+    // den Rechteinhaber „Genfer Bibelgeschellschaft"; das ist ein Tippfehler
+    // dort und wird hier berichtigt, denn die Namensnennung soll den
+    // Rechteinhaber nennen und nicht seine Verschreibung.
     attribution:
       "Die Heilige Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft " +
       "(Geneva Bible Society), bereitgestellt unter CC BY 4.0, " +
+      "https://creativecommons.org/licenses/by/4.0/, Lizenzerklärung " +
       "https://ebible.org/deu1951/copyright.htm",
     quelle: "bolls",
     verseMax: VERSE_MAX_GBG,
@@ -79,8 +88,9 @@ export const TRANSLATIONS = {
     // welcher Vereinbarung": Der Umfang eines Vertrags geht den Aufrufer nichts
     // an. Bis 0.6.8 stand hier dessen Reichweite, und zwar in jeder Antwort.
     license: "Mit Genehmigung der Genfer Bibelgesellschaft",
-    // Der Wortlaut ist vorgeschrieben, nicht gewählt: Lizenzvertrag 055-2026,
-    // Ziffer 5.a, „gibt den Copyrightvermerk wie folgt an". Er steht dort
+    // Der Wortlaut ist vorgeschrieben, nicht gewählt: Der Lizenzvertrag mit der
+    // Genfer Bibelgesellschaft gibt ihn in seiner Ziffer 5.a wörtlich vor
+    // („gibt den Copyrightvermerk wie folgt an"). Er steht dort
     // dreizeilig; die Zeilenumbrüche werden hier zu Satzzeichen, weil das Feld
     // eine Zeichenkette in einer JSON-Nutzlast ist. Bis 0.6.30 stand hier der
     // Kurzvermerk „© 2000 Genfer Bibelgesellschaft", der weder dem vollen noch

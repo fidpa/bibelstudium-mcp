@@ -45,6 +45,7 @@ Platzhalter.
 - [Ausgabeschemata von Hand, und warum `required` die teuerste Zeile ist](#ausgabeschemata-von-hand-und-warum-required-die-teuerste-zeile-ist)
 - [Ressourcen liegen in Vorlagen, weil die Liste sonst der Katalog wäre](#ressourcen-liegen-in-vorlagen-weil-die-liste-sonst-der-katalog-wäre)
 - [Der Anmerkungsapparat einer Ausgabe ist ein eigenes Feld](#der-anmerkungsapparat-einer-ausgabe-ist-ein-eigenes-feld)
+- [Eine Namensnennung nennt die Lizenz und den Weg zu ihr](#eine-namensnennung-nennt-die-lizenz-und-den-weg-zu-ihr)
 - [Eine Grenze, die eine Zusage einhält, gehört an die Ausgabe und nicht an den Server](#eine-grenze-die-eine-zusage-einhält-gehört-an-die-ausgabe-und-nicht-an-den-server)
 - [Eine Kürzung, die der Server selbst vornimmt, muss in der Antwort stehen](#eine-kürzung-die-der-server-selbst-vornimmt-muss-in-der-antwort-stehen)
 - [Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon](#die-voreinstellung-gehört-dem-endpunkt-die-konstante-gehört-jedem-klon)
@@ -793,6 +794,27 @@ zählte derselbe Aufschlag zweimal, weil die Nutzlast seit 0.5.8 zusätzlich als
 `result`); deshalb bleibt `bible_lookup` unverändert. Das ist entschieden, nicht
 übersehen.
 
+### Die Nutzlast ist geteilt, die Absicherung war es nicht
+
+Werkzeug und Ressource holen ihre Verse aus derselben Funktion, aber nur das
+Werkzeug hat ein `outputSchema`. Der Runner prüft jede Werkzeugantwort dagegen,
+und weil `quellen` dort in `required` steht, wird ein weggefallenes Feld zum
+Schemafehler. Eine Ressource kennt diese Nachprüfung nicht: Was in ihrer
+Nutzlast fehlt, fehlt still.
+
+Gemessen am 03.09.2026: `quellen` in `versesPayload` für die
+nennungspflichtige Ausgabe entfernt, also der Fall, in dem eine Ressource
+Wortlaut ohne die von der Lizenz verlangte Namensnennung ausliefert. Typecheck,
+Golden-Lauf, HTTP-Lauf und Schemalauf blieben sämtlich grün. Derselbe Einbau an
+der Werkzeugseite machte zehn Zusicherungen rot.
+
+Daraus folgt keine Änderung am Entwurf: Ein `outputSchema` für Ressourcen sieht
+die Spezifikation nicht vor, und die geteilte Nutzlast ist genau das, was
+Werkzeug und Ressource zeichengleich hält. Es folgt eine Anforderung an die
+Prüfung. Was beide ausliefern, braucht auf der Ressourcenseite eine eigene,
+benannte Zusicherung; `tests/golden/ressourcen.ts` hält sie seither für die
+Namensnennung.
+
 ### Was Clients davon anbieten
 
 Belegt: Anthropics Connector-Dokumentation führt unter „Protocol features →
@@ -948,6 +970,34 @@ Das gilt nicht nur für die neue Ausgabe. Menge zählt seit je ebenso, und
 `books.chapters` stammt aus dem Luther-Lauf und führt Joel mit 3 und Maleachi
 mit 4: für Menge heute schon falsch. Umgerechnet wird nichts, jede Ausgabe
 behält ihre Zählung.
+
+---
+
+## Eine Namensnennung nennt die Lizenz und den Weg zu ihr
+
+*Geprüft 03.09.2026 gegen den Lizenztext.*
+
+CC BY 4.0 verlangt in Ziffer 3.a.1.C, die Lizenz zu benennen **und** ihren Text
+oder eine URI darauf beizugeben. Die Nennung der Schlachter 1951 benannte die
+Lizenz seit je, führte aber allein die Quellseite; die Lizenz war damit nur
+mittelbar erreichbar, über einen Link auf einer fremden Seite. Seither steht
+die Lizenz-URI in der Nennung, und die Quellseite bleibt als Lizenzerklärung
+dahinter (166 Zeichen vorher, 228 heute, beides gemessen).
+
+Zwei Feinheiten, die dabei entschieden wurden:
+
+- **Die Quellseite schreibt den Rechteinhaber falsch** („Genfer
+  Bibelgeschellschaft", an zwei von drei Stellen der Seite). Die Nennung
+  berichtigt das stillschweigend. Eine Namensnennung soll den Rechteinhaber
+  nennen, nicht seine Verschreibung; dass sie damit nicht buchstabengetreu die
+  „above copyright information" wiedergibt, ist der geringere Preis.
+- **Die übrigen CC-BY-Quellen führen die URI weiterhin nicht** (OpenBible.info,
+  STEPBible TAGNT und TBESG/TBESH, Strong über Open Scriptures). Die Auflage
+  gilt dort genauso. Das ist ein offener Punkt und keine Entscheidung; er steht
+  als solcher im Kommentar an `DATASET_QUELLEN` in `src/editions.ts`. Der
+  Eintrag `parallelen` führt seine URI schon länger, dort aber aus einem
+  eigenen Grund: Bei Share-Alike ist sie das Mittel, mit dem ein
+  Weiterverwender die Auflage überhaupt erfüllen kann.
 
 ---
 

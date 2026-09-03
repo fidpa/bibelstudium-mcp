@@ -22,7 +22,8 @@ sqlite3 data/bible.db "SELECT * FROM provenance ORDER BY script"
 **Namensnennung Schlachter 1951** (von CC BY 4.0 vorgeschrieben): Die Heilige
 Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft (Geneva Bible
 Society). Die Übersetzung wird unter den Bedingungen der Creative-Commons-
-Namensnennung-Lizenz 4.0 bereitgestellt; Lizenzerklärung:
+Namensnennung-Lizenz 4.0 bereitgestellt
+(<https://creativecommons.org/licenses/by/4.0/>); Lizenzerklärung:
 <https://ebible.org/deu1951/copyright.htm>. Der Text wird unverändert
 gespeichert; die Quelle enthält kein Markup (geprüft am 28.07.2026 über alle
 31 101 Verse, zeichengenau gegen den statischen Export).

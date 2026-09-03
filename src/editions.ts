@@ -148,9 +148,11 @@ export const DATASET_QUELLEN = {
     lizenz: "CC BY-SA 4.0",
     // Die erste Klammer ist der Wortlaut, den die Quelle als Nennung verlangt,
     // und sie steht deshalb unverändert und zuerst; die eigenen Angaben folgen
-    // dahinter. Die Lizenz-URI führt sonst kein Eintrag hier: Bei Share-Alike
-    // ist sie das Mittel, mit dem ein Weiterverwender die Auflage überhaupt
-    // erfüllen kann, bei einer reinen Namensnennung nicht.
+    // dahinter. Die Lizenz-URI steht hier, weil sie bei Share-Alike das Mittel
+    // ist, mit dem ein Weiterverwender die Auflage überhaupt erfüllen kann.
+    // Von den übrigen CC-Einträgen dieser Tabelle führt sie keiner, obwohl
+    // CC BY 4.0 sie in Ziffer 3.a.1.C ebenfalls verlangt; die Schlachter 1951
+    // in `translations.ts` führt sie. Offener Punkt, nicht entschieden.
     nennung:
       "(UBS Parallel Passage Database, © 2023 United Bible Societies.) " +
       "CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/, Quelle " +

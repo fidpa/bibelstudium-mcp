@@ -6,6 +6,22 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.32] - 2026-09-03: Die Namensnennung der Schlachter 1951 führt die Lizenz-URI mit
+
+### Geändert
+
+- **Namensnennung der Schlachter 1951:** Das Feld `nennung` trägt jetzt
+  zusätzlich `https://creativecommons.org/licenses/by/4.0/`, die Lizenzerklärung
+  auf ebible.org steht dahinter; 228 Zeichen statt 166. CC BY 4.0 verlangt in
+  Ziffer 3.a.1.C nicht nur, die Lizenz zu benennen, sondern auch ihren Text oder
+  eine URI darauf beizugeben. Feldnamen und Gestalt der Antwort bleiben gleich;
+  wer den alten Wortlaut fest hinterlegt hat, ersetzt ihn.
+  `THIRD_PARTY_LICENSES.md` führt die URI ebenfalls.
+- **Tests:** Die vorgeschriebene Nennung wird jetzt auch an den beiden
+  Textressourcen zeichengenau geprüft, nicht nur an den Werkzeugen. Eine
+  Ressource trägt kein `outputSchema`, ein weggefallenes `quellen` blieb dort
+  bis 0.6.31 in jedem Lauf unbemerkt. 1112 Golden-Zusicherungen (vorher 1108).
+
 ## [0.6.31] - 2026-09-03: Die Schlachter 2000 wird im vorgeschriebenen Wortlaut genannt
 
 ### Geändert
