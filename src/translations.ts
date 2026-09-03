@@ -79,7 +79,16 @@ export const TRANSLATIONS = {
     // welcher Vereinbarung": Der Umfang eines Vertrags geht den Aufrufer nichts
     // an. Bis 0.6.8 stand hier dessen Reichweite, und zwar in jeder Antwort.
     license: "Mit Genehmigung der Genfer Bibelgesellschaft",
-    attribution: "© 2000 Genfer Bibelgesellschaft",
+    // Der Wortlaut ist vorgeschrieben, nicht gewählt: Lizenzvertrag 055-2026,
+    // Ziffer 5.a, „gibt den Copyrightvermerk wie folgt an". Er steht dort
+    // dreizeilig; die Zeilenumbrüche werden hier zu Satzzeichen, weil das Feld
+    // eine Zeichenkette in einer JSON-Nutzlast ist. Bis 0.6.30 stand hier der
+    // Kurzvermerk „© 2000 Genfer Bibelgesellschaft", der weder dem vollen noch
+    // dem kurzen Vermerk der Rahmenbedingungen von 2023 entsprach. Wer ihn
+    // ändert, ändert eine Vertragspflicht: erst fragen, dann tippen.
+    attribution:
+      "Bibeltext der Schlachter, Copyright 2000 © Genfer Bibelgesellschaft. " +
+      "Wiedergegeben mit freundlicher Genehmigung. Alle Rechte vorbehalten.",
     quelle: "lokal",
     verseMax: VERSE_MAX_GBG,
   },

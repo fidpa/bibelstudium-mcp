@@ -33,7 +33,14 @@ gespeichert; die Quelle enthält kein Markup (geprüft am 28.07.2026 über alle
 |--------|-------------|-----------|
 | SLT | Schlachter 2000 | über den gehosteten Dienst |
 
-**Namensnennung Schlachter 2000:** © 2000 Genfer Bibelgesellschaft.
+**Namensnennung Schlachter 2000:** Der Wortlaut ist von der Genfer
+Bibelgesellschaft vorgeschrieben und wird unverändert übernommen:
+
+> Bibeltext der Schlachter  
+> Copyright 2000 © Genfer Bibelgesellschaft  
+> Wiedergegeben mit freundlicher Genehmigung. Alle Rechte vorbehalten.
+
+Er liegt jeder Antwort des Dienstes im Feld `nennung` bei.
 
 Der gehostete Dienst unter `mcp.bibelstudium-mcp.de` bietet die Ausgabe mit
 Genehmigung der Genfer Bibelgesellschaft an. Sie ist nicht Teil dieses

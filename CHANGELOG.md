@@ -6,6 +6,27 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.31] - 2026-09-03: Die Schlachter 2000 wird im vorgeschriebenen Wortlaut genannt
+
+### Geändert
+
+- **Namensnennung der Schlachter 2000:** Das Feld `nennung` trägt jetzt den
+  Verlagsvermerk, den die Genfer Bibelgesellschaft vorgibt („Bibeltext der
+  Schlachter, Copyright 2000 © Genfer Bibelgesellschaft. Wiedergegeben mit
+  freundlicher Genehmigung. Alle Rechte vorbehalten."), 137 Zeichen statt der
+  bisherigen 31. Er erscheint unverändert in `quellen` jeder Antwort, in
+  `bible://uebersetzungen` und in `bible_server_info`. Feldnamen und Gestalt der
+  Antwort bleiben gleich; wer den alten Kurzvermerk irgendwo fest hinterlegt
+  hat, ersetzt ihn. Betroffen ist allein der gehostete Dienst, der die Ausgabe
+  führt.
+- **Tests:** Beide vorgeschriebenen Nennungswortlaute, Schlachter 2000 und
+  Schlachter 1951, werden zeichengenau geprüft. Bisher prüfte kein Lauf den
+  Wortlaut, nur seinen Ort. 1108 Golden-Zusicherungen (vorher 1106).
+
+### Geändert (Dokumentation)
+
+- `THIRD_PARTY_LICENSES.md` führt den Vermerk im Originalumbruch.
+
 ## [0.6.30] - 2026-09-02: Der Editionsabgleich liest SBLGNTs kontrahierte Reflexivform richtig
 
 ### Behoben

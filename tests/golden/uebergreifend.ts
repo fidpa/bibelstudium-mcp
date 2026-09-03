@@ -17,6 +17,29 @@ import { isRecord } from "../schema-validator.ts";
 import { INVALID_PARAMS } from "../lib/mcp-client.ts";
 
 
+/**
+ * Die beiden Nennungswortlaute, die nicht wir formulieren, sondern der
+ * Rechteinhaber vorgibt: bei der Schlachter 2000 der Verlagsvermerk aus dem
+ * Lizenzvertrag, bei der Schlachter 1951 die Angabe, die CC BY 4.0 mit dem
+ * Text weiterzugeben verlangt. Bei beiden ist eine Abweichung kein Schönheits-
+ * fehler, sondern ein Verstoß gegen die Bedingung, unter der die Ausgabe
+ * überhaupt ausgeliefert werden darf.
+ *
+ * Sie stehen hier als Literal und **nicht** als Import aus `translations.ts`:
+ * Ein Vergleich gegen die Quelle, die er prüfen soll, ist immer grün und sichert
+ * nichts. Wer den Wortlaut dort ändert, muß ihn hier zweitschreiben, und genau
+ * das ist der Zweck. Vorlage ist das unterzeichnete Papier, nicht der Code.
+ */
+const VORGESCHRIEBENE_NENNUNG: Record<string, string> = {
+  "Schlachter 2000":
+    "Bibeltext der Schlachter, Copyright 2000 © Genfer Bibelgesellschaft. " +
+    "Wiedergegeben mit freundlicher Genehmigung. Alle Rechte vorbehalten.",
+  "Schlachter 1951":
+    "Die Heilige Schrift, Schlachter 1951, © 1951 Genfer Bibelgesellschaft " +
+    "(Geneva Bible Society), bereitgestellt unter CC BY 4.0, " +
+    "https://ebible.org/deu1951/copyright.htm",
+};
+
 export const uebergreifendBuendel = buendel({
   name: "uebergreifend",
   calls: {
@@ -78,6 +101,25 @@ export const uebergreifendBuendel = buendel({
           !q.some((e) => typeof e.nennung === "string" && hinweis.includes(e.nennung))
       );
     }
+    // Der Ort allein genügt nicht: Eine Nennung an der richtigen Stelle, aber im
+    // falschen Wortlaut, erfüllt die Auflage nicht. Geprüft wird deshalb
+    // zeichengenau gegen die Tabelle oben, je Ausgabe an dem Aufruf, der sie
+    // führt. Bis 0.6.30 gab es diese Prüfung nicht, und der ausgelieferte
+    // Vermerk der Schlachter 2000 wich vom vorgeschriebenen ab, ohne daß ein
+    // Lauf davon rot wurde.
+    for (const [name, r] of [
+      ["Schlachter 2000", nennungLookup],
+      ["Schlachter 1951", nennungSuche],
+    ] as const) {
+      const q = (r.json?.quellen ?? []) as Array<{ werk?: unknown; nennung?: unknown }>;
+      const eintrag = q.find((e) => e.werk === name);
+      eq(
+        `${name}: Nennung im vorgeschriebenen Wortlaut`,
+        eintrag?.nennung,
+        VORGESCHRIEBENE_NENNUNG[name]
+      );
+    }
+
     // Gemeinfreie Ausgabe: kein Satz. Eine Auflage, die auch dort stünde, wo es
     // keine gibt, wäre eine falsche Aussage über die Lizenz.
     check(
