@@ -6,6 +6,30 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.33] - 2026-11-13: Die Abhängigkeiten tragen keinen bekannten Sicherheitsbefund mehr
+
+### Sicherheit
+
+- **MCP-SDK 1.30.0 → 1.32.2**, mitgezogen zod 4.4.3 → 4.6.7 und fast-uri
+  3.1.4 → 3.1.9. `bun audit` meldete 48 Befunde (1 kritisch, 13 hoch,
+  30 mittel, 4 niedrig), jetzt keinen. Im ausgelieferten Binary laufen davon
+  nur SDK, zod und fast-uri mit, darunter GHSA-46jr-4wx8-v453 und
+  GHSA-mrhx-c7xc-m3w5 (Speichererschöpfung bei der Validierung einer
+  Anfrage). Die übrigen Befundpakete (express, hono, proxy-addr u. a.) bringt
+  das SDK mit; der Server lädt sie nicht.
+- **Neu: Ein JSON-RPC-Batch über 100 Nachrichten** wird über HTTP mit 400 und
+  `-32600` abgewiesen (Grenze des SDK). Die eigene Rumpfgrenze von 1 MB bleibt.
+
+### Geändert
+
+- `@types/bun` ist exakt auf 1.3.14 festgelegt, die Laufzeit, mit der das
+  Binary gebaut wird; der bisherige Range ließ 1.4 zu.
+
+### Geändert (Dokumentation)
+
+- `docs/UEBERSETZUNGEN.md`: Rechtelage der Neuen Genfer Übersetzung,
+  Recherchestand 22.10.2026; nicht angefragt.
+
 ## [0.6.32] - 2026-09-03: Die Namensnennung der Schlachter 1951 führt die Lizenz-URI mit
 
 ### Geändert

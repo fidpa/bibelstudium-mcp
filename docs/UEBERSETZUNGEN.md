@@ -1,7 +1,7 @@
 ---
 type: reference
 status: active
-last_updated: 2026-08-07
+last_updated: 2026-10-22
 related_docs:
   - path: ../README.md
     description: Welche Ausgaben geladen sind und wie sie ausgewählt werden
@@ -148,6 +148,28 @@ Zusicherungen in den Golden-Tests.
 - **Die Textbibel** wäre eine eigenständige Übersetzung und brächte damit mehr
   Breite als eine zweite Elberfelder.
 - Beide sind gemeinfrei und über denselben Weg zu holen.
+
+## Geschützt: Neue Genfer Übersetzung (NGÜ)
+
+Recherchestand **22.10.2026**, nicht angefragt. Die NGÜ ist urheberrechtlich
+geschützt; aufnehmen ließe sie sich nur über ein Abkommen (dritter Weg im
+nächsten Abschnitt). Die Rechte sind nach Teilen verschieden verteilt:
+
+| Teil | Rechteinhaber laut Copyrightvermerk |
+|---|---|
+| Neues Testament und Psalmen | Genfer Bibelgesellschaft, Romanel-sur-Lausanne |
+| Altes Testament | Genfer Bibelgesellschaft, Brunnen Verlag (Gießen) und Deutsche Bibelgesellschaft (Stuttgart) gemeinsam |
+
+- **Quelle:** der Vermerk bei ERF Bibleserver
+  (`https://www.bibleserver.com/bible/NG%C3%9C`), der den Text mit Genehmigung
+  wiedergibt. Die Projektseite `neuegenferuebersetzung.de`, betrieben vom
+  Brunnen Verlag, nennt dieselben drei als Partner bei Übersetzung, Publikation
+  und Vertrieb, schlüsselt die Rechte aber nicht nach Teilen auf.
+- **Das Alte Testament ist unvollständig.** Erschienen sind bislang
+  Teilausgaben; die vollständige NGÜ ist laut jesus.ch bis 2029 geplant.
+- **Nicht belegt:** welche der drei Stellen Anfragen zum Alten Testament
+  bearbeitet. Für Neues Testament und Psalmen wäre es die Rechteabteilung der
+  Genfer Bibelgesellschaft, dieselbe Stelle wie bei der Schlachter 2000.
 
 ## Kriterium für jede künftige Ergänzung
 
