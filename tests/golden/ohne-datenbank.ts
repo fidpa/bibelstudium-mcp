@@ -101,7 +101,7 @@ export const ohneDatenbankBuendel = buendel({
     // das den Zustand beheben kann. Über stdio, versteht sich; im HTTP-Modus
     // fällt es weg, was `tests/test-http.ts` misst.
     const namen = ctx.tools.map((t) => String(t.name));
-    eq("tools/list ohne Datenbank: acht Werkzeuge", namen.length, 8);
+    eq("tools/list ohne Datenbank: zehn Werkzeuge", namen.length, 10);
     check("tools/list ohne Datenbank: bietet bible_setup an", namen.includes("bible_setup"));
 
     // Der Wächter gegen ein Werkzeug ohne Zähler.

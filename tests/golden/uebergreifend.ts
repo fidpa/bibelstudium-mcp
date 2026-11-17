@@ -81,15 +81,16 @@ export const uebergreifendBuendel = buendel({
     // Das eigene Argument geht vor.
     versBeide: ["bible_original", { book: "Joh", chapter: 3, verse: 16, verses: "17" }],
     // Eine Spanne ist lesbar, passt aber nicht zum Werkzeug: eigene Meldung
-    // statt „must be an integer".
-    versSpanne: ["bible_original", { book: "Joh", chapter: 3, verses: "16-17" }],
+    // statt „must be an integer". Nicht an `bible_original` geprüft: Das nimmt
+    // seit 0.7.0 selbst eine Spanne an.
+    versSpanne: ["bible_crossrefs", { book: "Joh", chapter: 3, verses: "16-17" }],
     versListe: ["bible_compare", { book: "Joh", chapter: 3, verses: "16,18" }],
   },
   pruefe({ res }, ctx) {
     const { unbekanntesWerkzeug } = res;
     const { nennungLookup, nennungSuche, nennungXref, nennungFrei } = res;
 
-    eq("sieben Werkzeuge gelistet", ctx.tools.length, 7);
+    eq("neun Werkzeuge gelistet", ctx.tools.length, 9);
     for (const t of ctx.tools) {
       const a = t.annotations as Json | undefined;
       eq(`${String(t.name)}: readOnlyHint`, a?.readOnlyHint, true);
@@ -98,7 +99,7 @@ export const uebergreifendBuendel = buendel({
     }
 
     // bible_setup steht hier nicht in der Liste (die Datenbank existiert), also
-    // müssen alle sieben gelisteten Werkzeuge eines deklarieren.
+    // müssen alle neun gelisteten Werkzeuge eines deklarieren.
     for (const t of ctx.tools) {
       check(`${String(t.name)}: outputSchema deklariert`, isRecord(t.outputSchema));
     }

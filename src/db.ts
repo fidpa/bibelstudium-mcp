@@ -337,6 +337,19 @@ export const editionsWithStrong: Set<string> = new Set(
 // Index auf (edition, strong) und (edition, lemma) brächte 0,1 ms, kostete aber
 // 29 MB Datenbank (167 auf 196 MB) und einen Handgriff an jeder bestehenden
 // Datei; das ist bewusst nicht gebaut, solange die Zahl so bleibt.
+/** Die Versnummern, die eine Edition in einem Kapitel führt. Für die
+ *  Kapitelübersicht von `bible_compare_chapter`: Sie muss wissen, welche Verse
+ *  es gibt, bevor sie vergleicht, und die Editionen sind sich darin nicht einig
+ *  (3. Johannes: 14 Verse im Mehrheitstext und im Textus Receptus, 15 im
+ *  SBLGNT). Derselbe Wächter wie `stmtOriginal`: Ohne die Tabelle wirft schon
+ *  das Vorbereiten. */
+export const stmtOriginalVerse = hasOriginal
+  ? db.prepare<{ verse: number }, [string, number, number]>(
+      "SELECT DISTINCT verse FROM original_words " +
+        "WHERE edition = ? AND book_id = ? AND chapter = ? ORDER BY verse"
+    )
+  : null;
+
 export const stmtConcordStrong = hasOriginal
   ? db.prepare<
       { book_id: number; chapter: number; verse: number; surface: string; lemma: string; strong: string },

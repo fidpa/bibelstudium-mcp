@@ -26,10 +26,12 @@ import { abschluss } from "./lib/zusicherungen.ts";
 import { serverInfoBuendel } from "./golden/server-info.ts";
 import { originalBuendel } from "./golden/original.ts";
 import { compareBuendel } from "./golden/compare.ts";
+import { compareChapterBuendel } from "./golden/compare-chapter.ts";
 import { crossrefsBuendel } from "./golden/crossrefs.ts";
 import { concordanceBuendel } from "./golden/concordance.ts";
 import { searchBuendel } from "./golden/search.ts";
 import { lookupBuendel } from "./golden/lookup.ts";
+import { lookupManyBuendel } from "./golden/lookup-many.ts";
 import { promptsBuendel } from "./golden/prompts.ts";
 import { ressourcenBuendel } from "./golden/ressourcen.ts";
 import { wortlautGrenzeBuendel } from "./golden/wortlaut-grenze.ts";
@@ -50,10 +52,12 @@ await fahre([
   serverInfoBuendel,
   originalBuendel,
   compareBuendel,
+  compareChapterBuendel,
   crossrefsBuendel,
   concordanceBuendel,
   searchBuendel,
   lookupBuendel,
+  lookupManyBuendel,
   promptsBuendel,
   ressourcenBuendel,
   wortlautGrenzeBuendel,
@@ -77,4 +81,4 @@ pruefeWerkzeugAbdeckung();
  * Sie hängt am geladenen Bestand: Ohne die Ausgabe mit Apparat entfallen die
  * Fußnotenfälle.
  */
-abschluss(1198);
+abschluss(1395);

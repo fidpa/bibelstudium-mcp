@@ -231,7 +231,7 @@ Dateiende.
 Die Regel gilt für `server.ts`, nicht für jede Datei. Ein Laufzeitmodul trägt
 stattdessen einen JSDoc-Kopf, der sagt, was drin ist und warum es dort steht
 (`db.ts`, `editions.ts`, `morphology.ts`, `verse-budget.ts`, `greek-diff.ts`,
-`translations.ts`, `werkzeug-helfer.ts`, dazu die sechs Dateien unter
+`translations.ts`, `werkzeug-helfer.ts`, dazu die acht Dateien unter
 `handlers/`). Banner innerhalb eines Moduls sind kein Fehler, wenn sie wirklich
 gliedern: `morphology.ts` führt drei, eines je Kodierschema, weil die drei
 einander ähnlich genug sind, um verwechselt zu werden, `db.ts` acht, eines je

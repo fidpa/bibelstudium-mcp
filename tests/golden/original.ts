@@ -24,6 +24,20 @@ export const originalBuendel = buendel({
   calls: {
     // Grenzen: Die Meldung muss die wirkliche Grenze nennen, nicht "positive integer"
     origVerse999: ["bible_original", { book: "Ps", chapter: 23, verse: 999 }],
+    // Mehrere Verse in einem Abruf (seit 0.7.0). Der 3. Johannesbrief, weil der
+    // Mehrheitstext bei Vers 14 endet und Vers 15 dort fehlt: So lässt sich in
+    // einem Fall prüfen, dass jedes Wort seinen Vers nennt und dass ein Vers
+    // ohne Daten benannt wird, statt still zu fehlen.
+    origBereich: ["bible_original", { book: "3. Johannes", chapter: 1, verses: "13-15" }],
+    origEinzel13: ["bible_original", { book: "3. Johannes", chapter: 1, verse: 13 }],
+    // Führt `verses` auf einen einzigen Vers, ist es die Antwort für einen Vers.
+    origVersesEinzeln: ["bible_original", { book: "3. Johannes", chapter: 1, verses: "13" }],
+    origBereichListe: ["bible_original", { book: "Ps", chapter: 23, verses: "1,3" }],
+    // Die Grenze zählt Verse, nicht Zeichen: „1-11" ist kurz und einer zu viel.
+    origZuViele: ["bible_original", { book: "Joh", chapter: 1, verses: "1-11" }],
+    origGenauMax: ["bible_original", { book: "Joh", chapter: 1, verses: "1-10" }],
+    origBereichUmgekehrt: ["bible_original", { book: "Joh", chapter: 1, verses: "10-5" }],
+    origBereichOhneDaten: ["bible_original", { book: "3. Johannes", chapter: 1, verses: "15-16" }],
     origChap999: ["bible_original", { book: "Ps", chapter: 999, verse: 1 }],
     origBuchZahl: ["bible_original", { book: 123, chapter: 1, verse: 1 }],
     // Die drei Buchprüfungen liegen seit dem 06.08.2026 in `requireBookName`.
@@ -137,6 +151,55 @@ export const originalBuendel = buendel({
 
     eq("bible_original verse: Text", origVerse999.text, VERSE_AUSSERHALB);
     eq("bible_original verse: isError", origVerse999.isError, true);
+
+    // --- mehrere Verse ---
+    {
+      type Wort = Record<string, unknown>;
+      const woerter = (j: typeof res.origBereich.json): Wort[] => (j?.woerter ?? []) as Wort[];
+      const { origBereich, origEinzel13, origVersesEinzeln } = res;
+      eq("Bereich: kein Fehler", origBereich.isError, false);
+      eq("Bereich: reference nennt die Verse mit Daten", origBereich.json?.reference, "3 Johannes 1,13-14");
+      eq("Bereich: Vers ohne Daten benannt", JSON.stringify(origBereich.json?.verse_ohne_daten), "[15]");
+      has("Bereich: hinweis sagt es", String(origBereich.json?.hinweis ?? ""), "Für Vers 15 führt diese Edition keine Daten");
+      check("Bereich: jedes Wort nennt seinen Vers", woerter(origBereich.json).every((w) => w.vers === 13 || w.vers === 14));
+      // Die Wörter von Vers 13 sind dieselben wie im Einzelabruf, nur mit `vers`
+      // davor. Gegen den Einzelabruf geprüft, nicht gegen ein Literal.
+      const ohneVers = woerter(origBereich.json)
+        .filter((w) => w.vers === 13)
+        .map(({ vers: _vers, ...rest }) => rest);
+      eq(
+        "Bereich: Vers 13 trägt die Wörter des Einzelabrufs",
+        JSON.stringify(ohneVers),
+        JSON.stringify(woerter(origEinzel13.json))
+      );
+      check("Einzelvers: kein vers am Wort", woerter(origEinzel13.json).every((w) => !("vers" in w)));
+      eq(
+        "verses mit einem Vers: dieselbe Antwort wie verse",
+        JSON.stringify(origVersesEinzeln.json),
+        JSON.stringify(origEinzel13.json)
+      );
+      eq("Liste: reference in der Listenform", res.origBereichListe.json?.reference, "Psalter 23,1.3");
+      check(
+        "Liste: nur die genannten Verse",
+        woerter(res.origBereichListe.json).every((w) => w.vers === 1 || w.vers === 3)
+      );
+      eq("elf Verse: isError", res.origZuViele.isError, true);
+      eq(
+        "elf Verse: Meldung nennt die Grenze",
+        res.origZuViele.text,
+        "Error: 'verses' may name at most 10 verses per call for this tool; split a longer passage into several calls"
+      );
+      eq("zehn Verse: kein Fehler", res.origGenauMax.isError, false);
+      eq("zehn Verse: reference", res.origGenauMax.json?.reference, "Johannes 1,1-10");
+      eq("umgekehrte Spanne: isError", res.origBereichUmgekehrt.isError, true);
+      has("umgekehrte Spanne: nennt die Bedingung", res.origBereichUmgekehrt.text, "the first number must not be greater than the second");
+      eq("kein Vers mit Daten: isError", res.origBereichOhneDaten.isError, true);
+      eq(
+        "kein Vers mit Daten: Meldung nennt Stelle und Edition",
+        res.origBereichOhneDaten.text,
+        "Keine Urtext-Daten für 3. Johannes 1,15-16 (Texttyp byzantine)."
+      );
+    }
     eq("bible_original chapter", origChap999.text, KAPITEL_AUSSERHALB);
     eq("bible_original book=123: nennt den Typ", origBuchZahl.text, BUCH_KEINE_ZEICHENKETTE);
     // Zeichengleich, nicht als Teilstring: Die Beispiele gehören zum Werkzeug,

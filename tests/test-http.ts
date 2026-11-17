@@ -810,4 +810,4 @@ console.log("Protokoll-Telemetrie ohne Kopfzeile");
 // Mindestzahl wie in test-golden.ts: Fällt ein Block dieser Datei weg, sinkt die
 // Summe, ohne dass eine Prüfung rot würde. Gemessen 02.09.2026, beim Ergänzen
 // mitziehen.
-abschluss(109);
+abschluss(111);

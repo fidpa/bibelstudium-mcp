@@ -33,6 +33,69 @@ import {
   toInt,
 } from "../werkzeug-helfer.ts";
 
+/** Der Vergleich eines Editionspaars an einem Vers: der Name des Paars, und
+ *  entweder ein `ergebnis` (identisch, oder der Vers fehlt in einer der beiden)
+ *  oder die Liste der Unterschiede. */
+export interface PaarVergleich {
+  paar: string;
+  ergebnis?: string;
+  unterschiede?: string[];
+}
+
+/** Was `paarVergleiche` als „gleich" meldet. Als Konstante, weil die
+ *  Kapitelübersicht genau daran erkennt, welches Paar sie weglässt. */
+export const PAAR_IDENTISCH = "identisch (nach Normalisierung)";
+
+/**
+ * Vergleicht jede Edition mit jeder anderen, paarweise und normalisiert.
+ *
+ * Von `bible_compare` (ein Vers) und `bible_compare_chapter` (jeder Vers eines
+ * Kapitels) gemeinsam benutzt: Die Übersicht darf nicht anders urteilen als der
+ * Einzelvergleich, auf den sie verweist.
+ */
+export function paarVergleiche(
+  texts: ReadonlyArray<{ ed: string; words: string[] }>
+): PaarVergleich[] {
+  const vergleiche: PaarVergleich[] = [];
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const A = texts[i]!;
+      const B = texts[j]!;
+      const paar = `${A.ed} ↔ ${B.ed}`;
+      if (A.words.length === 0 || B.words.length === 0) {
+        const fehlt = A.words.length === 0 ? A.ed : B.ed;
+        vergleiche.push({ paar, ergebnis: `Vers fehlt in Edition "${fehlt}"` });
+        continue;
+      }
+      const segs = diffSegments(A.words, B.words);
+      if (segs.length === 0) {
+        vergleiche.push({ paar, ergebnis: PAAR_IDENTISCH });
+      } else {
+        // Die Wortzahl einer abweichenden Folge steht da, statt abgezählt zu
+        // werden: Das Comma Johanneum wurde als „16 zusätzliche Wörter"
+        // gemeldet, wo Editionsvergleich und TAGNT-Bezeugung beide 17 sagen
+        // (25.07.2026). Nur ab zwei Wörtern, denn „(1 Wort)" an jeder
+        // Einzelwortabweichung ist Rauschen, das die wichtigen Fälle begräbt.
+        const laenge = (s: string) => {
+          const n = s === "" ? 0 : s.split(" ").length;
+          return n > 1 ? ` (${n} Wörter)` : "";
+        };
+        vergleiche.push({
+          paar,
+          unterschiede: segs.map((s) =>
+            s.a && s.b
+              ? `${A.ed}: "${s.a}"${laenge(s.a)} ↔ ${B.ed}: "${s.b}"${laenge(s.b)}`
+              : s.a
+                ? `nur in ${A.ed}: "${s.a}"${laenge(s.a)}`
+                : `nur in ${B.ed}: "${s.b}"${laenge(s.b)}`
+          ),
+        });
+      }
+    }
+  }
+  return vergleiche;
+}
+
 /**
  * Bedient das Werkzeug `bible_compare`: vergleicht einen NT-Vers Wort für Wort
  * über die griechischen Editionen (paarweise, normalisiert verglichen, gemeldet
@@ -97,43 +160,7 @@ export function handleCompare(args: {
     );
   }
 
-  const vergleiche = [];
-  for (let i = 0; i < texts.length; i++) {
-    for (let j = i + 1; j < texts.length; j++) {
-      const A = texts[i]!;
-      const B = texts[j]!;
-      const paar = `${A.ed} ↔ ${B.ed}`;
-      if (A.words.length === 0 || B.words.length === 0) {
-        const fehlt = A.words.length === 0 ? A.ed : B.ed;
-        vergleiche.push({ paar, ergebnis: `Vers fehlt in Edition "${fehlt}"` });
-        continue;
-      }
-      const segs = diffSegments(A.words, B.words);
-      if (segs.length === 0) {
-        vergleiche.push({ paar, ergebnis: "identisch (nach Normalisierung)" });
-      } else {
-        // Die Wortzahl einer abweichenden Folge steht da, statt abgezählt zu
-        // werden: Das Comma Johanneum wurde als „16 zusätzliche Wörter"
-        // gemeldet, wo Editionsvergleich und TAGNT-Bezeugung beide 17 sagen
-        // (25.07.2026). Nur ab zwei Wörtern, denn „(1 Wort)" an jeder
-        // Einzelwortabweichung ist Rauschen, das die wichtigen Fälle begräbt.
-        const laenge = (s: string) => {
-          const n = s === "" ? 0 : s.split(" ").length;
-          return n > 1 ? ` (${n} Wörter)` : "";
-        };
-        vergleiche.push({
-          paar,
-          unterschiede: segs.map((s) =>
-            s.a && s.b
-              ? `${A.ed}: "${s.a}"${laenge(s.a)} ↔ ${B.ed}: "${s.b}"${laenge(s.b)}`
-              : s.a
-                ? `nur in ${A.ed}: "${s.a}"${laenge(s.a)}`
-                : `nur in ${B.ed}: "${s.b}"${laenge(s.b)}`
-          ),
-        });
-      }
-    }
-  }
+  const vergleiche = paarVergleiche(texts);
 
   // Die Bezeugung je Wort über acht Editionen (STEPBible TAGNT). Wörter, die alle
   // acht Editionen bezeugen, werden nur gezählt; aufgelistet sind die, deren

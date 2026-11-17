@@ -24,10 +24,12 @@ Dieser Server gibt dem Modell stattdessen die Daten, nämlich exakten deutschen 
 ## Funktionen
 
 - **Exakter deutscher Verstext** (`bible_lookup`): Luther 1912, Schlachter 1951, Elberfelder 1871 und Menge 1939 in jeder Installation, über den gehosteten Dienst zusätzlich die Schlachter 2000
+- **Mehrere Stellen in einem Abruf** (`bible_lookup_many`): bis zu 30 Stellen, jede mit eigener Übersetzung, in der Reihenfolge der Anfrage; ein Fehlgriff betrifft nur seinen Eintrag
 - **Grundtext Wort für Wort** (`bible_original`): ganze Bibel, hebräischer Westminster Leningrad Codex (AT), griechischer Byzantinischer Mehrheitstext / SBLGNT / Textus Receptus (NT); jedes Wort mit Grundform, Strong-Nummer und vollständig dekodierter Morphologie aus drei nativen Schemata (Robinson, MorphGNT, OSHB)
 - **Konkordanz und Wortstudie** (`bible_concordance`): alle Vorkommen eines Grundtext-Wortes nach Strong-Nummer oder Grundform, mit Verteilung je Buch, Flexionsformen und Lexikondaten (Tyndale-Gloss, Strong-Definition, vollständiger Abbott-Smith-Eintrag fürs Griechische)
 - **Querverweise und Parallelstellen** (`bible_crossrefs`): Treasury of Scripture Knowledge (erweitert, OpenBible.info), nach Community-Stimmen gewichtet, mit deutschem Zieltext; mehrversige Ziele zusätzlich versweise aufgeschlüsselt
 - **Volltextsuche** (`bible_search`): FTS5 mit Umlautfaltung, Phrasen- und Präfixsuche, filterbar nach Übersetzung und Buch; `treffer` zählt Verse, `vorkommen_gesamt` die Wortvorkommen, `verteilung` schlüsselt sie je Buch bzw. je Kapitel auf, Fundstellen im Verstext mit `⟦…⟧` markiert
+- **Kapitelübersicht der Varianten** (`bible_compare_chapter`): welche Verse eines NT-Kapitels zwischen den griechischen Editionen abweichen und worin, mit der Zahl je Editionspaar
 - **Editionsvergleich** (`bible_compare`): Wort-für-Wort-Diff eines NT-Verses über drei vollständige griechische Editionen, dazu die Bezeugung jedes Wortes über acht Editionen (die Liste steht unter [Editionen und Voreinstellungen](#editionen-und-voreinstellungen)). Zeigt Varianten wie das Comma Johanneum mit ihrem vollständigen Zeugenbestand, samt Wortzahl je Edition und je Variante
 - **Geführte Arbeitsabläufe**: drei MCP-Prompts (`word-study`, `variant-check`, `translation-compare`), die die Werkzeuge zu vollständigen Studien-Abläufen verketten
 - **Herkunftsnachweis eingebaut**: jeder Download protokolliert Quell-URL, Anzahl der Anfragen und SHA-256-Prüfsumme in der Datenbank, und `bun run pruefe:quellen` stellt sie gegen die im Repository hinterlegten Sollwerte in `quellen-pruefsummen.json`
@@ -243,11 +245,13 @@ Wie die Antworten aussehen, zeigt [docs/BEISPIELE.md](docs/BEISPIELE.md), samt e
 | Werkzeug | Zweck |
 |----------|-------|
 | `bible_lookup` | Exakter Verstext nach Stellenangabe (Buch/Kapitel/Verse, Übersetzung wählbar); in Ausgaben mit Wortlaut-Grenze bis zu deren `verse_max`. Die Antwort nennt die Stelle zweimal: `reference` mit dem Buchnamen der Datenbank, `kurzref` in der deutschen Kurzform zum Zitieren |
-| `bible_original` | Ein Vers Wort für Wort auf Hebräisch/Griechisch mit Grundform, Strong-Nummer, dekodierter Morphologie |
+| `bible_lookup_many` | Bis zu 30 Stellen in einem Abruf, je Eintrag Buch, Kapitel, Verse und wahlweise eine eigene Übersetzung. Die Antwort trägt einen Eintrag je Anfrage in deren Reihenfolge; ein Eintrag, der scheitert, trägt `fehler` und lässt die übrigen unberührt. Die Wortlaut-Grenze einer Ausgabe gilt über den ganzen Abruf: Was nicht mehr hineinpasst, kommt mit `ohne_wortlaut` und ohne Text zurück |
+| `bible_original` | Ein Vers (`verse`) oder bis zu zehn Verse eines Kapitels (`verses`) Wort für Wort auf Hebräisch/Griechisch mit Grundform, Strong-Nummer, dekodierter Morphologie |
 | `bible_concordance` | Alle Vorkommen eines Grundtext-Wortes (Strong/Grundform) mit Statistik und Lexikondaten |
 | `bible_crossrefs` | Querverweise zu einem Vers, nach Stimmen gewichtet, dazu die Parallelgruppen der UBS-Datenbank, mit deutschem Zieltext, soweit die Wortlaut-Grenze der Ausgabe ihn zulässt |
 | `bible_search` | Volltextsuche (Wörter, „Phrasen", Präfix*), umlautfaltend, je Übersetzung/Buch |
 | `bible_compare` | Wort-Diff eines NT-Verses über 3 griechische Editionen plus Bezeugung über 8 Editionen |
+| `bible_compare_chapter` | Übersicht über ein NT-Kapitel oder einen Versbereich: nur die Verse, in denen die geladenen Editionen abweichen, mit den abweichenden Paaren, der Zahl je Paar und einer Marke, wo der Apparat eine Bedeutungsvariante notiert. Art der Variante und Bezeugung je Wort stehen in `bible_compare` |
 | `bible_server_info` | Fassung dieses Servers, welche Bibeldaten er geladen hat und welche Ressourcen er anbietet, dazu je Ausgabe Lizenz, geforderte Namensnennung und `verse_max` sowie der Kanonumfang. Liefert keinen Bibeltext |
 | `bible_setup` | Lädt die Bibeldaten, wenn noch keine da sind. Erscheint **nur** über stdio und nur, solange die Datenbank fehlt; lädt erst nach ausdrücklicher Bestätigung |
 

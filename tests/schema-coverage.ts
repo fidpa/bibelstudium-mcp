@@ -167,9 +167,29 @@ for (const s of sample) {
       calls.push(["bible_original", { book, chapter: s.chapter, verse: s.verse, texttyp }]);
     }
     calls.push(["bible_compare", { book, chapter: s.chapter, verse: s.verse }]);
+    // Die Kapitelübersicht an jedem NT-Kapitel der Stichprobe, ganz und als
+    // Bereich; der Versbereich des Grundtextes am selben Ort.
+    calls.push(["bible_compare_chapter", { book, chapter: s.chapter }]);
+    calls.push(["bible_compare_chapter", { book, chapter: s.chapter, verses: `${s.verse}-${s.verse + 3}` }]);
+    calls.push(["bible_original", { book, chapter: s.chapter, verses: `${s.verse}-${s.verse + 2}` }]);
   } else {
     calls.push(["bible_original", { book, chapter: s.chapter, verse: s.verse }]);
+    calls.push(["bible_original", { book, chapter: s.chapter, verses: `${s.verse}-${s.verse + 2}` }]);
   }
+  // Der Mehrfachabruf: dieselbe Stelle in allen geladenen Ausgaben, dazu ein
+  // ganzes Kapitel und ein Fehlgriff. So treffen in einem Aufruf Einträge mit
+  // Text, die Wortlaut-Grenze (wo eine Ausgabe sie hat) und ein Eintragsfehler
+  // zusammen.
+  calls.push([
+    "bible_lookup_many",
+    {
+      stellen: [
+        ...geladeneUebersetzungen.map((translation) => ({ book, chapter: s.chapter, verses: String(s.verse), translation })),
+        ...geladeneUebersetzungen.map((translation) => ({ book, chapter: s.chapter, translation })),
+        { book: "Xyzbuch", chapter: 1 },
+      ],
+    },
+  ]);
 }
 for (const [translation, refs] of eigeneStichprobe) {
   for (const s of refs) {

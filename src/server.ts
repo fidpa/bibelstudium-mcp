@@ -3,10 +3,11 @@
  * Bibelstudium-MCP-Server: wortgetreue Bibelarbeit über eine lokale
  * SQLite-Datenbank.
  *
- * Sieben Werkzeuge (wortgetreue deutsche Verse, Morphologie des Grundtextes,
- * Konkordanz, Querverweise, Volltextsuche, Editionsvergleich, Serverauskunft),
- * dazu `bible_setup` nur über stdio, drei geführte Prompts sowie Ressourcen
- * samt URI-Vorlagen. Deutsche Ausgabefelder, englische Werkzeugnamen.
+ * Neun Lesewerkzeuge (wortgetreue deutsche Verse einzeln und im Mehrfachabruf,
+ * Morphologie des Grundtextes, Konkordanz, Querverweise, Volltextsuche,
+ * Editionsvergleich je Vers und je Kapitel, Serverauskunft), dazu `bible_setup`
+ * nur über stdio, drei geführte Prompts sowie Ressourcen samt URI-Vorlagen.
+ * Deutsche Ausgabefelder, englische Werkzeugnamen.
  *
  * Übersetzungen: vier frei lizenzierte deutsche Ausgaben (siehe
  * translations.ts), voreingestellt Luther 1912. Die Daten entstehen lokal über
@@ -100,9 +101,11 @@ import {
   chapterOutOfRange,
   EFFECTIVE_DEFAULT_TRANSLATION,
   errorResult,
+  MAX_ORIGINAL_VERSE,
   fehlerKlasseVon,
   istLeeresErgebnis,
   jsonResult,
+  teilfehlerVon,
   lookupPayload,
   originalPayload,
   requireTranslation,
@@ -119,9 +122,11 @@ import {
   versesTooManyParts,
 } from "./werkzeug-helfer.ts";
 import { handleCompare } from "./handlers/compare.ts";
+import { handleCompareChapter } from "./handlers/compare-chapter.ts";
 import { CONCORDANCE_LIMIT, handleConcordance } from "./handlers/concordance.ts";
 import { XREF_LIMIT, handleCrossrefs } from "./handlers/crossrefs.ts";
 import { handleLookup } from "./handlers/lookup.ts";
+import { MAX_STELLEN, handleLookupMany } from "./handlers/lookup-many.ts";
 import { handleOriginal } from "./handlers/original.ts";
 import { SEARCH_LIMIT, handleSearch } from "./handlers/search.ts";
 
@@ -271,8 +276,108 @@ const LOOKUP_OUTPUT = {
   required: ["reference", "kurzref", "translation", "text", "quellen"],
 };
 
+/** Die Antwort von `bible_lookup_many`. Bedingt, oben: `hinweis` (nur wenn
+ *  etwas zu sagen ist: gescheiterte Einträge, Wortlaut-Grenze, abweichende
+ *  Verszählung, Nennungspflicht, Klammern) und `gekuerzt` (nur wenn die Grenze
+ *  einer Ausgabe in diesem Abruf gegriffen hat; anders als bei `bible_lookup`
+ *  eine Liste, weil ein Abruf mehrere Ausgaben nennen kann).
+ *  Je Eintrag steht allein `nr` immer da. Ein gelieferter Eintrag trägt
+ *  `reference`, `kurzref`, `translation`, `text`, bedingt `fussnoten` und
+ *  `gekuerzt`; ein gescheiterter `anfrage` und `fehler`; einer jenseits der
+ *  Wortlaut-Grenze `anfrage`, `translation` und `ohne_wortlaut`. */
+const LOOKUP_MANY_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    stellen: {
+      type: "array",
+      description:
+        "One entry per requested passage, in request order. An entry carries either `text`, " +
+        "or `fehler`, or `ohne_wortlaut`.",
+      items: {
+        type: "object",
+        properties: {
+          nr: { type: "integer", description: "Position in the request, starting at 1." },
+          reference: { type: "string" },
+          kurzref: {
+            type: "string",
+            description: "Short German citation form of what this entry contains. Copy into prose.",
+          },
+          translation: { type: "string" },
+          text: { type: "string" },
+          fussnoten: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                vers: { type: "number" },
+                stelle: { type: "string" },
+                text: { type: "string" },
+              },
+              required: ["vers", "stelle", "text"],
+            },
+          },
+          gekuerzt: {
+            type: "object",
+            properties: {
+              verse_gefunden: { type: "integer" },
+              verse_enthalten: { type: "integer" },
+            },
+            required: ["verse_gefunden", "verse_enthalten"],
+            description:
+              "Present only when the edition's verbatim cap cut this entry short; `reference` " +
+              "names the verses it does contain.",
+          },
+          anfrage: {
+            type: "string",
+            description: "The passage as requested, on entries that carry no `reference`.",
+          },
+          fehler: {
+            type: "string",
+            description: "Why this entry could not be looked up. The other entries are unaffected.",
+          },
+          ohne_wortlaut: {
+            type: "boolean",
+            description:
+              "True when the passage exists but the edition's verbatim cap for this call was " +
+              "already used up. Its text is not in this response; do not supply it from memory.",
+          },
+        },
+        required: ["nr"],
+      },
+    },
+    angefragt: { type: "integer" },
+    geliefert: { type: "integer", description: "Entries that carry `text`." },
+    ohne_wortlaut: { type: "integer", description: "Entries beyond a verbatim cap, without text." },
+    fehlgeschlagen: { type: "integer", description: "Entries that carry `fehler`." },
+    hinweis: { type: "string" },
+    gekuerzt: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          translation: { type: "string" },
+          verse_max: {
+            type: "integer",
+            description: "Maximum verses this edition may quote per call, across all entries.",
+          },
+          im_wortlaut: { type: "integer" },
+          ohne_wortlaut: { type: "integer" },
+          fussnoten_gezeigt: { type: "integer" },
+          fussnoten_entfallen: { type: "integer" },
+        },
+        required: ["translation", "verse_max", "im_wortlaut", "ohne_wortlaut"],
+      },
+    },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: ["stellen", "angefragt", "geliefert", "ohne_wortlaut", "fehlgeschlagen", "quellen"],
+};
+
 /** Bedingt: `woerter[].strong`, fehlt bei allen 137 554 SBLGNT-Wörtern und bei
- *  5951 WLC-Wörtern; byzantine und tr führen es durchgängig. */
+ *  5951 WLC-Wörtern; byzantine und tr führen es durchgängig.
+ *  `woerter[].vers` steht nur in einer Antwort über mehrere Verse (`verses`),
+ *  dort an jedem Wort; `verse_ohne_daten` nur, wenn die Edition einen der
+ *  angefragten Verse nicht führt. */
 const ORIGINAL_OUTPUT = {
   type: "object" as const,
   properties: {
@@ -303,9 +408,20 @@ const ORIGINAL_OUTPUT = {
           morphologie: { type: "string" },
           code: { type: "string" },
           strong: { type: "string" },
+          vers: {
+            type: "integer",
+            description: "The verse this word belongs to. Present only in a multi-verse response.",
+          },
         },
         required: ["wort", "grundform", "morphologie", "code"],
       },
+    },
+    verse_ohne_daten: {
+      type: "array",
+      items: { type: "integer" },
+      description:
+        "Requested verses this edition does not carry. `reference` names the verses that are " +
+        "in the response.",
     },
     quellen: QUELLEN_SCHEMA,
   },
@@ -695,6 +811,90 @@ const COMPARE_OUTPUT = {
   required: ["reference", "kurzref", "sprache", "editionen", "vergleiche", "hinweis", "quellen"],
 };
 
+/** Die Kapitelübersicht von `bible_compare_chapter`. Bedingt: `identisch`
+ *  (fehlt, wenn jeder geprüfte Vers abweicht), `tagnt_bedeutungsvarianten`
+ *  (fehlt ohne TAGNT oder wenn der Apparat in diesem Bereich keine notiert),
+ *  `verse_ohne_daten` (nur, wenn ein angefragter Vers in keiner Edition
+ *  steht), und je Vers `tagnt_bedeutungsvariante`. Ein Eintrag in
+ *  `vergleiche[]` hat wie in bible_compare zwei Gestalten, deshalb ist allein
+ *  `paar` erforderlich. */
+const COMPARE_CHAPTER_OUTPUT = {
+  type: "object" as const,
+  properties: {
+    reference: { type: "string", description: "The verses that were checked." },
+    kurzref: { type: "string" },
+    sprache: { type: "string" },
+    editionen: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { texttyp: { type: "string" }, edition: { type: "string" } },
+        required: ["texttyp", "edition"],
+      },
+    },
+    verse_geprueft: { type: "integer" },
+    verse_mit_unterschied: {
+      type: "integer",
+      description: "Verses that differ in at least one edition pair. Take this number; do not count the list.",
+    },
+    paare: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { paar: { type: "string" }, verse_mit_unterschied: { type: "integer" } },
+        required: ["paar", "verse_mit_unterschied"],
+      },
+      description: "Per edition pair, how many of the checked verses differ.",
+    },
+    verse: {
+      type: "array",
+      description: "Only the verses that differ, each with only the pairs that differ.",
+      items: {
+        type: "object",
+        properties: {
+          vers: { type: "integer" },
+          tagnt_bedeutungsvariante: {
+            type: "boolean",
+            description:
+              "The TAGNT apparatus notes a meaning variant at this verse. A statement about the " +
+              "apparatus, not about the editions compared here.",
+          },
+          vergleiche: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                paar: { type: "string" },
+                ergebnis: { type: "string" },
+                unterschiede: { type: "array", items: { type: "string" } },
+              },
+              required: ["paar"],
+            },
+          },
+        },
+        required: ["vers", "vergleiche"],
+      },
+    },
+    identisch: {
+      type: "string",
+      description: "Verse list of the checked verses on which all loaded editions agree.",
+    },
+    tagnt_bedeutungsvarianten: {
+      type: "string",
+      description:
+        "Verse list of all checked verses where the TAGNT apparatus notes a meaning variant, " +
+        "whether or not the loaded editions differ there.",
+    },
+    verse_ohne_daten: { type: "array", items: { type: "integer" } },
+    hinweis: { type: "string" },
+    quellen: QUELLEN_SCHEMA,
+  },
+  required: [
+    "reference", "kurzref", "sprache", "editionen", "verse_geprueft", "verse_mit_unterschied",
+    "paare", "verse", "hinweis", "quellen",
+  ],
+};
+
 /** Bedingt: `daten_stand`, erst wenn ein Download eine Herkunft vermerkt hat;
  *  `hinweis`, nur solange die Datenbank fehlt; `kanon` nur mit Datenbank;
  *  `zusatzdaten.strong_lexikon_sprache` nur mit geladenem Lexikon; die drei
@@ -784,7 +984,7 @@ const SERVER_INFO_OUTPUT = {
   ],
 };
 
-// Die sieben Lesewerkzeuge lesen nur: eine lokale SQLite-Datei, nur lesend
+// Die neun Lesewerkzeuge lesen nur: eine lokale SQLite-Datei, nur lesend
 // geöffnet, keine Schreibvorgänge, keine Nebenwirkungen, kein Netz. Beide
 // Vorgabewerte der Spezifikation sind hier falsch (readOnlyHint steht auf false,
 // openWorldHint auf true), deshalb stehen beide ausdrücklich da. destructiveHint
@@ -908,7 +1108,9 @@ const handleListTools = async () => ({
         "and before answering whether a book exists or belongs to the canon: the error " +
         "names the nearest known book and states which canon this database covers. " +
         "Do not answer such questions from memory either — a reference that seems wrong " +
-        "is a reason to call this tool, not to skip it.",
+        "is a reason to call this tool, not to skip it. " +
+        "For two or more passages, or one passage in several translations, call " +
+        "bible_lookup_many once instead of this tool several times.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -934,13 +1136,69 @@ const handleListTools = async () => ({
       },
       outputSchema: LOOKUP_OUTPUT,
     },
+    // Der Mehrfachabruf. Die Beschreibung beginnt mit dem, was ihn vom
+    // Einzelabruf unterscheidet, weil ein Client mit Werkzeugsuche zuerst den
+    // Namen und den Anfang liest: Wer zwölf Stellen braucht, soll hier landen
+    // und nicht bei zwölf parallelen `bible_lookup` (gemessen 17.11.2026: 1291
+    // von 1353 Aufrufen einer Nutzungsreihe standen in solchen Stapeln).
+    {
+      name: "bible_lookup_many",
+      annotations: READ_ONLY_LOCAL,
+      description:
+        "Look up SEVERAL Bible passages in ONE call: exact text for up to " +
+        `${MAX_STELLEN} references, each with its own book, chapter, verses and optionally its ` +
+        "own translation (the same passage in two translations is two entries). Use this " +
+        "instead of several bible_lookup calls whenever more than one passage is needed. " +
+        "Results come back in request order; an entry that fails carries `fehler` and does " +
+        "not fail the others. Never quote from memory: an entry without `text` was not " +
+        "delivered. Editions that cap verbatim quoting apply the cap to the whole call " +
+        "(all entries of that edition together); entries beyond it come back with " +
+        "`ohne_wortlaut` and no text, and `hinweis` says so.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          stellen: {
+            type: "array",
+            description:
+              `The passages, 1 to ${MAX_STELLEN} entries, answered in this order.`,
+            items: {
+              type: "object",
+              properties: {
+                book: {
+                  type: "string",
+                  description: 'Book name in German (e.g. "Jesaja", "1. Mose", "Römer", "Ps", "Mt")',
+                },
+                chapter: { type: "number", description: "Chapter number" },
+                verses: {
+                  type: "string",
+                  description:
+                    'Verse(s): single "4", range "16-17", list "1,3,5", or combined "1-3,7". ' +
+                    "Omit for the whole chapter.",
+                },
+                translation: {
+                  type: "string",
+                  description:
+                    "Translation code for this entry only; overrides the call-wide `translation`.",
+                },
+              },
+              required: ["book", "chapter"],
+            },
+          },
+          translation: translationArg("Translation for all entries that do not name their own:"),
+        },
+        required: ["stellen"],
+      },
+      outputSchema: LOOKUP_MANY_OUTPUT,
+    },
     {
       name: "bible_original",
       annotations: READ_ONLY_LOCAL,
       description:
-        "Return one Bible verse word-by-word in the ORIGINAL language with lemma, Strong's " +
+        "Return one Bible verse, or up to " + `${MAX_ORIGINAL_VERSE}` + " verses of one chapter, " +
+        "word-by-word in the ORIGINAL language with lemma, Strong's " +
         "number and full morphology. Use this to verify what the original text says — e.g. " +
         "whether a noun is singular or plural — instead of inferring it from a translation. " +
+        "Pass `verse` for one verse or `verses` for several in one call. " +
         "Covers the whole Bible: the OT (book 1–39) is served from the Hebrew/Aramaic " +
         "Westminster Leningrad Codex; the NT (40–66) from a Greek text type chosen via " +
         '`texttyp` — "byzantine" (Majority Text, default), "sblgnt" (critical), or "tr" ' +
@@ -955,6 +1213,12 @@ const handleListTools = async () => ({
           },
           chapter: { type: "number", description: "Chapter number" },
           verse: { type: "number", description: "Single verse number" },
+          verses: {
+            type: "string",
+            description:
+              'Several verses of the chapter instead of `verse`: range "16-18" or list "1,3,5", ' +
+              `at most ${MAX_ORIGINAL_VERSE} verses per call. Each word then carries its \`vers\`.`,
+          },
           texttyp: {
             type: "string",
             description:
@@ -964,7 +1228,10 @@ const handleListTools = async () => ({
             default: "byzantine",
           },
         },
-        required: ["book", "chapter", "verse"],
+        // `verse` steht seit 0.7.0 nicht mehr hier: Genau eines von `verse` und
+        // `verses` genügt, und ein Client, der `required` durchsetzt, wiese
+        // sonst einen Aufruf mit `verses` allein ab. Der Handler verlangt es.
+        required: ["book", "chapter"],
       },
       outputSchema: ORIGINAL_OUTPUT,
     },
@@ -1069,7 +1336,8 @@ const handleListTools = async () => ({
         "reports per-word attestation across eight editions (NA27/28, Tyndale House, SBL, " +
         "Westcott-Hort, Tregelles, TR, Byzantine; STEPBible TAGNT). Use for questions about " +
         "textual variants (e.g. the Comma Johanneum, 1Jn 5:7). OT verses have only one " +
-        "edition (WLC) and cannot be compared.",
+        "edition (WLC) and cannot be compared. To find WHICH verses of a chapter differ " +
+        "before comparing them one by one, call bible_compare_chapter.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -1083,6 +1351,34 @@ const handleListTools = async () => ({
         required: ["book", "chapter", "verse"],
       },
       outputSchema: COMPARE_OUTPUT,
+    },
+    {
+      name: "bible_compare_chapter",
+      annotations: READ_ONLY_LOCAL,
+      description:
+        "Overview of a whole NT chapter (or a verse range): WHICH verses differ between the " +
+        "loaded Greek editions (byzantine, tr, sblgnt), and in what words. One call instead " +
+        "of comparing verse by verse. Lists only the differing verses with the differing " +
+        "edition pairs, counts per pair, and marks verses where the TAGNT apparatus notes a " +
+        "meaning variant. It does not classify a difference and carries no per-word " +
+        "attestation: for a verse of interest call bible_compare. NT only.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          book: {
+            type: "string",
+            description: 'NT book name in German (e.g. "Römer", "1Joh")',
+          },
+          chapter: { type: "number", description: "Chapter number" },
+          verses: {
+            type: "string",
+            description:
+              'Optional: restrict to verses, range "1-12" or list "3,7,9". Omit for the whole chapter.',
+          },
+        },
+        required: ["book", "chapter"],
+      },
+      outputSchema: COMPARE_CHAPTER_OUTPUT,
     },
     // Bewusst über den Server, nicht über die Schrift: Die Version erreicht die
     // Clients im initialize-Handschlag, aber kein Client zeigt sie dem Nutzer, und
@@ -1258,7 +1554,7 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
       `Führe eine Wortstudie zu „${word}" durch. Arbeite ausschließlich mit den Bibelstudium-Tools: zitiere keinen Bibeltext aus dem Gedächtnis.\n\n` +
       `1. Bestimme das Urtext-Wort: ${startpunkt}\n` +
       `2. Rufe bible_concordance mit der Strong-Nummer ab. Die Zahlen stehen in der Antwort und werden übernommen, nicht nachgezählt: 'gesamt' sind die Vorkommen, 'verse' die Verse, 'buecher' die vollständige Verteilung, auch wenn die Liste 'vorkommen' gekürzt ist (dann sagt es 'hinweis'). Alle Zahlen gelten je Edition.${lexikon}\n` +
-      `3. Wähle 2 bis 3 Vorkommen aus, und zwar nach der Verteilung in 'buecher' (verschiedene Bücher, auffällige Häufungen), nicht nach Bekanntheit. Rufe für sie bible_lookup ab${hasXrefs || hasParallels ? " und bible_crossrefs für die Parallelstellen" : ""}.\n` +
+      `3. Wähle 2 bis 3 Vorkommen aus, und zwar nach der Verteilung in 'buecher' (verschiedene Bücher, auffällige Häufungen), nicht nach Bekanntheit. Rufe sie mit einem einzigen Aufruf von bible_lookup_many ab${hasXrefs || hasParallels ? " und bible_crossrefs für die Parallelstellen" : ""}.\n` +
       `4. Fasse das Bedeutungsspektrum zusammen: Grundbedeutung, Bedeutungsnuancen nach Kontext, auffällige Verteilung. Belege jede Aussage mit einer konkret abgerufenen Stelle; kennzeichne offene Fragen als offen.`;
   } else if (name === "variant-check") {
     const ref = promptArg(args, "reference", true);
@@ -1319,7 +1615,7 @@ const handleGetPrompt = async (request: GetPromptRequest) => {
       : "";
     text =
       `Vergleiche die deutschen Übersetzungen von ${ref}. Arbeite ausschließlich mit den Bibelstudium-Tools.\n\n` +
-      `1. Rufe bible_lookup für ${ref} mit jeder geladenen Übersetzung ab: ${liste || "keine (in dieser Datenbank ist keine Übersetzung geladen)"}.\n` +
+      `1. Rufe ${ref} in jeder geladenen Übersetzung ab, und zwar mit einem einzigen Aufruf von bible_lookup_many (ein Eintrag je Übersetzung): ${liste || "keine (in dieser Datenbank ist keine Übersetzung geladen)"}.\n` +
       `2. Stelle die Wortlaute gegenüber und benenne die Unterschiede (Wortwahl, Satzbau, ausgelassene/ergänzte Wörter).${grenze}${klammern}${apparat}\n` +
       `3. Prüfe auffällige Unterschiede am Urtext: Rufe bible_original für ${ref} ab (AT: hebräischer WLC; NT: nach texttyp) und kläre, welche Wiedergabe dem Grundtext am nächsten kommt. Bei NT-Versen zusätzlich bible_compare, denn die Übersetzungen können verschiedenen Editionen folgen.\n` +
       `4. Fazit: Wo sind die Unterschiede nur stilistisch, wo inhaltlich? Belege am abgerufenen Text, nicht aus dem Gedächtnis.`;
@@ -2144,6 +2440,18 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
       }
     );
   }
+  if (toolName === "bible_compare_chapter") {
+    return handleCompareChapter(
+      rawArgs as {
+        book?: unknown;
+        chapter?: unknown;
+        verses?: unknown;
+      }
+    );
+  }
+  if (toolName === "bible_lookup_many") {
+    return handleLookupMany(rawArgs);
+  }
   if (toolName !== "bible_lookup") {
     // InvalidParams, nicht InternalError: Das eigene Beispiel der Spezifikation
     // für diesen Fall lautet `{"code": -32602, "message": "Unknown tool: …"}`
@@ -2190,6 +2498,9 @@ const handleCallTool = async (request: CallToolRequest): Promise<CallToolResult>
     } else {
       zaehleWerkzeug(name, istLeeresErgebnis(ergebnis) ? "leer" : "ok");
     }
+    // Einträge, die in einem Mehrfachabruf einzeln gescheitert sind. Sie
+    // stehen neben dem Ausgang des Aufrufs und nicht an seiner Stelle.
+    for (const klasse of teilfehlerVon(ergebnis)) zaehleFehler(name, klasse);
     return ergebnis;
   } catch (fehler) {
     // `rpcError()` setzt ein numerisches `code`; ein nacktes `Error` hat keines.
@@ -2254,11 +2565,21 @@ function createServer(): Server {
       // Clients dürfen es durchreichen, und es kostet keine tools/list.
       // Wer hier etwas ändert, ändert es dort mit.
       //
+      // Claude Code reicht es durch, und zwar als einzigen Text dieses Servers,
+      // der vor der ersten Werkzeugsuche ankommt: Dort stehen die Werkzeuge
+      // zunächst nur mit Namen da (gemessen 17.11.2026 an einer Sitzung mit
+      // diesem Server als Connector). Deshalb der Satz zu den beiden
+      // Bündelwerkzeugen: Ohne ihn erfährt ein Modell erst von ihnen, wenn es
+      // schon zwölf Einzelabrufe geplant hat.
+      //
       // Dieselbe einzige Quelle wie serverInfo und das MCPB-Manifest, sie kann
       // also nicht auseinanderlaufen.
       instructions:
         `bibelstudium-mcp server, version ${PACKAGE_VERSION}. ` +
         `Quote scripture only from the bible_* tools, never from memory. ` +
+        `For two or more passages use bible_lookup_many (one call) rather than several ` +
+        `bible_lookup calls; to see which verses of an NT chapter differ between the Greek ` +
+        `editions use bible_compare_chapter before bible_compare. ` +
         `When asked which server or MCP version is running, report this version.`,
     }
   );

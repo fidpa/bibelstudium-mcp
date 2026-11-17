@@ -72,11 +72,13 @@ let prozessVersion: string = UNBEKANNT;
 export const WERKZEUG_NAMEN = [
   "bible_setup",
   "bible_lookup",
+  "bible_lookup_many",
   "bible_original",
   "bible_crossrefs",
   "bible_concordance",
   "bible_search",
   "bible_compare",
+  "bible_compare_chapter",
   "bible_server_info",
 ] as const;
 

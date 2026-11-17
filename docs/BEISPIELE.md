@@ -118,3 +118,6 @@ JSON-RPC-Zeilen lassen sich direkt in den Server leiten:
 - „Welche Querverweise gibt es zu Römer 8,1?" (`bible_crossrefs`)
 - „Wo steht die Begebenheit aus Markus 2,12 noch?" (`bible_crossrefs`, Feld `parallelen`)
 - „Steht in Epheser 2,8 Singular oder Plural?" (`bible_original`)
+- „Schlag mir Johannes 3,16, Römer 8,28 und Psalm 23,1 nach" (`bible_lookup_many`, ein Abruf)
+- „Zeig mir Kolosser 1,15-18 im Grundtext" (`bible_original` mit `verses`)
+- „In welchen Versen von Kolosser 2 weichen die griechischen Editionen ab?" (`bible_compare_chapter`)

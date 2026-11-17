@@ -51,6 +51,7 @@ Platzhalter.
 - [Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon](#die-voreinstellung-gehört-dem-endpunkt-die-konstante-gehört-jedem-klon)
 - [Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text](#dieselbe-stellenangabe-trifft-nicht-in-jeder-ausgabe-denselben-text)
 - [Der Editionsabgleich schweigt, wo eine Edition zwei Formen führt](#der-editionsabgleich-schweigt-wo-eine-edition-zwei-formen-führt)
+- [Zwei Bündelwerkzeuge, obwohl ein eigenes Werkzeug schon einmal verworfen wurde](#zwei-bündelwerkzeuge-obwohl-ein-eigenes-werkzeug-schon-einmal-verworfen-wurde)
 - [Der Import setzt ein Leerzeichen, wo die Quelle mit Auszeichnung trennt](#der-import-setzt-ein-leerzeichen-wo-die-quelle-mit-auszeichnung-trennt)
 - [Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte](#die-volltextsuche-filtert-über-rowid-blöcke-nicht-über-eine-spalte)
 
@@ -1867,6 +1868,80 @@ TAGNT-Bezeugung führen die Unterschrift als Schluss des letzten Verses
 Wörter mit `editions = TR`). Der Import lässt sie weg, weil sie kein Text des
 Briefs ist; `bible_compare` zeigt in diesen 14 Versen deshalb TR-Zeugen für
 Wörter, die die Edition nicht führt.
+
+## Zwei Bündelwerkzeuge, obwohl ein eigenes Werkzeug schon einmal verworfen wurde
+
+*Gemessen 17.11.2026 an 1353 Aufrufen eines einzelnen Clients aus fünf Wochen
+(951 davon `bible_lookup`), an allen 260 NT-Kapiteln und an vier Probeläufen
+gegen einen lokalen Server.*
+
+**Der Befund.** Die Werkzeuge wurden nicht einzeln gerufen, sondern in Stapeln:
+1291 der 1353 Aufrufe standen neben anderen in derselben Nachricht, bis zu 19
+auf einmal. Von den 182 Stapeln aus `bible_lookup` umfassten die meisten wenige
+Verse. Jeder Aufruf trug Quellenangabe und Hinweise ein eigenes Mal, und die
+Dichte reichte am gehosteten Endpunkt bis an dessen Ratenbegrenzung (bis zu 20
+Aufrufe in zehn Sekunden, dreimal 429). `bible_original` lief je Kapitel bis zu
+elfmal nacheinander, `bible_compare` Vers um Vers, ohne zu wissen, welcher Vers
+es wert ist.
+
+**Was daraus wurde.** `bible_lookup_many` (bis zu 30 Stellen je Abruf),
+`verses` für `bible_original` (bis zu zehn Verse) und `bible_compare_chapter`
+(welche Verse eines Kapitels abweichen).
+
+**Warum eigene Werkzeuge, wo `bible_parallels` verworfen wurde.** Der Einwand
+von damals gilt unverändert: Ein zweites Werkzeug nützt nur dort, wo das Modell
+weiß, dass es fragen muss. Dort ließ er sich umgehen, weil die Parallelstellen
+als Feld in die Antwort passten, die ohnehin kam. Hier nicht: `bible_lookup`
+verlangt in seinem Ausgabeschema `reference` und `text`, `bible_compare`
+`editionen` und `vergleiche`. Eine Antwort über viele Stellen hat beides je
+Eintrag und nicht oben; die Pflichtfelder hätten weichen müssen, und `required`
+ist die Zeile, an der ein Client eine Antwort verwirft. `bible_original` trägt
+den Mehrfachmodus dagegen selbst, weil dort eine Ergänzung genügte (`vers` am
+Wort). Der Preis der eigenen Werkzeuge: `tools/list` wuchs von 23 242 auf
+31 468 Zeichen (Antwortzeile über stdio, mit Datenbank).
+
+**Ob sie gewählt werden**, war die offene Frage, und sie wurde vor dem Release
+gemessen statt behauptet. Vier Aufgaben an ein Modell, das den Server zum
+ersten Mal sah (Claude Code ohne Projektanweisungen, Werkzeuge erst über die
+Werkzeugsuche geladen): acht Stellen nachschlagen, Varianten eines Kapitels,
+ein Text mit zwei Zitaten, vier Verse Grundtext. In allen vier wählte es den
+neuen Weg, je mit einem einzigen Aufruf. Das sind vier Läufe mit einem Modell
+und einem Client, keine Statistik. Getragen wird die Wahl von drei Stellen: dem
+Satz in `instructions` (dem einzigen Text, den ein Client mit Werkzeugsuche vor
+dem ersten Aufruf sieht), dem Verweis in den Beschreibungen von `bible_lookup`
+und `bible_compare`, und den Namen, die neben ihren Geschwistern sortieren.
+
+**Die Wortlaut-Grenze gilt über den ganzen Mehrfachabruf**, je Ausgabe einmal.
+Die Zusage lautet „je Abruf", und ein Abruf mit zwanzig Stellen ist einer. Wer
+sie je Eintrag vergäbe, lieferte in einem Abruf ein Vielfaches aus. Das hat
+einen Preis, und er ist gemessen: Als Mehrfachabruf gefahren, berührt die
+Grenze 20 der 182 Stapel; 75 von 875 Einträgen kommen ohne Wortlaut zurück
+(`ohne_wortlaut`), 11 gekürzt. Sie stehen als solche da, mit der Anfrage, und
+keine Antwort fordert zum Nachladen auf (wie bei `bible_lookup`).
+
+**Die Wirkung, an denselben 951 Aufrufen nachgestellt:** 258 Abrufe statt 951
+(73 % weniger), 551 083 statt 780 956 Zeichen Antwort (29 % weniger; die
+Quellenangabe steht einmal je Abruf statt je Stelle).
+
+**Die Kapitelübersicht braucht mehr als „weicht ab".** 5311 der 7961 NT-Verse
+weichen in mindestens einem Editionspaar ab (byzantine↔tr 1489,
+byzantine↔sblgnt 4957, tr↔sblgnt 5188), als Filter taugt das allein nicht.
+Deshalb die Zahl je Paar und die Marke `tagnt_bedeutungsvariante` (2635 Verse).
+Die Marke stammt aus dem Apparat und nicht aus den verglichenen Editionen; der
+`hinweis` sagt es in jeder Antwort. Ein Vers, der in beiden Editionen eines
+Paars fehlt, zählt für dieses Paar nicht als Unterschied (3. Johannes 15 kennen
+weder Mehrheitstext noch Textus Receptus). Eine Größengrenze ist nicht nötig:
+Die Liste misst je Kapitel im Median 4817 und höchstens 15 899 Zeichen
+(Markus 14).
+
+**Ein gescheiterter Eintrag ist kein gescheiterter Abruf.** Er trägt `fehler`
+mit der Meldung, die `bible_lookup` gäbe, und zählt in den Metriken mit seiner
+Fehlerklasse, obwohl der Aufruf als `ok` endet. Erst wenn kein Eintrag Wortlaut
+liefert, ist der Abruf ein Fehler.
+
+**Nicht gebaut:** Stellenangaben als Zeichenkette („Joh 3,16; Röm 8,28"). Das
+verlangt, deutsche Stellenangaben zu zerlegen, samt einkapitliger Bücher, und
+gehört zu einem eigenen Vorhaben.
 
 ## Der Import setzt ein Leerzeichen, wo die Quelle mit Auszeichnung trennt
 

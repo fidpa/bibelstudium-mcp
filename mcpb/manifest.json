@@ -43,8 +43,12 @@
       "description": "Exakter Verstext in vier deutschen Übersetzungen, gegen Gedächtniszitate. Die Schlachter 1951 gibt höchstens 20 Verse je Abruf aus."
     },
     {
+      "name": "bible_lookup_many",
+      "description": "Mehrere Stellen in einem Abruf, auch dieselbe Stelle in mehreren Übersetzungen. Die Grenze von 20 Versen der Schlachter 1951 gilt über den ganzen Abruf."
+    },
+    {
       "name": "bible_original",
-      "description": "Grundtext Wort für Wort mit Grundform, Strong-Nummer und aufgelöster Morphologie."
+      "description": "Grundtext Wort für Wort mit Grundform, Strong-Nummer und aufgelöster Morphologie, für einen Vers oder bis zu zehn Verse eines Kapitels."
     },
     {
       "name": "bible_crossrefs",
@@ -61,6 +65,10 @@
     {
       "name": "bible_compare",
       "description": "Wort-Diff eines NT-Verses über drei griechische Editionen, mit Bezeugung über acht."
+    },
+    {
+      "name": "bible_compare_chapter",
+      "description": "Übersicht über ein NT-Kapitel: welche Verse zwischen den griechischen Editionen abweichen und worin."
     },
     {
       "name": "bible_server_info",

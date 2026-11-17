@@ -60,6 +60,7 @@ import {
   noteMaxHinweis,
   verseBudget,
   verseMaxHinweis,
+  type VerseBudget,
 } from "./verse-budget.ts";
 
 // --- Generische Helfer: Werkzeugergebnisse, Text, Argumentwandlung ---------
@@ -84,6 +85,23 @@ export function errorResult(msg: string, klasse: FehlerKlasse) {
 /** Die Klasse eines Ergebnisses aus `errorResult`, sonst undefined. */
 export function fehlerKlasseVon(ergebnis: object): FehlerKlasse | undefined {
   return fehlerKlassen.get(ergebnis);
+}
+
+/**
+ * Fehlerklassen einzelner Einträge in einem Ergebnis, das mehrere Stellen
+ * beantwortet. Ein gescheiterter Eintrag in einer sonst geglückten Antwort ist
+ * kein `isError`, soll in der Zählung aber nicht verschwinden: Sonst fiele das
+ * Werkzeug, das die meisten Stellen trägt, aus der Messung heraus. Derselbe Weg
+ * wie oben, am Objekt und nicht in der Nutzlast.
+ */
+const teilfehler = new WeakMap<object, readonly FehlerKlasse[]>();
+
+export function markiereTeilfehler(ergebnis: object, klassen: readonly FehlerKlasse[]): void {
+  if (klassen.length > 0) teilfehler.set(ergebnis, klassen);
+}
+
+export function teilfehlerVon(ergebnis: object): readonly FehlerKlasse[] {
+  return teilfehler.get(ergebnis) ?? [];
 }
 
 /**
@@ -630,12 +648,121 @@ export function requireBookName(
   return { book };
 }
 
+/**
+ * Die Prüfkette einer Versangabe wie in `bible_lookup`: Typ, Länge, Zahl der
+ * Segmente, Form, Spanne, Wert, in dieser Reihenfolge und je mit eigener
+ * Meldung. Bis 0.6.34 stand sie im Handler von `bible_lookup`; seit drei
+ * Werkzeuge dieselbe Angabe annehmen, steht sie hier, damit dieselbe Eingabe
+ * überall dieselbe Antwort bekommt.
+ *
+ * Die billigste Prüfung zuerst. Form vor Wert: Ein Segment ohne Ziffern fällt
+ * der Wertprüfung nicht auf (sie greift auf `\d+`), und `parseVerses` ließe es
+ * stillschweigend fallen. Die umgekehrte Spanne („10-5") besteht Form und Wert
+ * und fiel in `parseVerses` ebenso still weg. Die Wertprüfung steht vor beiden
+ * Nachschlagepfaden, denn sie waren einmal uneins: Der Schnellpfad für eine
+ * schlichte Spanne prüfte MAX_VERSE gar nicht („1-500" wurde wie gültige
+ * Eingabe beantwortet), während der Weg über `parseVerses` das beanstandete
+ * Segment fallen ließ („1-500,2" wurde mit Vers 2 allein beantwortet). Gleiche
+ * Bedeutung, zwei Ergebnisse, entschieden durch ein Komma (gemessen
+ * 26.07.2026). Die leere Angabe bleibt zulässig, sie meint das ganze Kapitel.
+ */
+export function pruefeVersliste(roh: unknown): { verses: string } | { error: string } {
+  // Als Zeichenkette oder als einzelne Zahl annehmen (nachsichtig gegenüber
+  // MCP-Clients).
+  const verses =
+    roh === undefined || roh === null
+      ? ""
+      : typeof roh === "string"
+        ? roh
+        : typeof roh === "number" && Number.isInteger(roh)
+          ? String(roh)
+          : null;
+  if (verses === null) return { error: versesNotAString };
+  if (verses.length > MAX_VERSES_LENGTH) return { error: versesTooLong };
+  if (verses.split(",").length > MAX_VERSE_PARTS) return { error: versesTooManyParts };
+  if (verses !== "" && unparsableVersePart(verses) !== null) return { error: versesNotParsable };
+  if (verses !== "" && reversedVerseRange(verses) !== null) return { error: versesReversedRange };
+  if (
+    [...verses.matchAll(/\d+/g)].some(([n]) => {
+      const value = parseInt(n, 10);
+      return value < 1 || value > MAX_VERSE;
+    })
+  ) {
+    return { error: versesOutOfBounds };
+  }
+  return { verses };
+}
+
+/** Eine geprüfte Stellenangabe: aufgelöst, aber noch nicht nachgeschlagen. `book`
+ *  ist die Schreibweise des Aufrufers, `verses` die normalisierte Angabe; beide
+ *  gehen in die Meldung „No verses found", die damit bleibt, was sie war. */
+export interface GepruefteStelle {
+  readonly book: string;
+  readonly bookId: number;
+  readonly chapter: number;
+  readonly verses: string;
+  readonly code: TranslationCode;
+}
+
+/**
+ * Prüft die Argumente einer Stelle für `bible_lookup` und `bible_lookup_many`.
+ *
+ * Die Reihenfolge ist Schnittstelle, weil sie entscheidet, welche Meldung ein
+ * Aufruf mit zwei Fehlern bekommt: Buchname (Anwesenheit, Typ, Länge), Kapitel,
+ * Versangabe, Buchauflösung, Übersetzung. Fehlt `verses`, gilt ersatzweise
+ * `verse`: So heißt das Argument bei den drei Einzelvers-Werkzeugen, und wer
+ * von dort kommt, bekäme sonst das ganze Kapitel statt des einen Verses, ohne
+ * jede Meldung (siehe `einzelVers` für die Gegenrichtung).
+ */
+export function pruefeStelle(
+  args: {
+    book?: unknown;
+    chapter?: unknown;
+    verses?: unknown;
+    verse?: unknown;
+    translation?: unknown;
+  },
+  bookRequiredMessage: string
+): GepruefteStelle | { error: string; klasse: FehlerKlasse } {
+  const geprueft = requireBookName(args.book, bookRequiredMessage);
+  if ("error" in geprueft) return { error: geprueft.error, klasse: "eingabe" };
+  const { book } = geprueft;
+
+  const chapter = toInt(args.chapter);
+  if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
+    return { error: chapterOutOfRange, klasse: "eingabe" };
+  }
+
+  const versliste = pruefeVersliste(
+    args.verses === undefined || args.verses === null ? args.verse : args.verses
+  );
+  if ("error" in versliste) return { error: versliste.error, klasse: "eingabe" };
+
+  const bookId = resolveBook(book);
+  if (bookId === null) return { error: bookNotFoundMessage(book), klasse: "buch" };
+
+  // Streng: unbekannte oder nicht geladene Kürzel sind Fehler.
+  const resolved = requireTranslation(args.translation);
+  if ("error" in resolved) return resolved;
+
+  return { book, bookId, chapter, verses: versliste.verses, code: resolved.code };
+}
+
+/** Die Meldung für eine Stellenangabe, die auf keinen Vers führt. Von
+ *  `bible_lookup` und `bible_lookup_many` wortgleich gebraucht. */
+export function keineVerseGefunden(stelle: GepruefteStelle): string {
+  return (
+    `No verses found for ${stelle.book} ${stelle.chapter}` +
+    `${stelle.verses ? "," + stelle.verses : ""}. Check chapter and verse numbers.`
+  );
+}
+
 // --- Verse holen, Stellenangaben formen, Versnutzlast bauen ----------------
 /**
  * Liest eine Versangabe wie "4", "16-17", "1,3,5", "1-3,7" und liefert die
  * einzelnen Versnummern als Feld.
  */
-function parseVerses(versesStr: string): number[] {
+export function parseVerses(versesStr: string): number[] {
   const verses: number[] = [];
   // Nur zweite Linie: Der Handler weist eine zu lange Liste mit einer Meldung
   // zurück, bevor sie hier ankommt. Dieses slice war einmal die meldende Schicht
@@ -704,7 +831,7 @@ function lookupVerses(
  * Formt Versnummern zu einer knappen Stellenangabe.
  * [1,2,3,5,7,8,9] → "1-3.5.7-9"
  */
-function formatVerseReference(verses: number[]): string {
+export function formatVerseReference(verses: number[]): string {
   if (verses.length === 0) return "";
   if (verses.length === 1) return String(verses[0]);
 
@@ -892,61 +1019,106 @@ export function lookupPayload(
   versesStr: string,
   form: "text" | "verse_einzeln"
 ): Record<string, unknown> | null {
-  const results = lookupVerses(code, bookId, chapter, versesStr);
-  if (results.length === 0) return null;
-
-  // Gekürzt wird hier, vor allem, was aus dem Versbestand abgeleitet wird: So
-  // ziehen beide Stellenangaben, der Klammerhinweis und die Fußnoten von selbst nach,
-  // statt dass drei Stellen die Grenze noch einmal kennen müssten. Die Verse
-  // liegen aufsteigend (alle drei Statements sortieren so), „die ersten" sind
-  // also die niedrigsten Versnummern.
+  // Ein Abruf, eine Stelle: Vers- und Notenbudget entstehen hier und gelten
+  // dieser einen Antwort. Mit einem frischen Budget kann `ohne_wortlaut` nicht
+  // eintreten, die Grenze lässt immer mindestens einen Vers durch; der Zweig
+  // fällt deshalb mit „nicht gefunden" zusammen.
   const budget = verseBudget(code);
-  const gefunden = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
-  const verse_einzeln = gefunden.slice(0, budget.nimm(gefunden.length));
-  const stelle = stellenangabe(
-    bookId,
-    chapter,
-    formatVerseReference(verse_einzeln.map((r) => r.verse))
-  );
-  // Die Noten folgen dem gelieferten Versbestand, weil sie aus ihm abgeleitet
-  // werden: Zu einem Vers, den die Antwort nicht enthält, kann keine Note
-  // erscheinen. Darüber hinaus bekommen sie ein **eigenes** Budget derselben
-  // Größe. Ob Notentext als Wortlaut im Sinn der Zusage zählt, ist nicht
-  // entschieden; dieses zweite Budget beantwortet die Frage nicht, sondern
-  // stellt sicher, dass der Apparat die Grenze auch dann nicht überschreiten
-  // kann, wenn sie später bejaht wird.
-  //
-  // Es greift beim heutigen Bestand nie: Ein Kapitel führt höchstens 15 Noten,
-  // innerhalb der ersten 20 Verse höchstens 12, je Vers höchstens 3 (gemessen
-  // 05.08.2026 über 1220 Noten). Wie `MAX_VERSES_LENGTH` ist das Vorsorge und
-  // keine laufende Regel, und wie dort gibt es aus demselben Grund keinen
-  // Testfall dafür: Er ließe sich mit diesen Daten nicht herstellen. Käme eine
-  // Ausgabe mit dichterem Apparat dazu, meldet die Kürzung sich selbst.
   const notenBudget = verseBudget(code);
-  const alleNoten = verseNotes(code, bookId, chapter, new Set(verse_einzeln.map((r) => r.verse)));
-  const fussnoten = alleNoten.slice(0, notenBudget.nimm(alleNoten.length));
+  const teile = lookupTeile(code, bookId, chapter, versesStr, budget, notenBudget);
+  if (teile.art !== "geliefert") return null;
+
+  const verse_einzeln = teile.verse;
   const hinweise = [
-    verseMaxHinweis(budget, { art: "verse", gefunden: gefunden.length }),
+    verseMaxHinweis(budget, { art: "verse", gefunden: teile.gefunden }),
     noteMaxHinweis(notenBudget),
-    zaehlungHinweis(code, bookId, chapter),
+    teile.zaehlung,
     nennungHinweis(code),
     ...bracketHints(verse_einzeln.map((r) => r.text)),
   ].filter((h): h is string => h !== null);
 
   return {
-    ...stelle,
+    ...teile.stelle,
     translation: TRANSLATIONS[code].name,
-    ...(form === "text"
-      ? {
-          text: verse_einzeln
-            .map((r) => (verse_einzeln.length > 1 ? `${r.verse} ${r.text}` : r.text))
-            .join(" "),
-        }
-      : { verse_einzeln }),
+    ...(form === "text" ? { text: versText(verse_einzeln) } : { verse_einzeln }),
     ...(hinweise.length > 0 ? { hinweis: hinweise.join(" ") } : {}),
-    ...(fussnoten.length > 0 ? { fussnoten } : {}),
+    ...(teile.fussnoten.length > 0 ? { fussnoten: teile.fussnoten } : {}),
     ...gekuerztFeld(budget, { noten: notenBudget }),
     quellen: quellen(translationQuelle(code)),
+  };
+}
+
+/** Die zusammengesetzte Zeichenkette des Werkzeugs: Versnummern eingeflochten,
+ *  sobald es mehr als ein Vers ist. */
+export function versText(verse: ReadonlyArray<{ verse: number; text: string }>): string {
+  return verse.map((r) => (verse.length > 1 ? `${r.verse} ${r.text}` : r.text)).join(" ");
+}
+
+/**
+ * Was das Nachschlagen einer Stelle ergibt, als Teile statt als fertige
+ * Nutzlast, mit drei Ausgängen.
+ *
+ * Als Teile, weil zwei Aufrufer daraus Verschiedenes bauen: `lookupPayload`
+ * eine Antwort je Stelle, `bible_lookup_many` eine Antwort über viele Stellen,
+ * in der Hinweise, Kürzung und Quellen einmal oben stehen. Drei Ausgänge, weil
+ * dort ein dritter dazukommt, den es bei einer einzelnen Stelle nicht gibt: Die
+ * Stelle existiert, aber das Budget des Abrufs ist verbraucht. Das von „nicht
+ * gefunden" zu trennen ist der Zweck; ein leerer Text mit Stellenangabe sähe
+ * aus wie ein Vers ohne Wortlaut.
+ *
+ * Beide Budgets werden hereingereicht und nicht hier erzeugt, damit die Zusage
+ * „höchstens `verseMax` Verse je Abruf" über alle Stellen eines Abrufs gilt.
+ * Gekürzt wird vor allem, was aus dem Versbestand abgeleitet wird: So ziehen
+ * Stellenangabe, Klammerhinweis und Fußnoten von selbst nach, statt dass drei
+ * Stellen die Grenze noch einmal kennen müssten. Die Verse liegen aufsteigend
+ * (alle drei Statements sortieren so), „die ersten" sind also die niedrigsten
+ * Versnummern.
+ *
+ * Die Noten folgen dem gelieferten Versbestand, weil sie aus ihm abgeleitet
+ * werden, und bekommen darüber hinaus ein eigenes Budget derselben Größe (sie
+ * zählen wie Verse, die Grenze gilt für beides). Bei einer einzelnen Stelle
+ * greift es mit dem heutigen Bestand nie: Ein Kapitel führt höchstens 15 Noten,
+ * innerhalb der ersten 20 Verse höchstens 12, je Vers höchstens 3 (gemessen
+ * 05.08.2026 über 1220 Noten).
+ */
+export type LookupTeile =
+  | { readonly art: "nicht_gefunden" }
+  | { readonly art: "ohne_wortlaut"; readonly gefunden: number }
+  | {
+      readonly art: "geliefert";
+      readonly stelle: { reference: string; kurzref: string };
+      readonly verse: ReadonlyArray<{ verse: number; text: string }>;
+      /** Verse, auf die die Angabe führt; mehr als `verse.length`, wenn die
+       *  Grenze gegriffen hat. */
+      readonly gefunden: number;
+      readonly fussnoten: Array<{ vers: number; stelle: string; text: string }>;
+      /** Der Satz zur abweichenden Verszählung dieses Kapitels, oder null. */
+      readonly zaehlung: string | null;
+    };
+
+export function lookupTeile(
+  code: TranslationCode,
+  bookId: number,
+  chapter: number,
+  versesStr: string,
+  budget: VerseBudget,
+  notenBudget: VerseBudget
+): LookupTeile {
+  const results = lookupVerses(code, bookId, chapter, versesStr);
+  if (results.length === 0) return { art: "nicht_gefunden" };
+
+  const gefunden = results.map((r) => ({ verse: r.verse, text: stripHtml(r.text) }));
+  const verse = gefunden.slice(0, budget.nimm(gefunden.length));
+  if (verse.length === 0) return { art: "ohne_wortlaut", gefunden: gefunden.length };
+
+  const alleNoten = verseNotes(code, bookId, chapter, new Set(verse.map((r) => r.verse)));
+  return {
+    art: "geliefert",
+    stelle: stellenangabe(bookId, chapter, formatVerseReference(verse.map((r) => r.verse))),
+    verse,
+    gefunden: gefunden.length,
+    fussnoten: alleNoten.slice(0, notenBudget.nimm(alleNoten.length)),
+    zaehlung: zaehlungHinweis(code, bookId, chapter),
   };
 }
 
@@ -995,23 +1167,14 @@ export function editionFuerTestament(
   return { edition: wanted, texttypHinweis: null };
 }
 
-/**
- * Editionsrouting, Nachschlagen und Wortnutzlast eines Verses, geteilt vom
- * Werkzeug `bible_original` und der Ressource `bible://grundtext/…`.
- *
- * Setzt hinter der Argumentprüfung an, denn die beiden Aufrufer lesen ihre
- * Argumente von verschiedenen Stellen (einem Argumentobjekt, einem
- * URI-Segment), müssen von dort an aber gleich weiterleiten und gleich
- * antworten. `bookLabel` erscheint allein in der Meldung „keine Daten" und ist
- * die Schreibweise des Aufrufers; diese Meldung bleibt damit, was sie war.
- */
-export function originalPayload(
-  bookLabel: string,
+/** Das Routing des Grundtextes, wie es Einzelvers, Versbereich und Ressource
+ *  teilen: Edition nach Testament, Ladeprüfung, der Zusatz zum `hinweis`. */
+function originalRoute(
   bookId: number,
-  chapter: number,
-  verse: number,
   texttyp: unknown
-): { payload: Record<string, unknown> } | { error: string; klasse: FehlerKlasse } {
+):
+  | { edition: string; hinweisZusatz: string; meta: (typeof EDITION_META)[string] }
+  | { error: string; klasse: FehlerKlasse } {
   if (!stmtOriginal || availableEditions.size === 0) {
     return {
       error:
@@ -1036,29 +1199,30 @@ export function originalPayload(
       klasse: "bestand",
     };
   }
+  return { edition, hinweisZusatz, meta: EDITION_META[edition]! };
+}
 
-  const rows = stmtOriginal.all(edition, bookId, chapter, verse);
-  if (rows.length === 0) {
-    return {
-      error: `Keine Urtext-Daten für ${bookLabel} ${chapter},${verse} (Texttyp ${edition}).`,
-      klasse: "stelle",
-    };
-  }
-
-  const meta0 = EDITION_META[edition]!;
+/** Die Wortliste eines Verses. Mit `vers` trägt jedes Wort seine Versnummer
+ *  voran; das braucht nur die Antwort über mehrere Verse. */
+function originalWoerter(
+  rows: ReadonlyArray<{ surface: string; lemma: string; strong: string; pos: string; parse: string; lang: string }>,
+  meta: (typeof EDITION_META)[string],
+  vers?: number
+): Array<Record<string, string | number>> {
   const decode =
-    meta0.decoder === "hebrew" ? decodeHebrew :
-    meta0.decoder === "morphgnt" ? decodeParse :
+    meta.decoder === "hebrew" ? decodeHebrew :
+    meta.decoder === "morphgnt" ? decodeParse :
     decodeRobinson;
-  const woerter = rows.map((r) => {
+  return rows.map((r) => {
     // Das SBLGNT legt die Wortart getrennt ab (r.pos); die anderen Dekoder falten
     // sie in die Morphologiezeichenkette. Deshalb hier voranstellen, damit die
     // Ausgabe überall dieselbe Form hat.
     const morph =
-      meta0.decoder === "morphgnt"
+      meta.decoder === "morphgnt"
         ? [posLabel(r.pos), decodeParse(r.parse)].filter(Boolean).join(" ")
         : decode(r.parse);
-    const w: Record<string, string> = {
+    const w: Record<string, string | number> = {
+      ...(vers !== undefined ? { vers } : {}),
       wort: r.surface,
       grundform: r.lemma || "—",
       morphologie: morph || "—",
@@ -1067,17 +1231,121 @@ export function originalPayload(
     if (r.strong) w.strong = (r.lang === "grc" ? "G" : "H") + r.strong;
     return w;
   });
+}
+
+/**
+ * Editionsrouting, Nachschlagen und Wortnutzlast eines Verses, geteilt vom
+ * Werkzeug `bible_original` und der Ressource `bible://grundtext/…`.
+ *
+ * Setzt hinter der Argumentprüfung an, denn die beiden Aufrufer lesen ihre
+ * Argumente von verschiedenen Stellen (einem Argumentobjekt, einem
+ * URI-Segment), müssen von dort an aber gleich weiterleiten und gleich
+ * antworten. `bookLabel` erscheint allein in der Meldung „keine Daten" und ist
+ * die Schreibweise des Aufrufers; diese Meldung bleibt damit, was sie war.
+ */
+export function originalPayload(
+  bookLabel: string,
+  bookId: number,
+  chapter: number,
+  verse: number,
+  texttyp: unknown
+): { payload: Record<string, unknown> } | { error: string; klasse: FehlerKlasse } {
+  const route = originalRoute(bookId, texttyp);
+  if ("error" in route) return route;
+  const { edition, meta } = route;
+
+  const rows = stmtOriginal!.all(edition, bookId, chapter, verse);
+  if (rows.length === 0) {
+    return {
+      error: `Keine Urtext-Daten für ${bookLabel} ${chapter},${verse} (Texttyp ${edition}).`,
+      klasse: "stelle",
+    };
+  }
 
   return {
     payload: {
       ...stellenangabe(bookId, chapter, verse),
       texttyp: edition,
-      edition: meta0.label,
-      sprache: meta0.sprache,
-      hinweis: meta0.hinweis + hinweisZusatz,
-      woerter,
-      quellen: quellen(meta0.quelle),
+      edition: meta.label,
+      sprache: meta.sprache,
+      hinweis: meta.hinweis + route.hinweisZusatz,
+      woerter: originalWoerter(rows, meta),
+      quellen: quellen(meta.quelle),
     },
   };
 }
 
+/** Obergrenze der Verse je Abruf von `bible_original`. Ein Vers misst im
+ *  Mittel rund 2000 Zeichen Wortliste (198 Abrufe einer Nutzungsreihe, Median
+ *  2632 Zeichen je Antwort, gemessen 17.11.2026); zehn Verse bleiben damit
+ *  unter der Größe, ab der Clients eine Antwort kürzen. */
+export const MAX_ORIGINAL_VERSE = 10;
+export const originalZuVieleVerse =
+  `Error: 'verses' may name at most ${MAX_ORIGINAL_VERSE} verses per call for this tool; ` +
+  `split a longer passage into several calls`;
+
+/**
+ * Dieselbe Wortnutzlast für mehrere Verse eines Kapitels.
+ *
+ * Gemessen an der Nutzung: `bible_original` wurde je Kapitel bis zu elfmal
+ * nacheinander gerufen, Vers für Vers (17.11.2026). Die Antwort trägt dieselben
+ * Felder wie die für einen Vers; jedes Wort nennt zusätzlich seinen `vers`, und
+ * `reference` nennt die Verse, die tatsächlich Daten tragen. Führt die Edition
+ * einen angefragten Vers nicht, steht er in `verse_ohne_daten` und im `hinweis`
+ * statt still zu fehlen: 3. Johannes endet im Mehrheitstext und im Textus
+ * Receptus bei Vers 14, im SBLGNT bei Vers 15.
+ */
+export function originalBereichPayload(
+  bookLabel: string,
+  bookId: number,
+  chapter: number,
+  verse: readonly number[],
+  texttyp: unknown
+): { payload: Record<string, unknown> } | { error: string; klasse: FehlerKlasse } {
+  const route = originalRoute(bookId, texttyp);
+  if ("error" in route) return route;
+  const { edition, meta } = route;
+
+  const woerter: Array<Record<string, string | number>> = [];
+  const mitDaten: number[] = [];
+  const ohneDaten: number[] = [];
+  for (const v of verse) {
+    const rows = stmtOriginal!.all(edition, bookId, chapter, v);
+    if (rows.length === 0) {
+      ohneDaten.push(v);
+      continue;
+    }
+    mitDaten.push(v);
+    woerter.push(...originalWoerter(rows, meta, v));
+  }
+  if (mitDaten.length === 0) {
+    return {
+      error:
+        `Keine Urtext-Daten für ${bookLabel} ${chapter},${formatVerseReference([...verse])} ` +
+        `(Texttyp ${edition}).`,
+      klasse: "stelle",
+    };
+  }
+
+  const hinweise = [
+    meta.hinweis + route.hinweisZusatz,
+    "Mehrere Verse in einer Antwort: 'vers' an jedem Wort nennt den Vers, zu dem es gehört.",
+    ohneDaten.length > 0
+      ? `Für ${ohneDaten.length === 1 ? "Vers" : "die Verse"} ${formatVerseReference(ohneDaten)} führt ` +
+        "diese Edition keine Daten ('verse_ohne_daten'); 'reference' nennt die enthaltenen Verse."
+      : null,
+  ].filter((h): h is string => h !== null);
+
+  return {
+    payload: {
+      ...stellenangabe(bookId, chapter, formatVerseReference(mitDaten)),
+      texttyp: edition,
+      edition: meta.label,
+      sprache: meta.sprache,
+      hinweis: hinweise.join(" "),
+      woerter,
+      ...(ohneDaten.length > 0 ? { verse_ohne_daten: ohneDaten } : {}),
+      quellen: quellen(meta.quelle),
+    },
+  };
+}

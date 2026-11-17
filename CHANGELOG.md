@@ -6,6 +6,27 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.0] - 2026-11-17: Mehrere Stellen in einem Abruf, und eine Kapitelübersicht der Varianten
+
+### Hinzugefügt
+
+- **`bible_lookup_many`**: bis zu 30 Stellen je Abruf, jede mit eigener
+  Übersetzung. Ein Fehlgriff betrifft nur seinen Eintrag (`fehler`). Die
+  Wortlaut-Grenze einer Ausgabe gilt über den ganzen Abruf; was nicht mehr
+  hineinpasst, kommt mit `ohne_wortlaut` zurück. An 951 aufgezeichneten
+  Einzelabrufen nachgestellt: 258 Abrufe, 29 % weniger Antwortzeichen.
+- **`bible_compare_chapter`**: welche Verse eines NT-Kapitels zwischen den
+  griechischen Editionen abweichen, mit der Zahl je Editionspaar und einer
+  Marke, wo der Apparat eine Bedeutungsvariante notiert.
+- **`bible_original` nimmt `verses`**: bis zu zehn Verse eines Kapitels, jedes
+  Wort mit `vers`. `verse` gilt unverändert.
+
+### Geändert
+
+- `instructions` und die Prompts `word-study` und `translation-compare` nennen
+  den Mehrfachabruf.
+- `tools/list` wächst von 23 242 auf 31 468 Zeichen.
+
 ## [0.6.34] - 2026-11-17: Kein Fund ist ein Ergebnis und kein Fehler mehr
 
 ### Geändert
