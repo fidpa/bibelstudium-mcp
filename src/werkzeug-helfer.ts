@@ -26,6 +26,7 @@
  */
 
 import type { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import type { FehlerKlasse } from "./metriken.ts";
 import {
   availableEditions,
   availableTranslations,
@@ -62,8 +63,27 @@ import {
 } from "./verse-budget.ts";
 
 // --- Generische Helfer: Werkzeugergebnisse, Text, Argumentwandlung ---------
-export function errorResult(msg: string) {
-  return { content: [{ type: "text" as const, text: msg }], isError: true };
+/**
+ * Werkzeugfehler: Prosa mit `isError`, dazu die Klasse der Ursache.
+ *
+ * Die Klasse ist Pflicht, damit keine Fehlerstelle ohne sie entsteht, und sie
+ * reist nicht über die Leitung: Sie hängt in einer `WeakMap` am Ergebnisobjekt
+ * und wird in der Zählhülle von `server.ts` gelesen. Ein Feld im Ergebnis wäre
+ * ein Stück Schnittstelle geworden, das kein Client braucht; die Meldung selbst
+ * sagt dem Aufrufer bereits, was verletzt ist. Was die Klassen bedeuten, steht
+ * an `FehlerKlasse` in `metriken.ts`.
+ */
+const fehlerKlassen = new WeakMap<object, FehlerKlasse>();
+
+export function errorResult(msg: string, klasse: FehlerKlasse) {
+  const ergebnis = { content: [{ type: "text" as const, text: msg }], isError: true };
+  fehlerKlassen.set(ergebnis, klasse);
+  return ergebnis;
+}
+
+/** Die Klasse eines Ergebnisses aus `errorResult`, sonst undefined. */
+export function fehlerKlasseVon(ergebnis: object): FehlerKlasse | undefined {
+  return fehlerKlassen.get(ergebnis);
 }
 
 /**
@@ -86,6 +106,28 @@ export function jsonResult(response: Record<string, unknown>) {
     content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
     structuredContent: response,
   };
+}
+
+/**
+ * Erfolgsergebnis ohne Fund: dieselbe Gestalt wie `jsonResult`, für die Zählung
+ * als `leer` markiert.
+ *
+ * Bis 0.6.33 war „keine Treffer" ein Werkzeugfehler. Ein Fehler ist es nicht:
+ * Die Anfrage war richtig gestellt und die Antwort ist eine Zahl, nämlich null.
+ * Markiert wird über denselben Weg wie die Fehlerklasse, also am Objekt und
+ * nicht in der Nutzlast; die Null steht dort ohnehin in dem Feld, das sonst die
+ * Zahl trägt.
+ */
+const leereErgebnisse = new WeakSet<object>();
+
+export function leeresErgebnis(response: Record<string, unknown>) {
+  const ergebnis = jsonResult(response);
+  leereErgebnisse.add(ergebnis);
+  return ergebnis;
+}
+
+export function istLeeresErgebnis(ergebnis: object): boolean {
+  return leereErgebnisse.has(ergebnis);
 }
 
 /**
@@ -433,7 +475,7 @@ export function bookNotFoundMessage(book: string): string {
 }
 
 export function bookNotFound(book: string): ReturnType<typeof errorResult> {
-  return errorResult(bookNotFoundMessage(book));
+  return errorResult(bookNotFoundMessage(book), "buch");
 }
 
 // Grenzen der Stellenangabe. Gemeinsam gehalten, damit die Grenze und die
@@ -463,6 +505,30 @@ export const MAX_VERSES_LENGTH =
 
 export const chapterOutOfRange = `Error: 'chapter' must be an integer between 1 and ${MAX_CHAPTER}`;
 export const verseOutOfRange = `Error: 'verse' must be an integer between 1 and ${MAX_VERSE}`;
+export const verseKeineSpanne = `Error: this tool takes exactly one verse; pass a single number in 'verse', not a range or list`;
+
+/**
+ * Der eine Vers eines Einzelvers-Werkzeugs.
+ *
+ * `bible_lookup` nennt sein Argument `verses`, die drei Werkzeuge für einen
+ * einzelnen Vers nennen es `verse`. Ein Modell, das beide nacheinander benutzt,
+ * verwechselt sie: In einer Prüfreihe gingen zwei von fünf Aufrufen daran
+ * verloren (02.09.2026). Deshalb wird `verses` angenommen, wenn `verse` fehlt
+ * und dort genau eine Zahl steht; das eigene Argument geht vor. Eine Spanne
+ * oder Liste bekommt ihre eigene Meldung statt „must be an integer", denn der
+ * Wert ist lesbar, nur passt er nicht zu diesem Werkzeug.
+ */
+export function einzelVers(args: { verse?: unknown; verses?: unknown }): { verse: number } | { error: string } {
+  const eigenes = args.verse !== undefined && args.verse !== null;
+  const roh = eigenes ? args.verse : args.verses;
+  const verse = toInt(roh);
+  if (verse === null) {
+    const spanne = !eigenes && typeof roh === "string" && /^\s*\d+\s*[-,]/.test(roh);
+    return { error: spanne ? verseKeineSpanne : verseOutOfRange };
+  }
+  if (verse < 1 || verse > MAX_VERSE) return { error: verseOutOfRange };
+  return { verse };
+}
 export const bookTooLong = `Error: 'book' must be at most ${MAX_BOOK_LENGTH} characters (e.g. 'Jesaja', '1. Mose', 'Römer')`;
 // Anwesenheit und Typ sind zwei Bedingungen, also zwei Meldungen. Gefaltet
 // (`!book || typeof book !== "string"`) antworteten vier Werkzeuge auf
@@ -678,7 +744,9 @@ function formatVerseReference(verses: number[]): string {
  * eine Einladung zur Wiederholung (Hausregel „Fehlermeldungen brauchen einen
  * Ausweg", und im HTTP-Modus sitzt am anderen Ende nicht der Betreiber).
  */
-export function requireTranslation(input: unknown): { code: TranslationCode } | { error: string } {
+export function requireTranslation(
+  input: unknown
+): { code: TranslationCode } | { error: string; klasse: FehlerKlasse } {
   const geladen = (Object.keys(TRANSLATIONS) as TranslationCode[]).filter((c) =>
     availableTranslations.has(c)
   );
@@ -689,6 +757,7 @@ export function requireTranslation(input: unknown): { code: TranslationCode } | 
         `Error: Unknown translation "${String(input)}". Allowed: ` +
         (geladen.map((c) => `"${c}" (${TRANSLATIONS[c].name})`).join(", ") || "none loaded") +
         ".",
+      klasse: "ausgabe",
     };
   }
   if (!availableTranslations.has(code)) {
@@ -701,6 +770,7 @@ export function requireTranslation(input: unknown): { code: TranslationCode } | 
         `Übersetzung "${code}" ist auf diesem Server nicht geladen. ` +
         ausweg +
         `Geladen: ${geladen.join(", ") || "keine"}.`,
+      klasse: "bestand",
     };
   }
   return { code };
@@ -786,13 +856,15 @@ function zaehlungHinweis(
  * wiederholt die Nennung nicht, sondern verweist auf sie; sie ist bei der
  * Schlachter 1951 rund 180 Zeichen lang und stünde sonst zweimal in jeder
  * Antwort.
+ *
+ * Seit 0.6.34 ein Satz statt zweier: Er stand in 811 von 944 Antworten einer
+ * Nutzungsreihe (gemessen 17.11.2026) und trug mit 142 Zeichen mehr als die
+ * halbe Länge eines durchschnittlichen Verses. Geblieben ist die Handlung,
+ * entfallen die Begründung; wer sie braucht, findet die Lizenz in `quellen`.
  */
 export function nennungHinweis(code: TranslationCode): string | null {
   if (TRANSLATIONS[code].attribution === null) return null;
-  return (
-    `Die Lizenz dieser Ausgabe verlangt eine Namensnennung. Wer diesen Wortlaut ` +
-    `in ein Dokument übernimmt, übernimmt die Nennung aus 'quellen' mit.`
-  );
+  return `Beim Übernehmen in ein Dokument die Nennung aus 'quellen' mitführen.`;
 }
 
 /**
@@ -939,19 +1011,20 @@ export function originalPayload(
   chapter: number,
   verse: number,
   texttyp: unknown
-): { payload: Record<string, unknown> } | { error: string } {
+): { payload: Record<string, unknown> } | { error: string; klasse: FehlerKlasse } {
   if (!stmtOriginal || availableEditions.size === 0) {
     return {
       error:
         "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
         "(und optional 'bun run download:sblgnt') ausführen.",
+      klasse: "bestand",
     };
   }
 
   // Weiterleitung nach Testament: AT (1 bis 39) → hebräisches WLC; NT (40 bis 66)
   // → griechischer Texttyp. Die Ladeprüfung bleibt darunter an ihrer Stelle.
   const geroutet = editionFuerTestament(texttyp, bookId < 40);
-  if ("error" in geroutet) return { error: geroutet.error };
+  if ("error" in geroutet) return { error: geroutet.error, klasse: "ausgabe" };
   const { edition } = geroutet;
   const hinweisZusatz = geroutet.texttypHinweis === null ? "" : ` (${geroutet.texttypHinweis})`;
 
@@ -960,6 +1033,7 @@ export function originalPayload(
       error:
         `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}. ` +
         (edition === "wlc" ? "Für das AT bitte 'bun run download:heb' ausführen." : ""),
+      klasse: "bestand",
     };
   }
 
@@ -967,6 +1041,7 @@ export function originalPayload(
   if (rows.length === 0) {
     return {
       error: `Keine Urtext-Daten für ${bookLabel} ${chapter},${verse} (Texttyp ${edition}).`,
+      klasse: "stelle",
     };
   }
 

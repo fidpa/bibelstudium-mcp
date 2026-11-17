@@ -35,6 +35,7 @@ import {
   errorResult,
   getBookDisplayName,
   jsonResult,
+  leeresErgebnis,
   nennungHinweis,
   queryNotAString,
   queryTooLong,
@@ -89,7 +90,8 @@ export function handleSearch(args: {
 }) {
   if (!hasFtsTable) {
     return errorResult(
-      "Volltext-Index nicht gebaut. Bitte 'bun run build:fts' ausführen."
+      "Volltext-Index nicht gebaut. Bitte 'bun run build:fts' ausführen.",
+      "bestand"
     );
   }
   if (!stmtSearch || !stmtSearchCount || !stmtSearchAll) {
@@ -100,12 +102,13 @@ export function handleSearch(args: {
         ? "Die Volltextsuche ist auf diesem Endpunkt derzeit gesperrt: Der Index liegt nicht in " +
             "der erwarteten Form vor. Das lässt sich nur serverseitig beheben; ein erneuter Aufruf hilft nicht."
         : "Der Volltextindex liegt nicht in Blöcken je Übersetzung und Buch, wie dieser Server sie " +
-            "erwartet. Bitte 'bun run build:fts' ausführen."
+            "erwartet. Bitte 'bun run build:fts' ausführen.",
+      "bestand"
     );
   }
   const resolved = requireTranslation(args.translation);
   if ("error" in resolved) {
-    return errorResult(resolved.error);
+    return errorResult(resolved.error, resolved.klasse);
   }
   const translation = resolved.code;
 
@@ -115,18 +118,19 @@ export function handleSearch(args: {
   const { query } = args;
   if (query === undefined || query === null || query === "") {
     return errorResult(
-      "Error: 'query' is required, e.g. 'Hirte mangeln' or '\"Gnade um Gnade\"'."
+      "Error: 'query' is required, e.g. 'Hirte mangeln' or '\"Gnade um Gnade\"'.",
+      "eingabe"
     );
   }
   if (typeof query !== "string") {
-    return errorResult(queryNotAString);
+    return errorResult(queryNotAString, "eingabe");
   }
   if (query.length > MAX_QUERY_LENGTH) {
-    return errorResult(queryTooLong);
+    return errorResult(queryTooLong, "eingabe");
   }
   const match = buildFtsQuery(query);
   if (match === null) {
-    return errorResult("Error: 'query' enthält kein durchsuchbares Wort.");
+    return errorResult("Error: 'query' enthält kein durchsuchbares Wort.", "eingabe");
   }
   const limit = clampLimit(args.limit, SEARCH_LIMIT);
   const budget = verseBudget(translation);
@@ -134,10 +138,10 @@ export function handleSearch(args: {
   let bookId: number | null = null;
   if (args.book !== undefined && args.book !== null && args.book !== "") {
     if (typeof args.book !== "string") {
-      return errorResult("Error: 'book' must be a German book name.");
+      return errorResult("Error: 'book' must be a German book name.", "eingabe");
     }
     if (args.book.length > MAX_BOOK_LENGTH) {
-      return errorResult(bookTooLong);
+      return errorResult(bookTooLong, "eingabe");
     }
     bookId = resolveBook(args.book);
     if (bookId === null) {
@@ -145,17 +149,41 @@ export function handleSearch(args: {
     }
   }
 
-  // Der rowid-Block der Übersetzung, bei `book` der des Buches darin; null
-  // heißt, diese Ausgabe führt das Buch nicht, also null Treffer.
+  // Der rowid-Block der Übersetzung, bei `book` der des Buches darin. Fehlt er,
+  // ist das kein leeres Ergebnis, sondern ein fehlender Index: Der Volltextindex
+  // führt diese Ausgabe (oder dieses Buch in ihr) nicht, und „0 Treffer" wäre
+  // eine Zahl über Text, der nie durchsucht wurde.
   const bereich = ftsBereich(translation, bookId);
-  const total = bereich === null ? 0 : stmtSearchCount.get(match, bereich.von, bereich.bis)!.n;
-  if (bereich === null || total === 0) {
+  if (bereich === null) {
     return errorResult(
-      `Keine Treffer für "${query}"${bookId !== null ? ` in ${getBookDisplayName(bookId)}` : ""} ` +
+      `Der Volltextindex führt ${bookId !== null ? `${getBookDisplayName(bookId)} in der ` : "die "}` +
+        `${TRANSLATIONS[translation].name} nicht; darin lässt sich hier nicht suchen. ` +
+        (HTTP_MODE
+          ? "Das lässt sich nur serverseitig beheben; ein erneuter Aufruf hilft nicht."
+          : "Bitte 'bun run build:fts' ausführen."),
+      "bestand"
+    );
+  }
+  const total = stmtSearchCount.get(match, bereich.von, bereich.bis)!.n;
+  if (total === 0) {
+    // Kein Treffer ist ein Ergebnis und kein Fehler: Die Anfrage war richtig
+    // gestellt, und die Antwort ist die Zahl null. Bis 0.6.33 ging das als
+    // `isError` hinaus und stand in der Überwachung als Viertel aller
+    // Suchaufrufe unter den Fehlern (89 von 358, gemessen 13.11.2026). Der
+    // Satz ist derselbe geblieben; er nennt Ausdruck und Ausgabe, weil
+    // Trefferzahlen je Ausgabe gelten.
+    return leeresErgebnis({
+      suche: query,
+      uebersetzung: TRANSLATIONS[translation].name,
+      treffer: 0,
+      verse: [],
+      hinweis:
+        `Keine Treffer für "${query}"${bookId !== null ? ` in ${getBookDisplayName(bookId)}` : ""} ` +
         `(${TRANSLATIONS[translation].name}). ` +
         "Gesucht wird nach exakten Wortformen: Beugungen mitdenken oder Präfixsuche " +
-        'nutzen (z. B. "lieb*").'
-    );
+        'nutzen (z. B. "lieb*").',
+      quellen: quellen(translationQuelle(translation)),
+    });
   }
   const rows = stmtSearch.all(match, bereich.von, bereich.bis, limit);
 

@@ -74,6 +74,11 @@ const BOOKS: Record<string, number> = {
 //
 // **Nicht** darin: `d` (Psalmüberschrift, 11 Fälle, etwa Ps 8,1). Die deutsche
 // Zählung dieser Ausgabe führt sie als Vers 1, sie gehört also in den Vers.
+/** Platzhalter für eine entfernte Note, solange ihre Nachbarn noch zu prüfen
+ *  sind. Ein Zeichen aus dem privaten Bereich, das in der Lieferung nicht
+ *  vorkommt; `parseUsx` bricht ab, falls doch. */
+const NOTEN_MARKE = "\uE000";
+
 const SKIP_PARA_STYLES = new Set([
   "s", "s1", "s2", "s3", "s4", "sp", "sr", "r", "ms", "ms1", "ms2", "mr", "qa",
 ]);
@@ -176,7 +181,27 @@ function parseUsx(xml: string, bookId: number): { verses: VerseRow[]; notes: Not
   // stehen mitten im Vers, und ihr Inhalt ist Apparat, nicht Wortlaut. Die
   // Querverweisnoten (43 971 Stück) werden gar nicht übernommen, der Server
   // führt seine Verweise aus OpenBible.info.
-  const ohneNoten = xml.replace(/<note\b[^>]*>[\s\S]*?<\/note>/g, "");
+  //
+  // Eine Note fällt zur leeren Zeichenkette, mit einer Ausnahme: Steht sie
+  // zwischen zwei Buchstaben und grenzt dabei an ein `<char>`-Tag, war sie der
+  // einzige Worttrenner, und ohne sie kleben zwei Wörter aneinander. Das trifft
+  // dort zu, wo ein alttestamentliches Zitat mit eigener Auszeichnung beginnt
+  // oder endet, an 92 Stellen der Lieferung (gemessen 17.11.2026; bis 0.6.33
+  // gingen sie verklebt hinaus). Die Tag-Grenze ist die Bedingung, nicht bloß
+  // die Lage zwischen zwei Buchstaben: An 9 weiteren Stellen steht eine Note
+  // ohne jedes Tag mitten in einem zusammengesetzten Wort, dort ist sie ein
+  // Anker und kein Trenner, und ein Leerzeichen zerrisse das Wort. Deshalb erst
+  // eine Marke setzen und dann den ganzen Lauf aus Tags und Marken zwischen
+  // zwei Buchstaben ansehen, statt die Nachbarzeichen der Note zu prüfen.
+  if (xml.includes(NOTEN_MARKE)) {
+    throw new Error(`${bookId}: Die Lieferung enthält das Markenzeichen U+E000, das der Import selbst setzt.`);
+  }
+  const ohneNoten = xml
+    .replace(/<note\b[^>]*>[\s\S]*?<\/note>/g, NOTEN_MARKE)
+    .replace(/(?<=\p{L})(?:<[^>]+>|\uE000)+(?=\p{L})/gu, (lauf) =>
+      lauf.includes(NOTEN_MARKE) && lauf.includes("<") ? `${lauf} ` : lauf
+    )
+    .replaceAll(NOTEN_MARKE, "");
 
   // Abschnittsüberschriften und Sprecherangaben entfernen, samt ihrem
   // öffnenden Tag; der Leerraum davor und dahinter bleibt als Worttrenner stehen.

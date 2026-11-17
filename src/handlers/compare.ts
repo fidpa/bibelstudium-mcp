@@ -21,9 +21,9 @@ import {
 import { crossCheckVariant, diffSegments } from "../greek-diff.ts";
 import {
   MAX_CHAPTER,
-  MAX_VERSE,
   bookNotFound,
   chapterOutOfRange,
+  einzelVers,
   errorResult,
   getBookDisplayName,
   jsonResult,
@@ -31,7 +31,6 @@ import {
   resolveBook,
   stellenangabe,
   toInt,
-  verseOutOfRange,
 } from "../werkzeug-helfer.ts";
 
 /**
@@ -39,34 +38,42 @@ import {
  * über die griechischen Editionen (paarweise, normalisiert verglichen, gemeldet
  * werden die ursprünglichen Wortformen).
  */
-export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?: unknown }) {
+export function handleCompare(args: {
+  book?: unknown;
+  chapter?: unknown;
+  verse?: unknown;
+  verses?: unknown;
+}) {
   if (!stmtOriginal || availableEditions.size === 0) {
     return errorResult(
-      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' ausführen."
+      "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' ausführen.",
+      "bestand"
     );
   }
 
   const geprueft = requireBookName(args.book, "Error: 'book' is required (e.g. 'Römer', '1Joh').");
   if ("error" in geprueft) {
-    return errorResult(geprueft.error);
+    return errorResult(geprueft.error, "eingabe");
   }
   const { book } = geprueft;
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    return errorResult(chapterOutOfRange);
+    return errorResult(chapterOutOfRange, "eingabe");
   }
-  const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > MAX_VERSE) {
-    return errorResult(verseOutOfRange);
+  const vers = einzelVers(args);
+  if ("error" in vers) {
+    return errorResult(vers.error, "eingabe");
   }
+  const { verse } = vers;
   const bookId = resolveBook(book);
   if (bookId === null) {
     return bookNotFound(book);
   }
   if (bookId < 40) {
     return errorResult(
-      "Der Editionsvergleich gilt nur fürs NT; fürs AT gibt es nur eine Edition (hebräischer WLC)."
+      "Der Editionsvergleich gilt nur fürs NT; fürs AT gibt es nur eine Edition (hebräischer WLC).",
+      "eingabe"
     );
   }
 
@@ -74,7 +81,8 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
   if (editions.length < 2) {
     return errorResult(
       `Mindestens zwei NT-Editionen nötig; geladen: ${editions.join(", ") || "keine"}. ` +
-        "Bitte die Download-Skripte (download-byz.ts, download-tr.ts, download-morph.ts) ausführen."
+        "Bitte die Download-Skripte (download-byz.ts, download-tr.ts, download-morph.ts) ausführen.",
+      "bestand"
     );
   }
 
@@ -84,7 +92,8 @@ export function handleCompare(args: { book?: unknown; chapter?: unknown; verse?:
   }));
   if (texts.every((t) => t.words.length === 0)) {
     return errorResult(
-      `Keine Urtext-Daten für ${getBookDisplayName(bookId)} ${chapter},${verse}.`
+      `Keine Urtext-Daten für ${getBookDisplayName(bookId)} ${chapter},${verse}.`,
+      "stelle"
     );
   }
 

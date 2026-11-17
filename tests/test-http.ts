@@ -82,6 +82,15 @@ async function start(extraEnv: Record<string, string> = {}): Promise<Server> {
       PATH: process.env["PATH"] ?? "",
       HOME: process.env["HOME"] ?? "",
       MCP_HTTP_PORT: String(PORT),
+      // Durchgereicht, damit sich die Lage ohne Datenbank auch dort herstellen
+      // lässt, wo eine daliegt: `BIBLE_DB_PATH=/gibt/es/nicht bun run test:http`.
+      // Ohne diese Zeile startete der Server mit leerer Umgebung und fand die
+      // Datenbank des Arbeitsbaums; ein Fehlereinbau an der Sperre ohne
+      // Datenbank blieb lokal grün und wäre erst in der CI rot geworden
+      // (gemessen 17.11.2026).
+      ...(process.env["BIBLE_DB_PATH"] !== undefined
+        ? { BIBLE_DB_PATH: process.env["BIBLE_DB_PATH"] }
+        : {}),
       ...extraEnv,
     },
   });
@@ -425,6 +434,12 @@ try {
     eq("GET /metrics: 200", m.status, 200);
     has("GET /metrics: Textformat", m.contentType ?? "", "text/plain");
     has("GET /metrics: Werkzeugzähler", m.body, "bibelstudium_mcp_werkzeug_aufrufe_total");
+    has("GET /metrics: Fehlerklassenzähler", m.body, "bibelstudium_mcp_werkzeug_fehler_total");
+    has(
+      "GET /metrics: Ausgang leer steht in Grundstellung",
+      m.body,
+      'bibelstudium_mcp_werkzeug_aufrufe_total{werkzeug="bible_search",ergebnis="leer"} 0'
+    );
     has("GET /metrics: Promptzähler", m.body, "bibelstudium_mcp_prompt_aufrufe_total");
     has("GET /metrics: Ressourcenzähler", m.body, "bibelstudium_mcp_ressource_aufrufe_total");
 
@@ -463,10 +478,20 @@ try {
     // daran, ob eine Datenbank daliegt, und diese Datei bleibt datenunabhängig.
     // Ein unbekannter Werkzeugname endet aus demselben Grund einmal als
     // `abgewiesen` und einmal als `fehler`, landet aber immer unter `unbekannt`.
+    //
+    // Die Fehlerfamilie bleibt aus der Summe heraus: Sie trägt dasselbe
+    // `werkzeug`-Label, und ein Aufruf, der an der Sperre ohne Datenbank endet,
+    // zählte sonst zweimal (einmal als `fehler`, einmal mit seiner Klasse). Mit
+    // Datenbank fiele das nicht auf, in der CI wäre jede Summe um eins zu hoch.
     const summe = (text: string, label: string): number =>
       text
         .split("\n")
-        .filter((z) => z.startsWith("bibelstudium_mcp_") && z.includes(label))
+        .filter(
+          (z) =>
+            z.startsWith("bibelstudium_mcp_") &&
+            !z.startsWith("bibelstudium_mcp_werkzeug_fehler_total") &&
+            z.includes(label)
+        )
         .reduce((acc, z) => acc + Number(z.slice(z.lastIndexOf(" ") + 1)), 0);
 
     const vorher = m.body;
@@ -569,6 +594,20 @@ try {
         'bibelstudium_mcp_werkzeug_aufrufe_total{werkzeug="bible_compare",ergebnis="fehler"}'
       ),
       1
+    );
+    // Die Klasse desselben Fehlers. Welche es ist, hängt an der Datenbank: Mit
+    // ihr scheitert der Aufruf an der fehlenden Buchangabe (`eingabe`), ohne sie
+    // an der Sperre davor (`bestand`). Datenunabhängig steht fest, dass genau
+    // eine der beiden gezählt wurde und keine andere; ohne Datenbank, also in
+    // der CI, ist das die einzige Stelle, an der die Klasse der Sperre geprüft
+    // wird.
+    const klasse = (k: string): number =>
+      zaehle(zuletzt, `bibelstudium_mcp_werkzeug_fehler_total{werkzeug="bible_compare",klasse="${k}"}`);
+    eq("Fehlerklasse: genau eine von eingabe und bestand", klasse("eingabe") + klasse("bestand"), 1);
+    eq(
+      "Fehlerklasse: keine andere Klasse gezählt",
+      klasse("buch") + klasse("stelle") + klasse("ausgabe") + klasse("betrieb"),
+      0
     );
 
     const gepostet = await probe("/metrics", { method: "POST" }, METRIK_BASIS);
@@ -771,4 +810,4 @@ console.log("Protokoll-Telemetrie ohne Kopfzeile");
 // Mindestzahl wie in test-golden.ts: Fällt ein Block dieser Datei weg, sinkt die
 // Summe, ohne dass eine Prüfung rot würde. Gemessen 02.09.2026, beim Ergänzen
 // mitziehen.
-abschluss(105);
+abschluss(109);

@@ -6,6 +6,29 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.34] - 2026-11-17: Kein Fund ist ein Ergebnis und kein Fehler mehr
+
+### Geändert
+
+- **Eine Suche ohne Treffer, ein bekanntes Wort ohne Vorkommen und ein Vers
+  ohne Querverweis antworten als Erfolg** (`treffer: 0`, `gesamt: 0`), nicht
+  mehr mit `isError`. Wer „nichts gefunden" bisher am Fehler erkannte, liest
+  jetzt die Zahl. Ein unbekanntes Wort, ein Vers, den es nicht gibt, und ein
+  fehlender Index bleiben Fehler.
+- **Der Hinweis zur Namensnennung ist ein Satz statt zweier** (68 statt 142
+  Zeichen); die Nennung selbst steht unverändert in `quellen`.
+- `bible_lookup` nimmt `verse`, die Einzelvers-Werkzeuge nehmen `verses`, wenn
+  dort eine einzelne Zahl steht.
+- `/metrics` führt den Ausgang `leer` und die neue Familie
+  `bibelstudium_mcp_werkzeug_fehler_total{werkzeug,klasse}` mit sechs Klassen.
+
+### Behoben
+
+- **Verklebte Wörter im Datenaufbau.** `download` machte aus `<br/>` nichts
+  statt eines Leerzeichens (Menge 1939: 9366 Verse betroffen, dazu Luther 65,
+  Schlachter 1951 7). Der Wortlaut ist unverändert, nur Leerraum. Wirksam nach
+  erneutem `bun run download`.
+
 ## [0.6.33] - 2026-11-13: Die Abhängigkeiten tragen keinen bekannten Sicherheitsbefund mehr
 
 ### Sicherheit

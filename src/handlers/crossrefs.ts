@@ -28,6 +28,7 @@ import {
   stmtXrefsCount,
 } from "../db.ts";
 import { DATASET_QUELLEN, quellen, translationQuelle } from "../editions.ts";
+import { TRANSLATIONS } from "../translations.ts";
 import {
   gekuerztFeld,
   teilBudget,
@@ -37,13 +38,14 @@ import {
 } from "../verse-budget.ts";
 import {
   MAX_CHAPTER,
-  MAX_VERSE,
   bookNotFound,
   bracketHints,
   chapterOutOfRange,
+  einzelVers,
   errorResult,
   getBookDisplayName,
   jsonResult,
+  leeresErgebnis,
   markerAbschnitt,
   markerBisVers,
   nennungHinweis,
@@ -53,7 +55,6 @@ import {
   stellenangabe,
   stripHtml,
   toInt,
-  verseOutOfRange,
   type LimitGrenzen,
   clampLimit,
 } from "../werkzeug-helfer.ts";
@@ -222,6 +223,7 @@ export function handleCrossrefs(args: {
   book?: unknown;
   chapter?: unknown;
   verse?: unknown;
+  verses?: unknown;
   limit?: unknown;
   translation?: unknown;
 }) {
@@ -231,12 +233,13 @@ export function handleCrossrefs(args: {
   if (!stmtXrefs && !stmtParallelGroups) {
     return errorResult(
       "Weder Querverweis- noch Parallelstellen-Daten geladen. Bitte " +
-        "'bun run download:crossrefs' und 'bun run download:parallels' ausführen."
+        "'bun run download:crossrefs' und 'bun run download:parallels' ausführen.",
+      "bestand"
     );
   }
   const resolved = requireTranslation(args.translation);
   if ("error" in resolved) {
-    return errorResult(resolved.error);
+    return errorResult(resolved.error, resolved.klasse);
   }
   const translation = resolved.code;
 
@@ -245,18 +248,19 @@ export function handleCrossrefs(args: {
     "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
   );
   if ("error" in geprueft) {
-    return errorResult(geprueft.error);
+    return errorResult(geprueft.error, "eingabe");
   }
   const { book } = geprueft;
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    return errorResult(chapterOutOfRange);
+    return errorResult(chapterOutOfRange, "eingabe");
   }
-  const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > MAX_VERSE) {
-    return errorResult(verseOutOfRange);
+  const vers = einzelVers(args);
+  if ("error" in vers) {
+    return errorResult(vers.error, "eingabe");
   }
+  const { verse } = vers;
   const limit = clampLimit(args.limit, XREF_LIMIT);
   const budget = verseBudget(translation);
 
@@ -275,9 +279,29 @@ export function handleCrossrefs(args: {
 
   const rows = stmtXrefs ? stmtXrefs.all(bookId, chapter, verse, limit) : [];
   if (rows.length === 0 && parallel.gruppen.length === 0) {
-    return errorResult(
-      `Keine Querverweise für ${getBookDisplayName(bookId)} ${chapter},${verse} gefunden.`
-    );
+    const stelle = `${getBookDisplayName(bookId)} ${chapter},${verse}`;
+    // Drei Lagen hinter derselben leeren Liste, und nur eine davon ist eine
+    // Zahl. Fehlt der Verweisdatensatz, wurde nicht gezählt; gibt es den Vers
+    // in dieser Ausgabe nicht, ist die Stellenangabe falsch. Erst wenn beides
+    // ausscheidet, heißt die leere Liste „dieser Vers hat keinen Verweis", und
+    // das trifft auf 1738 der 31 102 Verse zu (gemessen 17.11.2026).
+    if (!stmtXrefs) {
+      return errorResult(`Keine Querverweise für ${stelle} gefunden.`, "bestand");
+    }
+    if (!stmtVerse.get(translation, bookId, chapter, verse)) {
+      return errorResult(
+        `Keine Querverweise für ${stelle} gefunden: Diesen Vers führt die ` +
+          `${TRANSLATIONS[translation].name} nicht. Kapitel und Vers prüfen.`,
+        "stelle"
+      );
+    }
+    return leeresErgebnis({
+      ...stellenangabe(bookId, chapter, verse),
+      gesamt: 0,
+      verweise: [],
+      hinweis: `Keine Querverweise für ${stelle} gefunden.`,
+      quellen: quellen(DATASET_QUELLEN.crossrefs),
+    });
   }
 
   const verweise = rows.map((r) => {

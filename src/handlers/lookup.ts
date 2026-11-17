@@ -47,6 +47,7 @@ export function handleLookup(rawArgs: unknown) {
     book?: unknown;
     chapter?: unknown;
     verses?: unknown;
+    verse?: unknown;
     translation?: unknown;
   };
 
@@ -60,45 +61,50 @@ export function handleLookup(rawArgs: unknown) {
     "Error: 'book' is required (e.g. 'Jesaja', '1. Mose', 'Römer')."
   );
   if ("error" in geprueft) {
-    return errorResult(geprueft.error);
+    return errorResult(geprueft.error, "eingabe");
   }
   const { book } = geprueft;
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    return errorResult(chapterOutOfRange);
+    return errorResult(chapterOutOfRange, "eingabe");
   }
 
   // `verses` als Zeichenkette oder als einzelne Zahl annehmen (nachsichtig
-  // gegenüber MCP-Clients).
+  // gegenüber MCP-Clients). Fehlt es, gilt ersatzweise `verse`: So heißt das
+  // Argument bei den drei Einzelvers-Werkzeugen, und wer von dort kommt,
+  // bekäme sonst das ganze Kapitel statt des einen Verses, ohne jede Meldung
+  // (siehe `einzelVers` in werkzeug-helfer.ts für die Gegenrichtung).
+  const versAngabe =
+    args.verses === undefined || args.verses === null ? args.verse : args.verses;
   const verses =
-    args.verses === undefined || args.verses === null
+    versAngabe === undefined || versAngabe === null
       ? ""
-      : typeof args.verses === "string"
-        ? args.verses
-        : typeof args.verses === "number" && Number.isInteger(args.verses)
-          ? String(args.verses)
+      : typeof versAngabe === "string"
+        ? versAngabe
+        : typeof versAngabe === "number" && Number.isInteger(versAngabe)
+          ? String(versAngabe)
           : null;
   // Die billigste Prüfung zuerst: Typ, Länge, Anzahl der Segmente, Werte.
   if (verses === null) {
-    return errorResult(versesNotAString);
+    return errorResult(versesNotAString, "eingabe");
   }
   if (verses.length > MAX_VERSES_LENGTH) {
-    return errorResult(versesTooLong);
+    return errorResult(versesTooLong, "eingabe");
   }
   if (verses.split(",").length > MAX_VERSE_PARTS) {
-    return errorResult(versesTooManyParts);
+    return errorResult(versesTooManyParts, "eingabe");
   }
   // Form vor Wert: Ein Segment ohne Ziffern fällt der Wertprüfung unten nicht
   // auf (sie greift auf `\d+`), und `parseVerses` ließe es stillschweigend
   // fallen. Die leere Angabe bleibt zulässig, sie meint das ganze Kapitel.
   if (verses !== "" && unparsableVersePart(verses) !== null) {
-    return errorResult(versesNotParsable);
+    return errorResult(versesNotParsable, "eingabe");
   }
   // Eine umgekehrte Spanne („10-5") besteht Form und Wert und fiel in
   // parseVerses still weg; ihre Meldung steht vor beiden Nachschlagepfaden.
   if (verses !== "" && reversedVerseRange(verses) !== null) {
-    return errorResult(versesReversedRange);
+    return errorResult(versesReversedRange, "eingabe");
   }
   // Vor beiden Nachschlagepfaden, denn sie waren einmal uneins: Der Schnellpfad
   // für eine schlichte Spanne prüfte MAX_VERSE gar nicht („1-500" wurde wie
@@ -110,7 +116,7 @@ export function handleLookup(rawArgs: unknown) {
     const value = parseInt(n, 10);
     return value < 1 || value > MAX_VERSE;
   })) {
-    return errorResult(versesOutOfBounds);
+    return errorResult(versesOutOfBounds, "eingabe");
   }
 
   // Buchnamen zur Nummer auflösen
@@ -122,7 +128,7 @@ export function handleLookup(rawArgs: unknown) {
   // Übersetzung auflösen (streng: unbekannte oder nicht geladene Kürzel sind Fehler)
   const resolved = requireTranslation(translation);
   if ("error" in resolved) {
-    return errorResult(resolved.error);
+    return errorResult(resolved.error, resolved.klasse);
   }
 
   // Verse nachschlagen. Die Nutzlast teilt sich dieses Werkzeug mit den
@@ -131,7 +137,8 @@ export function handleLookup(rawArgs: unknown) {
   const response = lookupPayload(resolved.code, bookId, chapter, verses, "text");
   if (response === null) {
     return errorResult(
-      `No verses found for ${book} ${chapter}${verses ? "," + verses : ""}. Check chapter and verse numbers.`
+      `No verses found for ${book} ${chapter}${verses ? "," + verses : ""}. Check chapter and verse numbers.`,
+      "stelle"
     );
   }
 

@@ -25,6 +25,7 @@ import {
   errorResult,
   getBookDisplayName,
   jsonResult,
+  leeresErgebnis,
 } from "../werkzeug-helfer.ts";
 
 /** Vorgabe und Obergrenze von `limit`; `server.ts` liest Beschreibung und
@@ -67,7 +68,8 @@ export function handleConcordance(args: {
   if (!stmtConcordStrong || !stmtConcordLemma || availableEditions.size === 0) {
     return errorResult(
       "Urtext-Daten nicht geladen. Bitte zuerst 'bun run download:byz' " +
-        "(und für das AT 'bun run download:heb') ausführen."
+        "(und für das AT 'bun run download:heb') ausführen.",
+      "bestand"
     );
   }
 
@@ -78,7 +80,8 @@ export function handleConcordance(args: {
   if (args.strong !== undefined && args.strong !== null && args.strong !== "") {
     if (typeof args.strong !== "string" || !/^[GHgh]\d{1,5}$/.test(args.strong.trim())) {
       return errorResult(
-        'Error: \'strong\' muss eine Strong-Nummer mit Präfix sein, z. B. "G26" (NT) oder "H7225" (AT).'
+        'Error: \'strong\' muss eine Strong-Nummer mit Präfix sein, z. B. "G26" (NT) oder "H7225" (AT).',
+        "eingabe"
       );
     }
     const s = args.strong.trim().toUpperCase();
@@ -87,10 +90,10 @@ export function handleConcordance(args: {
     suche = s;
   } else if (args.lemma !== undefined && args.lemma !== null && args.lemma !== "") {
     if (typeof args.lemma !== "string") {
-      return errorResult("Error: 'lemma' must be a Greek or Hebrew word.");
+      return errorResult("Error: 'lemma' must be a Greek or Hebrew word.", "eingabe");
     }
     if (args.lemma.length > MAX_LEMMA_LENGTH) {
-      return errorResult(`Error: 'lemma' must be at most ${MAX_LEMMA_LENGTH} characters`);
+      return errorResult(`Error: 'lemma' must be at most ${MAX_LEMMA_LENGTH} characters`, "eingabe");
     }
     const lemma = args.lemma.trim();
     if (/[֐-׿]/.test(lemma)) {
@@ -100,12 +103,13 @@ export function handleConcordance(args: {
     } else {
       return errorResult(
         "Error: 'lemma' muss griechisch oder hebräisch geschrieben sein (wie von bible_original " +
-          "zurückgegeben). Alternativ 'strong' verwenden (z. B. \"G26\", \"H7225\")."
+          "zurückgegeben). Alternativ 'strong' verwenden (z. B. \"G26\", \"H7225\").",
+        "eingabe"
       );
     }
     suche = lemma;
   } else {
-    return errorResult("Error: entweder 'strong' (z. B. \"G26\") oder 'lemma' angeben.");
+    return errorResult("Error: entweder 'strong' (z. B. \"G26\") oder 'lemma' angeben.", "eingabe");
   }
 
   // Edition auflösen: Hebräisch → wlc; Griechisch → NT-Edition gemäß texttyp.
@@ -113,11 +117,12 @@ export function handleConcordance(args: {
   // eine mitgegebene NT-Edition wird übergangen, und der Satz darüber kommt aus
   // demselben Helfer wie bei bible_original (seit dem 02.09.2026 wortgleich).
   const geroutet = editionFuerTestament(args.texttyp, isHebrew);
-  if ("error" in geroutet) return errorResult(geroutet.error);
+  if ("error" in geroutet) return errorResult(geroutet.error, "ausgabe");
   const { edition, texttypHinweis } = geroutet;
   if (!availableEditions.has(edition)) {
     return errorResult(
-      `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}.`
+      `Texttyp "${edition}" ist nicht geladen. Verfügbar: ${[...availableEditions].join(", ")}.`,
+      "bestand"
     );
   }
 
@@ -132,7 +137,8 @@ export function handleConcordance(args: {
         (mitStrong.length > 0
           ? `Mit Strong-Nummern: ${mitStrong.join(", ")}. `
           : "") +
-        `In "${edition}" ist stattdessen die Suche über 'lemma' möglich.`
+        `In "${edition}" ist stattdessen die Suche über 'lemma' möglich.`,
+      "ausgabe"
     );
   }
 
@@ -147,11 +153,39 @@ export function handleConcordance(args: {
     const stored = findStoredLemma(edition, suche);
     if (stored !== null) rows = stmtConcordLemma.all(edition, stored);
   }
+  // Null Vorkommen sind nur dann eine Zahl, wenn das Wort selbst bekannt ist:
+  // eine Strong-Nummer mit Lexikoneintrag, oder ein Lemma, das eine andere
+  // geladene Edition derselben Sprache führt. Sonst steht hinter der Null
+  // womöglich bloß eine Schreibweise, die nicht getroffen hat, und „gesamt: 0"
+  // läse sich wie gezählt. Dieser Fall bleibt deshalb ein Fehler mit Ausweg.
+  let leerGrund: string | null = null;
   if (rows.length === 0) {
-    return errorResult(
-      `Keine Vorkommen für "${suche}" in Edition "${edition}" gefunden. ` +
-        "Hinweis: Lemma muss exakt (mit Akzenten/Punktierung) übereinstimmen; im Zweifel Strong-Nummer verwenden."
-    );
+    if (strongDigits !== null) {
+      if (stmtStrongDef?.get((isHebrew ? "H" : "G") + strongDigits)) {
+        leerGrund =
+          `Kein Vorkommen von ${suche} in der Edition "${edition}". Die Strong-Nummer ` +
+          "ist im Lexikon geführt, das Wort steht in dieser Edition aber nicht.";
+      }
+    } else {
+      const andere = [...availableEditions].filter(
+        (e) =>
+          e !== edition &&
+          (EDITION_META[e]?.decoder === "hebrew") === isHebrew &&
+          findStoredLemma(e, suche) !== null
+      );
+      if (andere.length > 0) {
+        leerGrund =
+          `Kein Vorkommen von "${suche}" in der Edition "${edition}". Das Lemma ` +
+          `führen stattdessen: ${andere.join(", ")}.`;
+      }
+    }
+    if (leerGrund === null) {
+      return errorResult(
+        `Keine Vorkommen für "${suche}" in Edition "${edition}" gefunden. ` +
+          "Hinweis: Lemma muss exakt (mit Akzenten/Punktierung) übereinstimmen; im Zweifel Strong-Nummer verwenden.",
+        "stelle"
+      );
+    }
   }
 
   // Zusammenfassen: Anzahl je Buch und verschiedene Verse (die Zeilen stehen in
@@ -172,15 +206,15 @@ export function handleConcordance(args: {
   const meta0 = EDITION_META[edition]!;
   const response: Record<string, unknown> = {
     suche,
-    grundform: rows[0]!.lemma || "—",
+    grundform: rows[0]?.lemma || "—",
   };
   // Um den Eintrag des Strong-Wörterbuchs anreichern (Umschrift und Bedeutung),
   // sofern die Lexikontabelle geladen und eine Strong-Nummer bekannt ist.
   const strongKey =
     strongDigits !== null
       ? (isHebrew ? "H" : "G") + strongDigits
-      : rows[0]!.strong
-        ? (isHebrew ? "H" : "G") + rows[0]!.strong
+      : rows[0]?.strong
+        ? (isHebrew ? "H" : "G") + rows[0].strong
         : null;
   // Welches Lexikon tatsächlich beigetragen hat, entscheidet über die Nennung
   // weiter unten: translit, definition und kjv kommen aus den
@@ -193,6 +227,9 @@ export function handleConcordance(args: {
     const def = stmtStrongDef.get(strongKey);
     if (def) {
       response.strong = strongKey;
+      // Ohne ein einziges Vorkommen gibt es keine Zeile, die die Grundform
+      // trüge; das Lexikon kennt sie trotzdem.
+      if (rows.length === 0 && def.lemma) response.grundform = def.lemma;
       if (def.translit) response.umschrift = def.translit;
       if (def.gloss) response.kurzbedeutung = def.gloss;
       if (def.definition) response.bedeutung = def.definition;
@@ -222,6 +259,9 @@ export function handleConcordance(args: {
   // damit alles ein, was danach kommt.
   if (texttypHinweis !== null) {
     hinweise.push(texttypHinweis);
+  }
+  if (leerGrund !== null) {
+    hinweise.push(leerGrund);
   }
   if (rows.length > limit) {
     // Der Ausweg muss einer sein, den der Aufrufer gehen kann: Steht `limit`
@@ -257,5 +297,5 @@ export function handleConcordance(args: {
     usedStepLexicon ? DATASET_QUELLEN.lexikon_step : undefined
   );
 
-  return jsonResult(response);
+  return leerGrund !== null ? leeresErgebnis(response) : jsonResult(response);
 }

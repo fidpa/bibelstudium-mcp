@@ -22,9 +22,11 @@
  * über Verse, die eine Fußnote tragen (1134 von 31 171, bei Schrittweite 700
  * sonst im Regelfall kein einziger), und `parallelen` über Verse aus der
  * UBS-Datenbank, je zwölf aus beiden Testamenten, dazu ein Aufruf gegen eine
- * Ausgabe mit Wortlaut-Grenze für den gekürzten Zweig. Stand 22.08.2026:
- * 623 Aufrufe, 619 sauber geprüft, 0 Schemafehler, 4 sachliche Fehlerantworten
- * (drei Verse ohne Querverweis, eine Suche ohne Treffer).
+ * Ausgabe mit Wortlaut-Grenze für den gekürzten Zweig. Stand 17.11.2026:
+ * 623 Aufrufe, 623 sauber geprüft, 0 Schemafehler. Bis 0.6.33 waren vier davon
+ * sachliche Fehlerantworten (drei Verse ohne Querverweis, eine Suche ohne
+ * Treffer); seit 0.6.34 sind das Erfolge mit der Zahl null und laufen damit
+ * durch dieselbe Schemaprüfung wie alle anderen.
  *
  * Ausgaben mit eigener Versifikation bekommen ihre eigene Stichprobe. Die
  * Luther-Stichprobe trifft bei ihnen reihenweise daneben (gemessen 05.08.2026:

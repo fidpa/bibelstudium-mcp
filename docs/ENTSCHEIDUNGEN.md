@@ -1,7 +1,7 @@
 ---
 type: explanation
 status: active
-last_updated: 2026-08-22
+last_updated: 2026-11-17
 related_docs:
   - path: TYPESCRIPT.md
     description: Code-Stil und Kommentarregeln, die aus diesen Entscheidungen folgen
@@ -51,10 +51,12 @@ Platzhalter.
 - [Die Voreinstellung gehört dem Endpunkt, die Konstante gehört jedem Klon](#die-voreinstellung-gehört-dem-endpunkt-die-konstante-gehört-jedem-klon)
 - [Dieselbe Stellenangabe trifft nicht in jeder Ausgabe denselben Text](#dieselbe-stellenangabe-trifft-nicht-in-jeder-ausgabe-denselben-text)
 - [Der Editionsabgleich schweigt, wo eine Edition zwei Formen führt](#der-editionsabgleich-schweigt-wo-eine-edition-zwei-formen-führt)
+- [Der Import setzt ein Leerzeichen, wo die Quelle mit Auszeichnung trennt](#der-import-setzt-ein-leerzeichen-wo-die-quelle-mit-auszeichnung-trennt)
 - [Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte](#die-volltextsuche-filtert-über-rowid-blöcke-nicht-über-eine-spalte)
 
 **[Fehlermeldungen und Argumentprüfung](#fehlermeldungen-und-argumentprüfung)**
 - [Eine Meldung nennt die verletzte Bedingung, nicht irgendeine](#eine-meldung-nennt-die-verletzte-bedingung-nicht-irgendeine)
+- [Kein Fund ist ein Ergebnis, und ein Fehler bekommt eine Klasse](#kein-fund-ist-ein-ergebnis-und-ein-fehler-bekommt-eine-klasse)
 
 **[Prüfen und Messen](#prüfen-und-messen)**
 - [Zwei Prüfarten für die Schemata, weil keine allein reicht](#zwei-prüfarten-für-die-schemata-weil-keine-allein-reicht)
@@ -548,7 +550,9 @@ dem stillen Falschwert wird eine Zeile im Protokoll.
 der URI gezählt; wer an der Datenprüfung davor scheitert, taucht nicht auf.
 Prompt-Abrufe zählen Versuche, auch gescheiterte, weil der Zählpunkt vor der
 Argumentprüfung liegt. Beides ist Absicht, aber es heißt, dass die drei Zähler
-nicht gegeneinander aufrechenbar sind.
+nicht gegeneinander aufrechenbar sind. (Seit 0.6.34 gibt es einen vierten für
+die Fehlerklassen der Werkzeuge; für ihn gilt dasselbe, siehe „Kein Fund ist
+ein Ergebnis, und ein Fehler bekommt eine Klasse".)
 
 ### Zwei Angaben über den Prozess, seit 0.6.18
 
@@ -1257,6 +1261,64 @@ be an integer between 1 and 150", also eine Bereichsaussage über einen Wert, de
 nicht da ist. Das zu ändern wäre eine Verhaltensänderung und lag außerhalb des
 Auftrags.
 
+## Kein Fund ist ein Ergebnis, und ein Fehler bekommt eine Klasse
+
+*Gemessen 13. und 17.11.2026, an der Schlussbilanz des gehosteten Dienstes
+(Version 0.6.32, 50 Tage Laufzeit) und an 1353 Aufrufen eines einzelnen
+Clients aus fünf Wochen.*
+
+**Der Befund.** Die Bilanz wies `bible_search` mit 89 Fehlern auf 269 Erfolge
+aus, `bible_concordance` mit 132 auf 961, `bible_crossrefs` mit 43 auf 3. Zwei
+Dinge ließen sich daran nicht ablesen. Erstens, wie viele dieser Fehler gar
+keine waren: „Keine Treffer" und „Keine Vorkommen" gingen als `isError` hinaus,
+obwohl die Anfrage richtig gestellt war. Zweitens, woran der Rest scheiterte:
+Der Zähler kannte den Ausgang, nicht die Ursache. Bei `bible_crossrefs` war die
+naheliegende Erklärung (leere Ergebnisse) nachweislich falsch, denn 29 364 der
+31 102 Verse führen Verweise; was die 43 Fehler waren, blieb unbekannt.
+
+**Was ein leeres Ergebnis ist, und was nicht.** Erfolg mit der Zahl null wird
+nur, was eine Zahl ist. Drei Lagen sehen gleich aus und sind es nicht:
+
+| Lage | Antwort |
+|---|---|
+| Suche ohne Treffer in einem vorhandenen Index | Erfolg, `treffer: 0` |
+| Suche in einer Ausgabe ohne Indexblock | Fehler: Es wurde nichts durchsucht |
+| Strong-Nummer mit Lexikoneintrag, in der Edition nicht belegt | Erfolg, `gesamt: 0` |
+| Lemma, das nur eine andere geladene Edition führt | Erfolg, `gesamt: 0`, der Satz nennt sie |
+| Wort, das weder Lexikon noch eine Edition kennt | Fehler: Dahinter steht womöglich nur eine Schreibweise |
+| Vers ohne Querverweis (1738 Verse) | Erfolg, `gesamt: 0` |
+| Vers, den die Ausgabe nicht führt | Fehler mit der Bedingung |
+| Verweisdatensatz nicht geladen | Fehler: Es wurde nicht gezählt |
+
+Die Sätze selbst sind geblieben; sie stehen jetzt im `hinweis` statt als
+Fehlertext. Gemessen an den Daten vom 17.11.2026: 143 griechische
+Strong-Nummern des Lexikons fehlen im Mehrheitstext, 638 Lemmata des SBLGNT
+ebenso.
+
+**Warum ein eigener Ausgang `leer`.** Als `ok` gezählt verschwände die eine
+Auskunft, die der alte Fehlerzähler unfreiwillig gab: wie oft eine Suche nichts
+findet. Das ist ein Signal über das Werkzeug (es sucht exakte Wortformen), kein
+Betriebsfehler.
+
+**Warum die Fehlerklasse am Objekt hängt und nicht im Ergebnis steht.** Sechs
+Klassen (`eingabe`, `buch`, `stelle`, `ausgabe`, `bestand`, `betrieb`), gesetzt
+als Pflichtargument von `errorResult` und in einer `WeakMap` am Ergebnisobjekt
+gehalten, gelesen allein in der Zählhülle. Verworfen wurde ein Feld im
+Fehlerergebnis: Es wäre Schnittstelle geworden, die kein Client braucht, denn
+die Meldung nennt die verletzte Bedingung bereits. Der Preis des gewählten Wegs
+steht am Code: Wer das Ergebnis zwischen Handler und Hülle kopiert, verliert
+die Klasse ohne Typfehler. Geprüft wird die Zuordnung deshalb im Prozess, je
+Klasse an mindestens einem Handler; über HTTP ist nur die eine Klasse zu sehen,
+die ohne Datenbank entsteht.
+
+**`verse` und `verses`.** `bible_lookup` nennt sein Argument `verses`, die drei
+Einzelvers-Werkzeuge nennen es `verse`. In einer Prüfreihe gingen zwei von fünf
+Aufrufen an diesen Unterschied verloren (02.09.2026). Seit 0.6.34 nimmt jedes
+der vier das Argument der anderen an, wenn sein eigenes fehlt; das eigene geht
+vor, und eine Spanne an einem Einzelvers-Werkzeug bekommt ihre eigene Meldung.
+Im `inputSchema` steht das nicht: Es ist Nachsicht wie bei `"3"` statt `3`,
+kein zweiter Weg, den ein Client lernen soll.
+
 ---
 
 # Prüfen und Messen
@@ -1805,6 +1867,43 @@ TAGNT-Bezeugung führen die Unterschrift als Schluss des letzten Verses
 Wörter mit `editions = TR`). Der Import lässt sie weg, weil sie kein Text des
 Briefs ist; `bible_compare` zeigt in diesen 14 Versen deshalb TR-Zeugen für
 Wörter, die die Edition nicht führt.
+
+## Der Import setzt ein Leerzeichen, wo die Quelle mit Auszeichnung trennt
+
+*Gemessen 17.11.2026 an allen fünf Ausgaben, vor und nach einem Neuaufbau.*
+
+Zwei Importe entfernten Auszeichnung ersatzlos, und an zwei Arten von Stellen
+war die Auszeichnung der einzige Worttrenner.
+
+**bolls.life trennt die Zeilen poetischer Verse mit `<br/>`**, ohne Leerraum
+daneben. `scripts/download.ts` löschte das Tag wie jedes andere, und die Zeilen
+klebten aneinander: in der Menge-Bibel rund 2000 Verse mit einem Satzzeichen
+unmittelbar vor dem nächsten Wort, 8 mit zwei Wörtern ohne jedes Zeichen
+dazwischen. Dieselbe Quelle führt hinter Klammern doppelte Leerzeichen (Menge
+7014 Verse, Luther 65, Schlachter 1951 7). Seit 0.6.34 wird `<br/>` zum
+Leerzeichen und Leerraum gefaltet. Geändert haben sich dadurch 9366 Verse der
+Menge-Bibel, 65 in Luther, 7 in der Schlachter 1951, keiner in der
+Elberfelder.
+
+**Die USX-Lieferung der zweiten, lokal geführten Schlachter-Ausgabe** setzt
+Querverweisnoten ohne Leerraum zwischen ein Wort und den Beginn eines
+ausgezeichneten Zitats. Der Import entfernt Noten, und an 92 Stellen in 74
+Versen blieb zwischen zwei Wörtern nichts. Die Regel dafür ist enger, als sie
+zuerst aussah: Ein Leerzeichen entsteht nur, wo die Note zwischen zwei
+Buchstaben steht **und** an ein Tag grenzt. An 9 weiteren Stellen steht eine
+Note ohne jedes Tag mitten in einem zusammengesetzten Wort; dort ist sie ein
+Anker, und die erste Fassung der Regel hätte diese neun Wörter zerrissen
+(gemessen, bevor sie hinausging).
+
+**Der Beweis, dass kein Wortlaut berührt ist:** Über alle 155 612 Verse ist
+jeder Vers vor und nach dem Neuaufbau gleich, sobald man allen Leerraum
+entfernt. Die Prüfsummen der Quellen sind unverändert, sie laufen über den
+Rohtext.
+
+**Nicht behoben, weil nicht verursacht:** 11 Verse der Menge-Bibel tragen
+weiter ein Satzzeichen ohne Leerraum vor einem Umlaut, 2 weitere eine
+Klebestelle, und 3156 ein Leerzeichen vor einem Satzzeichen. Ob das aus
+der Quelle stammt, ist nicht gemessen.
 
 ## Die Volltextsuche filtert über rowid-Blöcke, nicht über eine Spalte
 

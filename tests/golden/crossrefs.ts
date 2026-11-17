@@ -48,6 +48,9 @@ export const crossrefsBuendel = buendel({
     xrefKlammerKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 25, verse: 21, translation: "LUT" }],
     // Kein Verweis ist ein Ergebnis, keine Panne.
     xrefKeine: ["bible_crossrefs", { book: "1. Mose", chapter: 1, verse: 13 }],
+    // Die Gegenprobe: Hinter derselben leeren Liste kann auch ein Vers stehen,
+    // den es nicht gibt (Johannes 3 hat 36 Verse). Das ist keine Zahl.
+    xrefKeinVers: ["bible_crossrefs", { book: "Johannes", chapter: 3, verse: 150 }],
     // `gesamt` und der Kürzungssatz. 1. Mose 1,1 führt 62 Verweise; bis zum
     // 06.08.2026 lieferte das Werkzeug 10 bzw. 30 davon und sagte es nirgends,
     // also stilles Kürzen in 13 548 von 29 364 möglichen Abrufen. Drei Fälle,
@@ -221,8 +224,12 @@ export const crossrefsBuendel = buendel({
     lacks("über Kapitelgrenze: Marker löst keinen Klammerhinweis aus",
       hint(xrefUeberKapitel.json), "Wörter in eckigen Klammern");
 
-    eq("ohne Querverweise: isError", xrefKeine.isError, true);
-    eq("ohne Querverweise: nennt die Stelle", xrefKeine.text, "Keine Querverweise für 1 Mose 1,13 gefunden.");
+    eq("ohne Querverweise: kein Fehler", xrefKeine.isError, false);
+    eq("ohne Querverweise: gesamt 0", xrefKeine.json?.gesamt, 0);
+    check("ohne Querverweise: leere Liste", Array.isArray(xrefKeine.json?.verweise) && (xrefKeine.json?.verweise as unknown[]).length === 0);
+    eq("ohne Querverweise: nennt die Stelle", hint(xrefKeine.json), "Keine Querverweise für 1 Mose 1,13 gefunden.");
+    eq("Vers gibt es nicht: isError", res.xrefKeinVers.isError, true);
+    has("Vers gibt es nicht: nennt die Bedingung", res.xrefKeinVers.text, "Diesen Vers führt die");
     // Auch die Verweisantwort trägt die Kopiervorlage: Aus ihr wird zitiert.
     eq("kurzref: Joh 14,6", xrefJoh146.json?.kurzref, "Joh 14,6");
 

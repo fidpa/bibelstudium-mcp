@@ -10,16 +10,15 @@
 
 import {
   MAX_CHAPTER,
-  MAX_VERSE,
   bookNotFound,
   chapterOutOfRange,
+  einzelVers,
   errorResult,
   jsonResult,
   originalPayload,
   requireBookName,
   resolveBook,
   toInt,
-  verseOutOfRange,
 } from "../werkzeug-helfer.ts";
 
 /**
@@ -30,6 +29,7 @@ export function handleOriginal(args: {
   book?: unknown;
   chapter?: unknown;
   verse?: unknown;
+  verses?: unknown;
   texttyp?: unknown;
 }) {
   const geprueft = requireBookName(
@@ -37,18 +37,19 @@ export function handleOriginal(args: {
     "Error: 'book' is required (e.g. '1. Mose', 'Jesaja', 'Römer')."
   );
   if ("error" in geprueft) {
-    return errorResult(geprueft.error);
+    return errorResult(geprueft.error, "eingabe");
   }
   const { book } = geprueft;
 
   const chapter = toInt(args.chapter);
   if (chapter === null || chapter < 1 || chapter > MAX_CHAPTER) {
-    return errorResult(chapterOutOfRange);
+    return errorResult(chapterOutOfRange, "eingabe");
   }
-  const verse = toInt(args.verse);
-  if (verse === null || verse < 1 || verse > MAX_VERSE) {
-    return errorResult(verseOutOfRange);
+  const vers = einzelVers(args);
+  if ("error" in vers) {
+    return errorResult(vers.error, "eingabe");
   }
+  const { verse } = vers;
 
   const bookId = resolveBook(book);
   if (bookId === null) {
@@ -57,7 +58,7 @@ export function handleOriginal(args: {
 
   const result = originalPayload(book, bookId, chapter, verse, args.texttyp);
   if ("error" in result) {
-    return errorResult(result.error);
+    return errorResult(result.error, result.klasse);
   }
 
   return jsonResult(result.payload);

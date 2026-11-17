@@ -6,9 +6,11 @@
  * sieht ausschließlich `POST /mcp`, der Werkzeugname steht im Rumpf, und
  * protokolliert wird er nirgends.
  *
- * **Was hier bewusst nicht entsteht.** Gezählt werden Namen, nichts sonst:
- * keine Argumente, keine Bibelstelle, kein Suchbegriff, keine Ressourcen-URI,
- * keine Quelladresse, keine Sitzung. Abfragen an einen Bibeldienst lassen
+ * **Was hier bewusst nicht entsteht.** Gezählt werden Namen, der Ausgang eines
+ * Aufrufs und bei einem Fehler dessen Klasse, nichts sonst: keine Argumente,
+ * keine Bibelstelle, kein Suchbegriff, keine Ressourcen-URI, keine
+ * Quelladresse, keine Sitzung. Ausgang und Klasse stammen wie die Namen aus
+ * geschlossenen Mengen, die in dieser Datei stehen. Abfragen an einen Bibeldienst lassen
  * Rückschlüsse auf religiöse Überzeugungen zu; ein Zähler ohne Bezugspunkt tut
  * das nicht, eine Zeile je Anfrage täte es. Deshalb ein Aggregat und kein Log.
  *
@@ -22,7 +24,7 @@
  * Überwachung. Die Werkzeugnamen selbst stehen unten in dieser Datei, mit der
  * Begründung dort.
  *
- * **Neben den drei Zählern stehen zwei Angaben über den Prozess selbst**,
+ * **Neben den vier Zählern stehen zwei Angaben über den Prozess selbst**,
  * Startzeitpunkt und Version. Sie sind keine Zähler und zählen auch nichts: Sie
  * beantworten die Frage, auf die sich jede Zahl darüber bezieht, nämlich seit
  * wann gezählt wird. Ein Neustart setzt die Zähler auf null, und ohne diesen
@@ -81,17 +83,48 @@ export const WERKZEUG_NAMEN = [
 /**
  * Wie ein Werkzeugaufruf ausging.
  *
- * Vier Werte, weil dieser Server drei Antwortarten kennt und die vierte Lage
- * davon zu trennen ist: `ok` und `fehler` sind beides reguläre Antworten (ein
+ * Fünf Werte, weil dieser Server drei Antwortarten kennt und zwei Lagen davon
+ * zu trennen sind: `ok` und `fehler` sind beides reguläre Antworten (ein
  * Ergebnis beziehungsweise eines mit `isError`), `abgewiesen` ist ein
  * JSON-RPC-Fehler, den der Server absichtlich wirft, und `ausnahme` ist alles
  * Übrige. Die letzten beiden zusammenzufassen verwischte den Unterschied
  * zwischen „ein Modell hat den Server falsch bedient" und „hier ist etwas
  * kaputt", und genau dieser Unterschied ist der Grund, überhaupt zu zählen.
+ *
+ * `leer` ist ein Erfolg ohne Fund: eine Suche ohne Treffer, ein Wort ohne
+ * Vorkommen in der Edition, ein Vers ohne Querverweis. Bis 0.6.33 waren das
+ * Fehler, und sie machten bei der Suche ein Viertel aller Aufrufe aus (89 von
+ * 358 in 50 Tagen, gemessen 13.11.2026). Als `ok` gezählt verschwände genau
+ * diese Auskunft, deshalb der eigene Wert.
  */
-export type Ergebnis = "ok" | "fehler" | "abgewiesen" | "ausnahme";
+export type Ergebnis = "ok" | "leer" | "fehler" | "abgewiesen" | "ausnahme";
 
-const ERGEBNISSE: readonly Ergebnis[] = ["ok", "fehler", "abgewiesen", "ausnahme"];
+const ERGEBNISSE: readonly Ergebnis[] = ["ok", "leer", "fehler", "abgewiesen", "ausnahme"];
+
+/**
+ * Woran ein Aufruf mit `isError` gescheitert ist.
+ *
+ * Der Zähler `fehler` allein sagt nicht, ob ein Modell das Werkzeug falsch
+ * bedient oder ob dem Server etwas fehlt: `bible_crossrefs` stand nach 50 Tagen
+ * bei 43 Fehlern auf 3 Erfolge, und die Ursache ließ sich nicht benennen
+ * (gemessen 13.11.2026). Sechs Klassen, nach dem, was zu tun wäre:
+ *
+ * - `eingabe`: ein Argument fehlt, hat den falschen Typ oder liegt außerhalb
+ *   der Grenzen. Das Werkzeug wird falsch bedient.
+ * - `buch`: der Buchname ist unbekannt oder liegt außerhalb des Kanons.
+ * - `stelle`: Buch und Form stimmen, aber die Stelle oder das Wort gibt es
+ *   in den Daten nicht.
+ * - `ausgabe`: eine Übersetzung oder Edition, die es nicht gibt oder die für
+ *   die Anfrage nicht taugt.
+ * - `bestand`: dem Server fehlen Daten (Datenbank, Datensatz, Index, eine
+ *   nicht geladene Ausgabe). Nur serverseitig zu beheben.
+ * - `betrieb`: `bible_setup`, also Einrichtung statt Abfrage.
+ *
+ * Die Klasse reist nicht über die Leitung. Sie hängt am Ergebnisobjekt (siehe
+ * `errorResult` in `werkzeug-helfer.ts`) und wird allein hier gezählt.
+ */
+export const FEHLER_KLASSEN = ["eingabe", "buch", "stelle", "ausgabe", "bestand", "betrieb"] as const;
+export type FehlerKlasse = (typeof FEHLER_KLASSEN)[number];
 
 /**
  * Ein Zähler je Metrik. Die Schlüssel sind die Label-Werte, bei zwei Labels
@@ -99,6 +132,7 @@ const ERGEBNISSE: readonly Ergebnis[] = ["ok", "fehler", "abgewiesen", "ausnahme
  * Zerlegung beim Ausgeben ist damit eindeutig.
  */
 const werkzeugAufrufe = new Map<string, number>();
+const werkzeugFehler = new Map<string, number>();
 const promptAufrufe = new Map<string, number>();
 const ressourceAufrufe = new Map<string, number>();
 
@@ -126,6 +160,10 @@ export function registriereWerkzeuge(namen: readonly string[]): void {
   grundstellung(
     werkzeugAufrufe,
     [...werkzeugNamen].flatMap((name) => ERGEBNISSE.map((e) => `${name}${TRENNER}${e}`))
+  );
+  grundstellung(
+    werkzeugFehler,
+    [...werkzeugNamen].flatMap((name) => FEHLER_KLASSEN.map((k) => `${name}${TRENNER}${k}`))
   );
 }
 
@@ -164,6 +202,16 @@ export function zaehleWerkzeug(name: string, ergebnis: Ergebnis): void {
   hoch(werkzeugAufrufe, `${bekannt(werkzeugNamen, name)}${TRENNER}${ergebnis}`);
 }
 
+/**
+ * Zählt die Klasse eines Fehlers, zusätzlich zu `zaehleWerkzeug(name, "fehler")`
+ * und nicht an dessen Stelle: Die Summe der Klassen eines Werkzeugs kann über
+ * seinem Fehlerzähler liegen, sobald ein Werkzeug mehrere Stellen in einem
+ * Aufruf beantwortet und einzelne davon scheitern.
+ */
+export function zaehleFehler(name: string, klasse: FehlerKlasse): void {
+  hoch(werkzeugFehler, `${bekannt(werkzeugNamen, name)}${TRENNER}${klasse}`);
+}
+
 export function zaehlePrompt(name: string): void {
   hoch(promptAufrufe, bekannt(promptNamen, name));
 }
@@ -176,7 +224,7 @@ export function zaehleRessource(art: string): void {
  * Von Hand erzeugt, ohne Client-Bibliothek.
  *
  * Dieses Repository hat eine einzige Laufzeit-Abhängigkeit, das MCP-SDK, und
- * drei Zähler und zwei Prozessangaben rechtfertigen keine zweite. Was eine
+ * vier Zähler und zwei Prozessangaben rechtfertigen keine zweite. Was eine
  * Bibliothek zusätzlich brächte, ist vor allem das Maskieren von Label-Werten;
  * hier stammt jeder Wert aus einer registrierten Liste, ist die geprüfte
  * Versionszeichenkette oder `unbekannt`, enthält also weder Anführungszeichen
@@ -206,6 +254,9 @@ export function bilanzZeile(version: string): string {
   for (const [schluessel, wert] of [...werkzeugAufrufe].sort()) {
     if (wert > 0) teile.push(`${schluessel.replace(TRENNER, "/")}=${wert}`);
   }
+  for (const [schluessel, wert] of [...werkzeugFehler].sort()) {
+    if (wert > 0) teile.push(`fehler:${schluessel.replace(TRENNER, "/")}=${wert}`);
+  }
   for (const [name, wert] of [...promptAufrufe].sort()) {
     if (wert > 0) teile.push(`prompt:${name}=${wert}`);
   }
@@ -227,6 +278,17 @@ export function metrikenText(): string {
     const teile = schluessel.split(TRENNER);
     zeilen.push(
       `bibelstudium_mcp_werkzeug_aufrufe_total{werkzeug="${teile[0]}",ergebnis="${teile[1]}"} ${wert}`
+    );
+  }
+
+  zeilen.push(
+    "# HELP bibelstudium_mcp_werkzeug_fehler_total Werkzeugfehler nach Name und Klasse der Ursache.",
+    "# TYPE bibelstudium_mcp_werkzeug_fehler_total counter"
+  );
+  for (const [schluessel, wert] of [...werkzeugFehler].sort()) {
+    const teile = schluessel.split(TRENNER);
+    zeilen.push(
+      `bibelstudium_mcp_werkzeug_fehler_total{werkzeug="${teile[0]}",klasse="${teile[1]}"} ${wert}`
     );
   }
 

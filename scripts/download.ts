@@ -53,9 +53,22 @@ interface BollsVerse {
  * Entfernt HTML-Auszeichnungen aus dem Verstext.
  * bolls.life setzt <f>&#2009;[123]</f> für Fußnoten und <i>...</i> für
  * Psalmüberschriften.
+ *
+ * `<br/>` wird zum Leerzeichen und nicht zur leeren Zeichenkette: Die Quelle
+ * trennt damit die Zeilen poetischer Verse, und zwar ohne Leerraum daneben. Bis
+ * 0.6.33 fiel das Tag ersatzlos, und in der Menge-Bibel klebten die Zeilen
+ * aneinander („…geschafft hat;er ist…", rund 2000 Verse; in 8 davon zwei
+ * Wörter ohne jedes Zeichen dazwischen, gemessen 17.11.2026). Danach wird
+ * Leerraum gefaltet, weil dieselbe Quelle hinter Klammern doppelte Leerzeichen
+ * führt (Menge 7014 Verse, Luther 65, Schlachter 1951 7). Der Wortlaut bleibt
+ * unberührt: Ohne Leerraum verglichen ist jeder Vers vorher gleich nachher.
  */
 function stripHtml(text: string): string {
-  return text.replace(/<[^>]+>/g, "").trim();
+  return text
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**

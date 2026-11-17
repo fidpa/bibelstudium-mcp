@@ -16,7 +16,7 @@
 import { buendel, fahre } from "../lib/buendel.ts";
 import { originalBuendel } from "./original.ts";
 import { MAX_LEMMA_LENGTH } from "../../src/werkzeug-helfer.ts";
-import { check, eq, has, lacks, abschluss } from "../lib/zusicherungen.ts";
+import { check, eq, has, hint, lacks, abschluss } from "../lib/zusicherungen.ts";
 
 export const concordanceBuendel = buendel({
   name: "concordance",
@@ -34,6 +34,13 @@ export const concordanceBuendel = buendel({
     concordLemmaLatein: ["bible_concordance", { lemma: "Liebe" }],
     concordTexttyp: ["bible_concordance", { strong: "G26", texttyp: "quatsch" }],
     concordOhneTreffer: ["bible_concordance", { strong: "G99999" }],
+    // Null Vorkommen als Zahl, in den zwei Lagen, in denen sie eine ist: eine
+    // Strong-Nummer, die das Lexikon führt, der Mehrheitstext aber nicht (143
+    // solche Nummern, G168 steht im Textus Receptus), und ein Lemma, das nur
+    // eine andere Edition führt (638 Lemmata des SBLGNT fehlen im
+    // Mehrheitstext; gemessen 17.11.2026).
+    concordLeerStrong: ["bible_concordance", { strong: "G168" }],
+    concordLeerLemma: ["bible_concordance", { lemma: "Βελιάρ" }],
     // `sblgnt` führt in 0 von 137 554 Wörtern eine Strong-Nummer, eine Suche
     // danach kann dort also nie etwas finden. Bis zum 06.08.2026 kam dieselbe
     // Meldung wie bei einer ergebnislosen Suche, und die riet, „im Zweifel
@@ -248,14 +255,31 @@ export const concordanceBuendel = buendel({
       concordTexttyp.text,
       'Unbekannter oder fürs NT ungültiger texttyp "quatsch"'
     );
-    // Kein Treffer ist ein Ergebnis und keine Panne: Die Meldung sagt, was zu
-    // tun ist, statt nur „nichts gefunden".
-    eq("bible_concordance: keine Vorkommen ist isError", concordOhneTreffer.isError, true);
+    // Ein unbekanntes Wort bleibt ein Fehler: Hinter der Null stünde sonst
+    // womöglich bloß eine Schreibweise, die nicht getroffen hat, und die Meldung
+    // sagt, was zu tun ist.
+    eq("bible_concordance: unbekanntes Wort ist isError", concordOhneTreffer.isError, true);
     has(
       "bible_concordance: keine Vorkommen nennt Edition und Ausweg",
       concordOhneTreffer.text,
       'Keine Vorkommen für "G99999" in Edition "byzantine" gefunden.'
     );
+    // Ein bekanntes Wort ohne Vorkommen ist dagegen eine Zahl.
+    const { concordLeerStrong, concordLeerLemma } = res;
+    eq("G168 im Mehrheitstext: kein Fehler", concordLeerStrong.isError, false);
+    eq("G168 im Mehrheitstext: gesamt 0", concordLeerStrong.json?.gesamt, 0);
+    eq("G168 im Mehrheitstext: verse 0", concordLeerStrong.json?.verse, 0);
+    check("G168 im Mehrheitstext: leere Liste", Array.isArray(concordLeerStrong.json?.vorkommen) && (concordLeerStrong.json?.vorkommen as unknown[]).length === 0);
+    eq("G168 im Mehrheitstext: Lexikon trägt die Nummer", concordLeerStrong.json?.strong, "G168");
+    check(
+      "G168 im Mehrheitstext: Grundform aus dem Lexikon",
+      typeof concordLeerStrong.json?.grundform === "string" && concordLeerStrong.json.grundform !== "—",
+      `war ${JSON.stringify(concordLeerStrong.json?.grundform)}`
+    );
+    has("G168 im Mehrheitstext: Satz nennt die Edition", hint(concordLeerStrong.json), 'in der Edition "byzantine"');
+    eq("Lemma nur im SBLGNT: kein Fehler", concordLeerLemma.isError, false);
+    eq("Lemma nur im SBLGNT: gesamt 0", concordLeerLemma.json?.gesamt, 0);
+    has("Lemma nur im SBLGNT: Satz nennt, wer es führt", hint(concordLeerLemma.json), "sblgnt");
   },
 });
 

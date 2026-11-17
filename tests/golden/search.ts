@@ -177,13 +177,19 @@ export const searchBuendel = buendel({
       searchOhneWort.text,
       "Error: 'query' enthält kein durchsuchbares Wort."
     );
-    eq("Suche ohne Treffer: isError", searchOhneTreffer.isError, true);
-    // Die Meldung nennt Ausdruck UND Übersetzung: Trefferzahlen gelten je
+    // Kein Treffer ist seit 0.6.34 ein Ergebnis und kein Fehler: Die Anfrage war
+    // richtig gestellt, und die Antwort ist die Zahl null. Vorher stand ein
+    // Viertel aller Suchaufrufe des Dienstes unter den Fehlern (89 von 358,
+    // gemessen 13.11.2026).
+    eq("Suche ohne Treffer: kein Fehler", searchOhneTreffer.isError, false);
+    eq("Suche ohne Treffer: treffer ist 0", searchOhneTreffer.json?.treffer, 0);
+    check("Suche ohne Treffer: leere Versliste", Array.isArray(searchOhneTreffer.json?.verse) && (searchOhneTreffer.json?.verse as unknown[]).length === 0);
+    // Der Satz nennt Ausdruck UND Übersetzung: Trefferzahlen gelten je
     // Ausgabe, und „nichts gefunden" ohne diese Angabe verleitet dazu, das
     // Ergebnis für die Bibel überhaupt zu halten.
     has(
       "Suche ohne Treffer: nennt Ausdruck und Übersetzung",
-      searchOhneTreffer.text,
+      hint(searchOhneTreffer.json),
       'Keine Treffer für "Xyzzyfoo" (Luther 1912).'
     );
     has(

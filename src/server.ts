@@ -55,6 +55,7 @@ import {
   registriereWerkzeuge,
   zaehlePrompt,
   zaehleRessource,
+  zaehleFehler,
   zaehleWerkzeug,
 } from "./metriken.ts";
 import { serveHttp, serveMetrics } from "./transport.ts";
@@ -99,6 +100,8 @@ import {
   chapterOutOfRange,
   EFFECTIVE_DEFAULT_TRANSLATION,
   errorResult,
+  fehlerKlasseVon,
+  istLeeresErgebnis,
   jsonResult,
   lookupPayload,
   originalPayload,
@@ -1814,13 +1817,15 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
   if (HTTP_MODE) {
     return errorResult(
       "Dieses Werkzeug steht im HTTP-Modus nicht zur Verfügung. Die Datenbank baut " +
-        "die Betreiberin oder der Betreiber des Endpunkts auf, nicht der aufrufende Client."
+        "die Betreiberin oder der Betreiber des Endpunkts auf, nicht der aufrufende Client.",
+      "betrieb"
     );
   }
 
   if (dataMissing === null) {
     return errorResult(
-      "Die Datenbank ist bereits vorhanden und vollständig. Es gibt nichts einzurichten."
+      "Die Datenbank ist bereits vorhanden und vollständig. Es gibt nichts einzurichten.",
+      "betrieb"
     );
   }
 
@@ -1873,7 +1878,8 @@ async function handleSetup(args: { bestaetigung?: unknown }) {
         "Ohne die deutschen Übersetzungen entsteht keine Datenbank, deshalb wurden die " +
         "weiteren Schritte übersprungen. Die vorhandenen Daten sind unverändert geblieben. " +
         "Häufigste Ursache ist eine fehlende Internetverbindung; ein erneuter Aufruf " +
-        "beginnt von vorn."
+        "beginnt von vorn.",
+      "betrieb"
     );
   }
 
@@ -2080,7 +2086,8 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
             "von den Originalquellen geladen (etwa eine halbe Minute, Internetverbindung nötig).\n\n" +
             "Frage die Nutzerin oder den Nutzer, ob der Download jetzt starten soll, und rufe " +
             "dann bible_setup mit bestaetigung=true auf. Beantworte die Bibelfrage bis dahin " +
-            "nicht aus dem Gedächtnis."
+            "nicht aus dem Gedächtnis.",
+      "bestand"
     );
   }
 
@@ -2090,6 +2097,7 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
         book?: unknown;
         chapter?: unknown;
         verse?: unknown;
+        verses?: unknown;
         texttyp?: unknown;
       }
     );
@@ -2100,6 +2108,7 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
         book?: unknown;
         chapter?: unknown;
         verse?: unknown;
+        verses?: unknown;
         limit?: unknown;
         translation?: unknown;
       }
@@ -2131,6 +2140,7 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
         book?: unknown;
         chapter?: unknown;
         verse?: unknown;
+        verses?: unknown;
       }
     );
   }
@@ -2162,12 +2172,24 @@ const dispatchCallTool = async (request: CallToolRequest): Promise<CallToolResul
  * Fall ist keiner davon: `handleSetup` fährt die Download-Skripte, dort kommen
  * Netz- und Dateisystemfehler als nacktes `Error` an. Sie als `abgewiesen` zu
  * buchen verwischte genau den Unterschied, dessentwegen gezählt wird.
+ *
+ * Zwei Auskünfte hängen am Ergebnisobjekt und nicht in ihm: die Klasse eines
+ * Fehlers und die Marke „Erfolg ohne Fund". Beide setzt `werkzeug-helfer.ts`,
+ * beide werden nur hier gelesen. Das trägt, weil zwischen Handler und dieser
+ * Hülle niemand das Objekt kopiert; wer hier ein `{ ...ergebnis }` einführt,
+ * verliert beide, und kein Typfehler meldet es.
  */
 const handleCallTool = async (request: CallToolRequest): Promise<CallToolResult> => {
   const name = request.params.name;
   try {
     const ergebnis = await dispatchCallTool(request);
-    zaehleWerkzeug(name, ergebnis.isError === true ? "fehler" : "ok");
+    if (ergebnis.isError === true) {
+      zaehleWerkzeug(name, "fehler");
+      const klasse = fehlerKlasseVon(ergebnis);
+      if (klasse !== undefined) zaehleFehler(name, klasse);
+    } else {
+      zaehleWerkzeug(name, istLeeresErgebnis(ergebnis) ? "leer" : "ok");
+    }
     return ergebnis;
   } catch (fehler) {
     // `rpcError()` setzt ein numerisches `code`; ein nacktes `Error` hat keines.
