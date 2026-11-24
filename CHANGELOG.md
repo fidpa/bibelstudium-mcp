@@ -6,6 +6,24 @@ dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.1] - 2026-11-24: Der Registry-Schlüssel steht nicht mehr in der Befehlszeile
+
+### Geändert (Infrastruktur)
+
+- **Der Workflow `registry-publish` übergibt den Signierschlüssel als
+  Umgebungsvariable `MCP_PRIVATE_KEY`** statt als Argument `--private-key`. Ein
+  Argument ist in der Prozessliste sichtbar; der Kommentar im Workflow hatte
+  das Gegenteil behauptet. Dafür ist `mcp-publisher` von v1.8.1 auf v1.8.16
+  gehoben, Prüfsumme wie bisher gepinnt; die Variable liest er ab v1.8.10.
+  Server und Werkzeuge sind unverändert.
+
+### Geändert (Dokumentation)
+
+- `docs/ENTSCHEIDUNGEN.md` nennt den Anlass, das SDK auf die v2-Linie zu
+  heben, genauer: ein verbreiteter Client, der an diesem Server scheitert,
+  statt zurückzufallen, oder das Ende der Sicherheitsfassungen für 1.x. Clients,
+  die nach Protokoll 2026-07-28 fragen und dann zurückfallen, reichen nicht.
+
 ## [0.7.0] - 2026-11-17: Mehrere Stellen in einem Abruf, und eine Kapitelübersicht der Varianten
 
 ### Hinzugefügt

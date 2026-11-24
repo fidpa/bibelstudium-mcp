@@ -1,7 +1,7 @@
 ---
 type: explanation
 status: active
-last_updated: 2026-11-17
+last_updated: 2026-11-24
 related_docs:
   - path: TYPESCRIPT.md
     description: Code-Stil und Kommentarregeln, die aus diesen Entscheidungen folgen
@@ -388,6 +388,17 @@ Paket ist in `@modelcontextprotocol/server`, `/core`, `/node` und weitere
 zerfallen, jede Handler-Registrierung ändert sich). Der Auslöser dafür soll
 deshalb ein gemessener Client sein, kein Kalendertag. `noteProtocolVersion()`
 liefert diese Messung.
+
+**Anlass ist ein Client, der hier scheitert, nicht einer, der fragt** (geschärft
+24.11.2026). Seit dem 20.08.2026 fragt am gehosteten Dienst fast nach jedem
+Neustart ein Client nach 2026-07-28 und fällt dann zurück; die Logzeile schlägt
+also regelmäßig an und ist ein Anlass zum Hinsehen, nicht zum Umbau. Die Frage
+wird neu gestellt, wenn ein verbreiteter Client belegt ist, der nicht
+zurückfällt, oder wenn die 1.x-Linie keine Sicherheitsfassungen mehr bekommt.
+Die befürchtete stille Antwort unter alter Semantik trifft nur Anfragen ohne die
+Kopfzeile `MCP-Protocol-Version`, die die neue Revision vorschreibt: Mit ihr
+weist der Transport auch einen `tools/call` mit 400 und `-32000` ab (gemessen
+24.11.2026 an einem frischen HTTP-Server), ohne sie wird er beantwortet.
 
 **Eine Zeile je Protokollversion**, nicht je Anfrage und nicht je Client: Der
 HTTP-Endpunkt ist öffentlich und authlos, ein Log je Anfrage wäre ein

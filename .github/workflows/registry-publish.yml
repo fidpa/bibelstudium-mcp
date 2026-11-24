@@ -47,12 +47,14 @@ jobs:
     env:
       ENDPOINT: https://mcp.bibelstudium-mcp.de/mcp
       SERVER_NAME: de.bibelstudium-mcp/bibelstudium
-      PUBLISHER_VERSION: v1.8.1
+      # v1.8.10 or later is required: older releases take the key only as a
+      # command-line argument (see the login step).
+      PUBLISHER_VERSION: v1.8.16
       # sha256 of mcp-publisher_linux_amd64.tar.gz from that release, measured
-      # 17.08.2026. Pinned for the same reason bun-version is pinned in
-      # release.yml: an unpinned 'latest' would change the tool that writes to a
-      # public registry without anyone deciding it.
-      PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+      # 24.11.2026 against the release asset digest. Pinned for the same reason
+      # bun-version is pinned in release.yml: an unpinned 'latest' would change
+      # the tool that writes to a public registry without anyone deciding it.
+      PUBLISHER_SHA256: 6e2f799550cf843c6fd3350498d56cc49be3dc0af1e6237eb0e6435c7a9d5c05
 
     steps:
       - uses: actions/checkout@v4
@@ -122,16 +124,15 @@ jobs:
       - name: Log in via DNS
         if: ${{ !inputs.dry_run }}
         env:
-          # Kept out of the expanded shell source and out of the process list.
+          # mcp-publisher reads the key from this variable when neither
+          # --private-key nor --private-key-file is given, so the value never
+          # becomes part of a command line (argv is visible to other processes).
           # The private key is 64 hex chars (the raw 32-byte seed), while the
           # TXT record holds base64 of the raw 32-byte PUBLIC key. That
           # asymmetry is the documented failure source; a wrongly encoded record
           # fails the login and looks like a DNS problem.
-          MCP_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
-        run: |
-          ./mcp-publisher login dns \
-            --domain bibelstudium-mcp.de \
-            --private-key "$MCP_KEY"
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain bibelstudium-mcp.de
 
       - name: Publish
         if: ${{ !inputs.dry_run }}
